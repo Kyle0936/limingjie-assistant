@@ -162,7 +162,7 @@ fun LabyrinthScreen(
                     verticalArrangement = Arrangement.spacedBy(5.dp),
                 ) {
                     Text(
-                        text = "Landosol Toolbox · 作者 wbero",
+                        text = "黎明界助手 · 作者 wbero",
                         style = MaterialTheme.typography.titleMedium,
                     )
                     Text(
