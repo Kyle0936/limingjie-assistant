@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+
+    <queries>
+        <package android:name="com.bilibili.priconne" />
+    </queries>
+
+    <application
+        android:name=".LandosolToolboxApplication"
+        android:allowBackup="false"
+        android:label="@string/app_name"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.LandosolToolbox">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <service
+            android:name=".automation.accessibility.LandosolAccessibilityService"
+            android:exported="true"
+            android:label="@string/accessibility_service_name"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/landosol_accessibility_service" />
+        </service>
+
+        <service
+            android:name=".automation.capture.MediaProjectionCaptureService"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
+
+        <service
+            android:name=".labyrinth.LabyrinthRerollService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <receiver
+            android:name=".automation.overlay.AutomationNotificationActionReceiver"
+            android:exported="false" />
+    </application>
+
+</manifest>

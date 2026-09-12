@@ -1,0 +1,11 @@
+{
+  "data_headers": {
+    "result_code": 1
+  },
+  "data": {
+    "server": [
+      "game-server.example.invalid"
+    ],
+    "server_error": null
+  }
+}

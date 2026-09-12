@@ -1,0 +1,46 @@
+# Credentials and secrets
+*.jks
+*.keystore
+keystore.properties
+secrets.properties
+local-secrets.properties
+*.pem
+*.p12
+.env
+.env.*
+!.env.example
+!.env.sample
+*.hprof
+*.apk
+*.aab
+*.db-wal
+*.db-shm
+
+# Android / Gradle
+.gradle/
+**/.gradle/
+**/.gradle-local/
+**/build/
+local.properties
+**/local.properties
+*.iml
+.idea/
+captures/
+.externalNativeBuild/
+.cxx/
+
+# Diagnostics and local runtime output
+diagnostics/
+screenshots/private/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vscode/
+__pycache__/
+*.pyc
+
+# Local tooling and debug artifacts
+*.lnk

@@ -1,0 +1,1739 @@
+{
+  "schemaVersion": 1,
+  "relics": [
+    {
+      "id": "11001",
+      "name": "加速の玉飾り",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "1",
+      "effect": "TP上升+5",
+      "mark": "加速",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "11002",
+      "name": "水蓮の盾",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "1",
+      "effect": "每次受到伤害时回复TP 100（最多1次）",
+      "mark": "加速",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "11003",
+      "name": "青輝の環",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "1",
+      "effect": "战斗开始时回复TP 100",
+      "mark": "加速",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "11004",
+      "name": "冷玉の杖",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "1",
+      "effect": "TP消耗减轻 +2",
+      "mark": "加速",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "11005",
+      "name": "風渡りの靴",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "1",
+      "effect": "可叠加的行动速度 +10%",
+      "mark": "加速",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "12001",
+      "name": "紫晶ビザリオ",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "1",
+      "effect": "异常状态命中 +20",
+      "mark": "弱体",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "12002",
+      "name": "魔杖メジナエ",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "1",
+      "effect": "使敌全体陷入诅咒状态（每秒造成【弱体】数量 ×500的伤害）",
+      "mark": "弱体",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "12003",
+      "name": "暗剣ポワゾン",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "1",
+      "effect": "使敌全体中毒（每秒造成【弱体】数量 ×500的伤害）",
+      "mark": "弱体",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "12004",
+      "name": "破守帽ディスペル",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "1",
+      "effect": "敌人的物理/魔法攻击力 -10%",
+      "mark": "弱体",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "12005",
+      "name": "崩刀ヤマツキ",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "1",
+      "effect": "敌人的物理/魔法防御力 -10%",
+      "mark": "弱体",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "13001",
+      "name": "キラースピア",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "1",
+      "effect": "敌人受到的物理/魔法暴击伤害 +10%",
+      "mark": "会心",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "13002",
+      "name": "ハナミノカタナ",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "1",
+      "effect": "物理/魔法暴击伤害 +10%",
+      "mark": "会心",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "13003",
+      "name": "クリーヴフィスト",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "1",
+      "effect": "普通攻击强化 +30",
+      "mark": "会心",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "13004",
+      "name": "クリティカルアーク",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "1",
+      "effect": "物理/魔法暴击率 +10%",
+      "mark": "会心",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "13005",
+      "name": "アブゾーブハチェット",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "1",
+      "effect": "HP吸收 +10",
+      "mark": "会心",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "14001",
+      "name": "強化のジェム",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "1",
+      "effect": "buff强化效果 +30",
+      "mark": "强化",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "14002",
+      "name": "抗鉄のプレート",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "1",
+      "effect": "物理/魔法攻击力增加（1号位角色的物理防御 ×5）",
+      "mark": "强化",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "14003",
+      "name": "抗魔のドレス",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "1",
+      "effect": "物理/魔法攻击力增加（1号位角色的魔法防御 ×5）",
+      "mark": "强化",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "14004",
+      "name": "蛇紋のツルギ",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "1",
+      "effect": "物理/魔法攻击力 +20%",
+      "mark": "强化",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "14005",
+      "name": "防守のメイル",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "1",
+      "effect": "物理/魔法防御力 +10%",
+      "mark": "强化",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "15001",
+      "name": "回生杖",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "1",
+      "effect": "回复强化 +10",
+      "mark": "守备",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "15002",
+      "name": "豊命輪",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "1",
+      "effect": "HP +10%",
+      "mark": "守备",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "15003",
+      "name": "鉄防甲",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "1",
+      "effect": "每20秒展开物理无效盾（盾量为【守备】数量 ×500）",
+      "mark": "守备",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "15004",
+      "name": "魔封衣",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "1",
+      "effect": "每20秒展开魔法无效盾（盾量为【守备】数量 ×500）",
+      "mark": "守备",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "15005",
+      "name": "再生ノ腕輪",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "1",
+      "effect": "持续恢复HP（每秒恢复【守备】数量 ×500）",
+      "mark": "守备",
+      "markBonus": "1",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 1800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "21001",
+      "name": "流烈の耳飾り",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "2",
+      "effect": "TP上升 +10",
+      "mark": "加速",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "21002",
+      "name": "星涙の輝盾",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "2",
+      "effect": "每次受到伤害时回复TP 100（最多2次）",
+      "mark": "加速",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "21003",
+      "name": "蒼珠の腕輪",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "2",
+      "effect": "战斗开始时回复TP 200",
+      "mark": "加速",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "21004",
+      "name": "星明りの儀杖",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "2",
+      "effect": "TP消耗减轻 +4",
+      "mark": "加速",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "21005",
+      "name": "疾風の翼靴",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "2",
+      "effect": "可叠加的行动速度 +20%",
+      "mark": "加速",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "22001",
+      "name": "闇至宝アノマリーラ",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "2",
+      "effect": "异常状态命中 +40",
+      "mark": "弱体",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "22002",
+      "name": "邪眼杖ドゥーム",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "2",
+      "effect": "敌全体诅咒（每秒【弱体】数 ×1000伤害）",
+      "mark": "弱体",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "22003",
+      "name": "影刃剣プラール",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "2",
+      "effect": "敌全体中毒（每秒【弱体】数 ×1000伤害）",
+      "mark": "弱体",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "22004",
+      "name": "薔薇飾帽イレース",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "2",
+      "effect": "敌物理/魔法攻击力 -20%",
+      "mark": "弱体",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "22005",
+      "name": "斬赤刃ディバイド",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "2",
+      "effect": "敌物理/魔法防御力 -20%",
+      "mark": "弱体",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "23001",
+      "name": "フェイタリティ",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "2",
+      "effect": "敌受到的物理/魔法暴击伤害 +20%",
+      "mark": "会心",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "23002",
+      "name": "クレナイノタチ",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "2",
+      "effect": "物理/魔法暴击伤害 +20%",
+      "mark": "会心",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "23003",
+      "name": "ラプチャーガントレット",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "2",
+      "effect": "普通攻击强化 +60",
+      "mark": "会心",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "23004",
+      "name": "スカイストライク",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "2",
+      "effect": "物理/魔法暴击率 +20%",
+      "mark": "会心",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "23005",
+      "name": "インヘイルアックス",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "2",
+      "effect": "HP吸收 +20",
+      "mark": "会心",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "24001",
+      "name": "進化のイヤリング",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "2",
+      "effect": "buff强化效果 +60",
+      "mark": "强化",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "24002",
+      "name": "紅反鋼のアーマー",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "2",
+      "effect": "物理/魔法攻击力增加（1号位角色的物理防御 ×10）",
+      "mark": "强化",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "24003",
+      "name": "聖減術のテラドレス",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "2",
+      "effect": "物理/魔法攻击力增加（1号位角色的魔法防御 ×10）",
+      "mark": "强化",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "24004",
+      "name": "炎王のグレートソード",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "2",
+      "effect": "物理/魔法攻击力 +40%",
+      "mark": "强化",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "24005",
+      "name": "桜堅牢のコート",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "2",
+      "effect": "物理/魔法防御力 +20%",
+      "mark": "强化",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "25001",
+      "name": "創世緑杖",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "2",
+      "effect": "回复强化 +20",
+      "mark": "守备",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "25002",
+      "name": "空命護珠",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "2",
+      "effect": "HP +20%",
+      "mark": "守备",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "25003",
+      "name": "鋼装堅鎧",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "2",
+      "effect": "每2015秒展开物理无效盾（盾量为【守备】数量 ×1000）",
+      "mark": "守备",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "25004",
+      "name": "魔護霊装",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "2",
+      "effect": "每2015秒展开魔法无效盾（盾量为【守备】数量 ×1000）",
+      "mark": "守备",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "25005",
+      "name": "緑護ノ盾輪",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "2",
+      "effect": "持续恢复HP（每秒【守备】数量 ×1000 HP）",
+      "mark": "守备",
+      "markBonus": "2",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 2800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "30001",
+      "name": "エレメントサージオーブ",
+      "tags": [],
+      "rarity": "3",
+      "effect": "属性加成 +100%",
+      "mark": "",
+      "markBonus": "0",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "31001",
+      "name": "瞬閃蝶の月飾り",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "3",
+      "effect": "TP上升 +15",
+      "mark": "加速",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "31002",
+      "name": "海宝華の煌盾",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "3",
+      "effect": "每次受到伤害时回复TP 100（最多3次）",
+      "mark": "加速",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "31003",
+      "name": "碧貴石の聖輪",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "3",
+      "effect": "战斗开始时回复TP 300",
+      "mark": "加速",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "31004",
+      "name": "永天鏡の王笏",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "3",
+      "effect": "TP消耗减轻 +6",
+      "mark": "加速",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "31005",
+      "name": "熾天使の翔靴",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "3",
+      "effect": "可叠加的行动速度 +30%",
+      "mark": "加速",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "31006",
+      "name": "風神の護風恩寵",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "4",
+      "effect": "TP上升 +100",
+      "mark": "加速",
+      "markBonus": "5",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 9999,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "32001",
+      "name": "幻獣飾テンタシオン",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "3",
+      "effect": "异常状态命中 +60",
+      "mark": "弱体",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "32002",
+      "name": "深淵蝕杖マリディクト",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "3",
+      "effect": "敌全体诅咒（每秒【弱体】数 ×1500伤害）",
+      "mark": "弱体",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "32003",
+      "name": "滅刻凶刃ヴェノマス",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "3",
+      "effect": "敌全体中毒（每秒【弱体】数 ×1500伤害）",
+      "mark": "弱体",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "32004",
+      "name": "燦然御纏アノラ・ベイラ",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "3",
+      "effect": "敌物理/魔法攻击力 -30%",
+      "mark": "弱体",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "32005",
+      "name": "断壁鎖刃フラグメント",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "3",
+      "effect": "敌物理/魔法防御力 -30%",
+      "mark": "弱体",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "32006",
+      "name": "霜影虚装アビスモナーク",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "4",
+      "effect": "敌物理/魔法伤害输出 -25%、所受伤害 +25%",
+      "mark": "弱体",
+      "markBonus": "5",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 9999,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "33001",
+      "name": "リーサルハルバード",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "3",
+      "effect": "敌受到的物理/魔法暴击伤害 +30%",
+      "mark": "会心",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "33002",
+      "name": "オオトリノカタナ",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "3",
+      "effect": "己方造成的物理/魔法暴击伤害 +30%",
+      "mark": "会心",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "33003",
+      "name": "アースデストラクション",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "3",
+      "effect": "普通攻击强化 +90",
+      "mark": "会心",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "33004",
+      "name": "ジャッジメントアロー",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "3",
+      "effect": "物理/魔法暴击率 +30%",
+      "mark": "会心",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "33005",
+      "name": "ザ・ハーヴェスト",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "3",
+      "effect": "HP吸收 +30",
+      "mark": "会心",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "33006",
+      "name": "セレスティアルエイジ",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "4",
+      "effect": "普通攻击强化 +500、HP吸收 +50",
+      "mark": "会心",
+      "markBonus": "5",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 9999,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "34001",
+      "name": "極醒のアミュレット",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "3",
+      "effect": "强化buff效果 +90",
+      "mark": "强化",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "34002",
+      "name": "断刃拒絶のアルギュロス",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "3",
+      "effect": "物理/魔法攻击力增加（1号位角色的物理防御 ×15）",
+      "mark": "强化",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "34003",
+      "name": "緋華栄華のグラナート",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "3",
+      "effect": "物理/魔法攻击力增加（1号位角色的魔法防御 ×15）",
+      "mark": "强化",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "34004",
+      "name": "覇光帝龍のグローリア",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "3",
+      "effect": "物理/魔法攻击力 +60%",
+      "mark": "强化",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "34005",
+      "name": "華舞玲瓏のハルナデシコ",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "3",
+      "effect": "物理/魔法防御力 +30%",
+      "mark": "强化",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "34006",
+      "name": "天戴冠のゼニスブレード",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "4",
+      "effect": "战斗开始时展开物理/魔法攻击力提升50%的领域",
+      "mark": "强化",
+      "markBonus": "5",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 9999,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "35001",
+      "name": "妖精霊杖・癒光",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "3",
+      "effect": "回复强化 +30",
+      "mark": "守备",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "35002",
+      "name": "泉湧命環・豊穣",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "3",
+      "effect": "HP +30%",
+      "mark": "守备",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "35003",
+      "name": "白光輝鎧・断壁",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "3",
+      "effect": "每2015秒展开物理无效盾（盾量为【守备】数量 ×1500）",
+      "mark": "守备",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "35004",
+      "name": "幽玄煌装・絶魔",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "3",
+      "effect": "每2015秒展开魔法无效盾（盾量为【守备】数量 ×1500）",
+      "mark": "守备",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "35005",
+      "name": "輪廻ノ翡翠珠輪",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "3",
+      "effect": "持续恢复HP（每秒【守备】数量 ×1500）",
+      "mark": "守备",
+      "markBonus": "3",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 3800,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "35006",
+      "name": "天命授環・伊邪那",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "4",
+      "effect": "HP +100%",
+      "mark": "守备",
+      "markBonus": "5",
+      "unlockCondition": "",
+      "baseScore": 0,
+      "price": 9999,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40001",
+      "name": "プリンセスフォース",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "3",
+      "effect": "HP +15%、物理/魔法伤害 +15%",
+      "mark": "守备",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40002",
+      "name": "アストラルブースト",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "3",
+      "effect": "属性加成 +50%",
+      "mark": "强化",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40003",
+      "name": "サレンディアエンゲージ",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "3",
+      "effect": "商店商品售价 -10%（与α强化效果加算）",
+      "mark": "加速",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40004",
+      "name": "ナイツオブフェイス",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "3",
+      "effect": "物理/魔法暴击伤害 +50%、物理/魔法暴击率 -25%",
+      "mark": "会心",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40005",
+      "name": "ラビリンスオーソリティ",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "3",
+      "effect": "挑战开始时晶加入",
+      "mark": "弱体",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40006",
+      "name": "イルミネイトカルミナ",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "3",
+      "effect": "物理/魔攻+15％、buff强化+15",
+      "mark": "强化",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40007",
+      "name": "ブルートナハト",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "3",
+      "effect": "敌方TP上升-15",
+      "mark": "加速",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40008",
+      "name": "エリザベスガーディアン",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "3",
+      "effect": "战斗开始时HP最多的角色挑衅敌方",
+      "mark": "守备",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40009",
+      "name": "ノブレスウィスタリア",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "3",
+      "effect": "初期α币+3000、α币获得量-30%",
+      "mark": "会心",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40010",
+      "name": "兵法二海一流",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "3",
+      "effect": "debuff强化＋20",
+      "mark": "弱体",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40011",
+      "name": "絆のリボン",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "3",
+      "effect": "挑战开始时狱三家加入",
+      "mark": "会心",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40012",
+      "name": "琉球犬甲唄",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "3",
+      "effect": "战斗开始时最前角色物防、魔防+50%",
+      "mark": "强化",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40013",
+      "name": "フォレストハーモニー",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "3",
+      "effect": "战斗开始时赋予调和状态",
+      "mark": "守备",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "40014",
+      "name": "チャームファタール",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "3",
+      "effect": "每秒对处于诱惑状态的敌人造成HP最大5%的魔法伤害（最高50万）",
+      "mark": "弱体",
+      "markBonus": "1",
+      "unlockCondition": "开局",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50001",
+      "name": "プリンセスエンチャント",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "3",
+      "effect": "物理/魔法攻击力增加（加入角色数 ×4%，最大100%）",
+      "mark": "强化",
+      "markBonus": "1",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50002",
+      "name": "トゥインクルブレス",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "3",
+      "effect": "除Boss战以外，第一次战斗失败免除",
+      "mark": "守备",
+      "markBonus": "1",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50003",
+      "name": "サレンディアノーブル",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "3",
+      "effect": "普通攻击强化提升（根据持有的α币数量 ×0.01，最大100）",
+      "mark": "会心",
+      "markBonus": "1",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50004",
+      "name": "レジーナガーラ",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "3",
+      "effect": "敌方受到的物理/魔法伤害 +25%、我方受到的物理/魔法伤害 +25%",
+      "mark": "弱体",
+      "markBonus": "1",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50005",
+      "name": "マスターオブラビリンス",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "3",
+      "effect": "挑战开始时获得随机一件★1迷宫遗物",
+      "mark": "加速",
+      "markBonus": "1",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50006",
+      "name": "ヴォイスフォーユー",
+      "tags": [
+        "强化"
+      ],
+      "rarity": "3",
+      "effect": "每30秒解除物理/魔攻DOWN效果",
+      "mark": "强化",
+      "markBonus": "1",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50007",
+      "name": "ディアボロスフィアー",
+      "tags": [
+        "加速"
+      ],
+      "rarity": "3",
+      "effect": "每15秒TP固定回复100、敌人TP减少100",
+      "mark": "加速",
+      "markBonus": "1",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50008",
+      "name": "ドングリースピリット",
+      "tags": [
+        "守备"
+      ],
+      "rarity": "3",
+      "effect": "无视1次行动不能状态",
+      "mark": "守备",
+      "markBonus": "1",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50009",
+      "name": "リヴァイアサンコール",
+      "tags": [
+        "会心"
+      ],
+      "rarity": "3",
+      "effect": "物理/魔法爆伤UP(α币所持数×0.01%、最大100%)",
+      "mark": "会心",
+      "markBonus": "1",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50010",
+      "name": "バインディングローズ",
+      "tags": [
+        "弱体"
+      ],
+      "rarity": "3",
+      "effect": "造成的持续伤害UP(加入角色数×10％、最大50万伤害)",
+      "mark": "弱体",
+      "markBonus": "1",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50011",
+      "name": "トリックランナー",
+      "tags": [],
+      "rarity": "3",
+      "effect": "角色格子抽取次数+1（1次）",
+      "mark": "",
+      "markBonus": "0",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50012",
+      "name": "姫さま親衛隊勧誘係",
+      "tags": [],
+      "rarity": "3",
+      "effect": "战斗胜利后抽取角色数+1（3次）",
+      "mark": "",
+      "markBonus": "0",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50013",
+      "name": "フォーチュンミーティア",
+      "tags": [],
+      "rarity": "3",
+      "effect": "迷宫遗物格子抽取次数+1（1次）",
+      "mark": "",
+      "markBonus": "0",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    },
+    {
+      "id": "50014",
+      "name": "ベルベットルージュ",
+      "tags": [],
+      "rarity": "3",
+      "effect": "敌人魅惑时间+50%",
+      "mark": "",
+      "markBonus": "0",
+      "unlockCondition": "α强化4金节点后",
+      "baseScore": 0,
+      "price": 0,
+      "notes": "来自共识迷宫数据表；评分保持中性占位。",
+      "references": {}
+    }
+  ]
+}

@@ -1,0 +1,1746 @@
+package com.landosol.toolbox.labyrinth
+
+import kotlinx.serialization.Serializable
+import java.util.PriorityQueue
+import kotlin.math.max
+
+@Serializable
+enum class LabyrinthCharacterAttribute(val label: String) {
+    FIRE("火"),
+    WATER("水"),
+    WIND("风"),
+    LIGHT("光"),
+    DARK("暗"),
+    UNKNOWN("未知"),
+}
+
+/**
+ * A role can join either physical or magic cores only when its combat contribution is genuinely
+ * system-agnostic.  Damage dealers / breakers never become universal merely because their own
+ * damage is small.  This keeps 厄莉丝-like cross-system healing/support legal while preventing a
+ * magic breaker such as 帆稀（夏日） from slipping into a physical core.
+ */
+private fun LabyrinthRoleProfile.isUniversalDamageSystemRole(): Boolean {
+    val role = roleClass.orEmpty()
+    val physicalUplift = physicalTeamUplift ?: 0.0
+    val magicUplift = magicTeamUplift ?: 0.0
+    val crossSystemOffense = minOf(physicalUplift, magicUplift) >= 0.08 ||
+        support.universalOffense.orZero() >= 35.0
+    val universalSurvival = support.universalSurvival.orZero() >= 35.0
+    val healer = role == "治疗者" &&
+        max(functions.healing.orZero(), functions.regeneration.orZero()) >= 25.0
+    val vanguard = role == "掩护者" &&
+        (functions.reliableVanguard.orZero() >= 45.0 || universalSurvival)
+    val universalBuffer = role == "增益者" && crossSystemOffense
+    return healer || vanguard || universalBuffer
+}
+
+private fun strictMemberDamageSystem(members: List<LabyrinthRoleProfile>): LabyrinthTeamDamageType {
+    val typed = members
+        .filterNot(LabyrinthRoleProfile::isUniversalDamageSystemRole)
+        .mapNotNull(LabyrinthRoleProfile::damageType)
+        .filter { it in setOf(LabyrinthRoleDamageType.PHYSICAL, LabyrinthRoleDamageType.MAGIC) }
+
+    if (typed.isEmpty()) return LabyrinthTeamDamageType.NONE
+    val hasPhysical = LabyrinthRoleDamageType.PHYSICAL in typed
+    val hasMagic = LabyrinthRoleDamageType.MAGIC in typed
+    return when {
+        hasPhysical && hasMagic -> LabyrinthTeamDamageType.MIXED
+        hasPhysical -> LabyrinthTeamDamageType.PHYSICAL
+        hasMagic -> LabyrinthTeamDamageType.MAGIC
+        else -> LabyrinthTeamDamageType.NONE
+    }
+}
+
+@Serializable
+enum class LabyrinthRoleDamageType {
+    PHYSICAL,
+    MAGIC,
+    MIXED,
+    NONE,
+}
+
+enum class LabyrinthTeamDamageType {
+    PHYSICAL,
+    MAGIC,
+    MIXED,
+    NONE,
+}
+
+enum class LabyrinthEnemyDamageType {
+    PHYSICAL,
+    MAGIC,
+    MIXED,
+    UNKNOWN,
+}
+
+@Serializable
+enum class LabyrinthSkillEffectType {
+    DAMAGE,
+    ATTACK_BUFF,
+    CRITICAL_BUFF,
+    DEFENSE_DOWN,
+    DAMAGE_TAKEN_UP,
+    ACTION_SPEED_BUFF,
+    TP_RECOVERY,
+    HEAL,
+    REGENERATION,
+    SHIELD,
+    DEFENSE_BUFF,
+    ATTACK_DOWN,
+    CONTROL,
+    DOT,
+    TAUNT,
+    PUSH,
+    PULL,
+    UNKNOWN,
+}
+
+@Serializable
+enum class LabyrinthSkillEffectSystem {
+    PHYSICAL,
+    MAGIC,
+    UNIVERSAL,
+    NONE,
+}
+
+@Serializable
+enum class LabyrinthSkillTargetScope {
+    ALLIES,
+    SELF,
+    AROUND_SELF,
+}
+
+@Serializable
+enum class LabyrinthSkillTargetCondition {
+    NONE,
+    PHYSICAL,
+    MAGIC,
+    ATTRIBUTE,
+    POSITION,
+    ROLE_CLASS,
+    HIGHEST_PHYSICAL_ATTACK,
+    HIGHEST_MAGIC_ATTACK,
+}
+
+@Serializable
+data class LabyrinthSkillTarget(
+    val scope: LabyrinthSkillTargetScope,
+    val condition: LabyrinthSkillTargetCondition = LabyrinthSkillTargetCondition.NONE,
+    val attribute: LabyrinthCharacterAttribute? = null,
+    val position: String? = null,
+    val roleClass: String? = null,
+) {
+    init {
+        require((condition == LabyrinthSkillTargetCondition.ATTRIBUTE) == (attribute != null))
+        require((condition == LabyrinthSkillTargetCondition.POSITION) == !position.isNullOrBlank())
+        require((condition == LabyrinthSkillTargetCondition.ROLE_CLASS) == !roleClass.isNullOrBlank())
+    }
+}
+
+/** Parsed database fact. Unknown action types retain their raw value for manual review. */
+@Serializable
+data class LabyrinthSkillEffectFact(
+    val skillId: String,
+    val effect: LabyrinthSkillEffectType,
+    val system: LabyrinthSkillEffectSystem,
+    val valueFormula: String,
+    val durationFormula: String? = null,
+    val target: LabyrinthSkillTarget,
+    val rawActionType: String? = null,
+) {
+    init {
+        require(skillId.isNotBlank())
+        require(valueFormula.isNotBlank())
+        if (effect == LabyrinthSkillEffectType.UNKNOWN) require(!rawActionType.isNullOrBlank())
+    }
+}
+
+/** Multi-dimensional support after the configured skill targets and coverage have been applied. */
+@Serializable
+data class LabyrinthRoleSupport(
+    val physicalOffense: Double? = null,
+    val magicOffense: Double? = null,
+    val universalOffense: Double? = null,
+    val universalSurvival: Double? = null,
+    val control: Double? = null,
+) {
+    init {
+        validateOptionalPercent("physicalOffense", physicalOffense)
+        validateOptionalPercent("magicOffense", magicOffense)
+        validateOptionalPercent("universalOffense", universalOffense)
+        validateOptionalPercent("universalSurvival", universalSurvival)
+        validateOptionalPercent("control", control)
+    }
+}
+
+/**
+ * Combat functions stay independent of job/class. In particular, healing and tanking are
+ * capabilities rather than aliases of the role-draw pool.
+ */
+@Serializable
+data class LabyrinthRoleFunctions(
+    val reliableVanguard: Double? = null,
+    val selfSustain: Double? = null,
+    val healing: Double? = null,
+    val regeneration: Double? = null,
+    val physicalAttackReduction: Double? = null,
+    val magicAttackReduction: Double? = null,
+    val physicalDefenseDown: Double? = null,
+    val magicDefenseDown: Double? = null,
+    val aoeDamage: Double? = null,
+    val singleTargetDamage: Double? = null,
+    val twoTargetDamage: Double? = null,
+    val threeTargetDamage: Double? = null,
+    /** Geometry-derived coverage, independent from three-target damage throughput. */
+    val wideAoeCoverage: Double? = null,
+    /** Damage centered on / explicitly targeting the farthest enemy or enemy back line. */
+    val backlineAoeCoverage: Double? = null,
+    val bossMechanismValue: Double? = null,
+    val pureTank: Double? = null,
+    val pureHealer: Double? = null,
+    /** Explicit encounter facts. Null means unknown; never interpret null as absence. */
+    val dot: Double? = null,
+    val control: Double? = null,
+    val shield: Double? = null,
+    val taunt: Double? = null,
+    val burstDamage: Double? = null,
+    /** Enemy-side position manipulation parsed from MOVE actions; excludes self movement. */
+    val enemyPush: Double? = null,
+    val enemyPull: Double? = null,
+) {
+    init {
+        listOf(
+            reliableVanguard,
+            selfSustain,
+            healing,
+            regeneration,
+            physicalAttackReduction,
+            magicAttackReduction,
+            physicalDefenseDown,
+            magicDefenseDown,
+            aoeDamage,
+            singleTargetDamage,
+            twoTargetDamage,
+            threeTargetDamage,
+            wideAoeCoverage,
+            backlineAoeCoverage,
+            bossMechanismValue,
+            pureTank,
+            pureHealer,
+            dot,
+            control,
+            shield,
+            taunt,
+            burstDamage,
+            enemyPush,
+            enemyPull,
+        ).forEach { validateOptionalPercent("role function", it) }
+    }
+}
+
+@Serializable
+data class LabyrinthRoleDataConfidence(
+    val attribute: String? = null,
+    val roleClass: String? = null,
+    val damageType: String? = null,
+    val position: String? = null,
+    val support: String? = null,
+)
+
+/** Lower position values mean the character stands closer to position one. */
+@Serializable
+data class LabyrinthRoleProfile(
+    val characterId: String,
+    val displayName: String,
+    val roleClass: String? = null,
+    val attribute: LabyrinthCharacterAttribute? = null,
+    val damageType: LabyrinthRoleDamageType? = null,
+    val position: Int? = null,
+    /** CN player score on the shared 0..100 scale. Null means genuinely unrated. */
+    val userScore: Double? = null,
+    val userRatingCount: Int = 0,
+    /** Schema-v1 compatibility only. New generated data writes [userScore]. */
+    val baseQuality: Double? = null,
+    /** Legacy/unmodeled single-scenario output fallback. */
+    val physicalDamagePotential: Double? = null,
+    val magicDamagePotential: Double? = null,
+    val physicalDamage1Target: Double? = null,
+    val physicalDamage2Target: Double? = null,
+    val physicalDamage3Target: Double? = null,
+    val magicDamage1Target: Double? = null,
+    val magicDamage2Target: Double? = null,
+    val magicDamage3Target: Double? = null,
+    /** Signed modeled team uplift. Null means the legacy display-score fallback must be used. */
+    val physicalTeamUplift: Double? = null,
+    val magicTeamUplift: Double? = null,
+    val modelStatus: String = "unavailable",
+    val dataConfidence: LabyrinthRoleDataConfidence = LabyrinthRoleDataConfidence(),
+    /** Database fact layer; manual quality and coverage scores remain in the fields above/below. */
+    val skillFacts: List<LabyrinthSkillEffectFact> = emptyList(),
+    val support: LabyrinthRoleSupport = LabyrinthRoleSupport(),
+    val functions: LabyrinthRoleFunctions = LabyrinthRoleFunctions(),
+    /** Local preference overlay; never changes the source rating or its contributor count. */
+    val personalScore: Double? = null,
+) {
+    init {
+        require(characterId.isNotBlank())
+        require(displayName.isNotBlank())
+        require(roleClass == null || roleClass.isNotBlank())
+        require(attribute != LabyrinthCharacterAttribute.UNKNOWN)
+        require(position == null || position > 0)
+        require(userRatingCount >= 0)
+        validateOptionalPercent("userScore", userScore)
+        validateOptionalPercent("personalScore", personalScore)
+        validateOptionalPercent("baseQuality", baseQuality)
+        listOf(
+            physicalDamagePotential,
+            magicDamagePotential,
+            physicalDamage1Target,
+            physicalDamage2Target,
+            physicalDamage3Target,
+            magicDamage1Target,
+            magicDamage2Target,
+            magicDamage3Target,
+        ).forEach { validateOptionalPercent("damage potential", it) }
+        require(physicalTeamUplift == null || physicalTeamUplift.isFinite())
+        require(magicTeamUplift == null || magicTeamUplift.isFinite())
+        // Nominal attack type is a classification fact, not a promise that every modeled
+        // skill uses only that chain. A small number of real units have cross-system damage.
+    }
+
+    val effectiveUserScore: Double?
+        get() = personalScore ?: userScore ?: baseQuality
+
+    val isStrictDecisionReady: Boolean
+        get() = roleClass != null && attribute != null && damageType != null && position != null &&
+            dataConfidence.support != "missing" &&
+            (
+                modelStatus.startsWith("database-v") ||
+                    (physicalDamagePotential != null && magicDamagePotential != null)
+                )
+}
+
+data class LabyrinthRoleDecisionContext(
+    val defenseMarkStacks: Int,
+    val enemyDamageType: LabyrinthEnemyDamageType = LabyrinthEnemyDamageType.UNKNOWN,
+    /** Values greater than three share the 3+ target model. */
+    val targetCount: Int = 1,
+    /** Set only by an explicitly requested post-failure fallback search. */
+    val survivalRecovery: Boolean = false,
+    /** Boss team-1 only: use the strongest viable T as the actual vanguard before optimizing DPS. */
+    val preferStrongestVanguard: Boolean = false,
+    /** Battle preference: search tries a cohesive physical/magic team before mixed fallback. */
+    val preferSingleDamageSystem: Boolean = false,
+    /** Encounter guide rules; EX comes from OCR, Boss may come from the persisted route quest id. */
+    val encounterStrategy: LabyrinthExEncounterStrategy? = null,
+    /** Official “有效效果” intersection with the currently owned roster. Empty means not scanned/none. */
+    val effectiveCharacterIds: Set<String> = emptySet(),
+) {
+    init {
+        require(defenseMarkStacks >= 0)
+        require(targetCount >= 1)
+    }
+}
+
+/** Every numeric rule used by the scorer is centralized here. */
+@Serializable
+data class LabyrinthTeamScoringConfig(
+    /** Must be supplied from the current game configuration; no 2/3/4-person values are guessed. */
+    val attributeDamageBonus: Map<Int, Double>,
+    val maximumActiveAttributeBonuses: Int = 2,
+    val defenseBaselineStacks: Int = 4,
+    val teamTypeThreshold: Double = 0.70,
+    val minimumReliableVanguard: Double = 55.0,
+    val minimumEffectiveSustain: Double = 35.0,
+    val minimumAoe: Double = 35.0,
+    val minimumSingleTarget: Double = 35.0,
+    val minimumDefenseDown: Double = 25.0,
+    /** Used only for roles without database combat-model uplift. */
+    val supportMultiplierAt100: Double = 0.22,
+    val legacyRoleUpliftCap: Double = 0.50,
+    /** Retained for schema-v1 compatibility; modeled and V2 legacy roles do not multiply by it. */
+    val defenseDownMultiplierAt100: Double = 0.28,
+    val playerWeight: Double = 0.70,
+    val systemDamageWeight: Double = 0.50,
+    val systemSurvivalWeight: Double = 0.23,
+    val systemFunctionWeight: Double = 0.13,
+    val systemFormationWeight: Double = 0.04,
+    val systemCohesionWeight: Double = 0.10,
+    val damageSoftCeiling: Double = 1.50,
+    val modeledRolePositiveUpliftCap: Double = 0.80,
+    val modeledRoleNegativeUpliftFloor: Double = -0.95,
+    val combinedTeamUpliftCap: Double = 2.00,
+    val combinedTeamUpliftFloor: Double = -0.95,
+    val lowestDefenseNoAnchorMultiplier: Double = 0.58,
+    val lowestDefenseOneAnchorMultiplier: Double = 0.88,
+    val lowDefenseNoAnchorMultiplier: Double = 0.76,
+    val lowDefenseOneAnchorMultiplier: Double = 0.95,
+    val lowestDefenseGatePenalty: Double = 18.0,
+    val lowDefenseGatePenalty: Double = 8.0,
+    val riskGatePenaltyWeight: Double = 0.35,
+    val formationMissingFunctionPenalty: Double = 8.0,
+    val formationSurvivalGatePenaltyMultiplier: Double = 2.0,
+    /** Schema-v1 weights retained for decoding/audit; V2 computes the normalized system score below. */
+    val qualityWeight: Double = 0.20,
+    val damageWeight: Double = 0.52,
+    val survivalWeightBeforeFourDefense: Double = 0.20,
+    val survivalWeightAfterFourDefense: Double = 0.08,
+    val functionWeight: Double = 0.16,
+    val completionWeight: Double = 0.08,
+    val missingCriticalFunctionPenalty: Double = 7.0,
+    val postFourDefensePureRolePenalty: Double = 6.0,
+    val pureRoleThreshold: Double = 60.0,
+    val bossSpecialistThreshold: Double = 50.0,
+    val exhaustiveRosterLimit: Int = 24,
+    val teamSearchBeamWidth: Int = 120,
+    /** Soft redundancy cost, never a class-based exclusion or a mandatory tank/healer slot. */
+    val duplicatePureRolePenalty: Double = 8.0,
+    /** Extra soft cost for a genuinely mixed physical/magic EX/Boss team when enabled. */
+    val battleMixedDamagePenalty: Double = 15.0,
+    /**
+     * Boss "single damage system" search is stricter than the generic team-type label.
+     * 0.85 still allows a low-damage cross-system tank/universal support, but rejects a real
+     * opposite-system damage core such as a 73/27 split.
+     */
+    val bossCohesiveDamageRatioThreshold: Double = 0.85,
+    /** Per-role system-side bonus when the game itself marks the role as Effective Effect. */
+    val encounterEffectiveCharacterBonus: Double = 8.0,
+    /** Soft bonus for satisfying a preferred guide capability. */
+    val encounterPreferredCapabilityBonus: Double = 3.0,
+    val compositeOffenseThreshold: Double = 60.0,
+    val lowestDefenseDuplicateMultiplier: Double = 0.50,
+    val lowDefenseDuplicateMultiplier: Double = 0.75,
+    val survivalRecoveryDuplicateMultiplier: Double = 0.50,
+) {
+    init {
+        require(attributeDamageBonus.keys.containsAll((1..5).toList())) {
+            "attributeDamageBonus must configure all team counts 1..5"
+        }
+        attributeDamageBonus.forEach { (count, bonus) ->
+            require(count in 1..5)
+            require(bonus >= 0.0)
+        }
+        require(attributeDamageBonus.getValue(1) == 0.0)
+        require(maximumActiveAttributeBonuses in 1..2)
+        require(defenseBaselineStacks > 0)
+        require(teamTypeThreshold in 0.5..1.0)
+        listOf(
+            minimumReliableVanguard,
+            minimumEffectiveSustain,
+            minimumAoe,
+            minimumSingleTarget,
+            minimumDefenseDown,
+            pureRoleThreshold,
+            bossSpecialistThreshold,
+        ).forEach { validatePercent("configured threshold", it) }
+        require(supportMultiplierAt100 >= 0.0)
+        require(legacyRoleUpliftCap >= 0.0)
+        require(defenseDownMultiplierAt100 >= 0.0)
+        require(playerWeight in 0.0..1.0)
+        require(
+            listOf(
+                systemDamageWeight,
+                systemSurvivalWeight,
+                systemFunctionWeight,
+                systemFormationWeight,
+                systemCohesionWeight,
+            ).all { it >= 0.0 },
+        )
+        require(
+            kotlin.math.abs(
+                systemDamageWeight + systemSurvivalWeight + systemFunctionWeight +
+                    systemFormationWeight + systemCohesionWeight - 1.0,
+            ) < 0.000001,
+        )
+        require(damageSoftCeiling > 0.0)
+        require(modeledRolePositiveUpliftCap >= 0.0)
+        require(modeledRoleNegativeUpliftFloor in -1.0..0.0)
+        require(combinedTeamUpliftCap >= 0.0)
+        require(combinedTeamUpliftFloor in -1.0..0.0)
+        listOf(
+            lowestDefenseNoAnchorMultiplier,
+            lowestDefenseOneAnchorMultiplier,
+            lowDefenseNoAnchorMultiplier,
+            lowDefenseOneAnchorMultiplier,
+        ).forEach { require(it in 0.0..1.0) }
+        require(lowestDefenseGatePenalty >= 0.0)
+        require(lowDefenseGatePenalty >= 0.0)
+        require(riskGatePenaltyWeight >= 0.0)
+        require(formationMissingFunctionPenalty >= 0.0)
+        require(formationSurvivalGatePenaltyMultiplier >= 0.0)
+        require(battleMixedDamagePenalty >= 0.0)
+        require(encounterEffectiveCharacterBonus >= 0.0)
+        require(encounterPreferredCapabilityBonus >= 0.0)
+        require(qualityWeight >= 0.0)
+        require(damageWeight >= 0.0)
+        require(survivalWeightBeforeFourDefense >= 0.0)
+        require(survivalWeightAfterFourDefense >= 0.0)
+        require(functionWeight >= 0.0)
+        require(completionWeight >= 0.0)
+        require(missingCriticalFunctionPenalty >= 0.0)
+        require(postFourDefensePureRolePenalty >= 0.0)
+        require(exhaustiveRosterLimit >= 5)
+        require(teamSearchBeamWidth > 0)
+        require(duplicatePureRolePenalty.isFinite() && duplicatePureRolePenalty >= 0.0)
+        require(bossCohesiveDamageRatioThreshold in 0.5..1.0)
+        validatePercent("compositeOffenseThreshold", compositeOffenseThreshold)
+        listOf(lowestDefenseDuplicateMultiplier, lowDefenseDuplicateMultiplier,
+            survivalRecoveryDuplicateMultiplier).forEach { require(it in 0.0..1.0) }
+    }
+}
+
+data class LabyrinthTeamEvaluation(
+    val members: List<LabyrinthRoleProfile>,
+    val score: Double,
+    val systemScore: Double,
+    val playerScore: Double?,
+    val playerCoverage: Double,
+    val requestedPlayerWeight: Double,
+    val effectivePlayerWeight: Double,
+    val damageType: LabyrinthTeamDamageType,
+    val physicalRatio: Double,
+    val physicalDamage: Double,
+    val magicDamage: Double,
+    val physicalTeamUplift: Double,
+    val magicTeamUplift: Double,
+    val targetCount: Int,
+    val attributeCounts: Map<LabyrinthCharacterAttribute, Int>,
+    val activeAttributeBonuses: Map<LabyrinthCharacterAttribute, Double>,
+    val vanguardCharacterId: String,
+    val frontlineScore: Double,
+    val sustainScore: Double,
+    val hasReliableFrontline: Boolean,
+    val hasEffectiveSustain: Boolean,
+    val survivalMultiplier: Double,
+    val survivalGatePenalty: Double,
+    val survivalAnchorCharacterId: String?,
+    val missingCriticalFunctions: List<String>,
+    val systemComponents: Map<String, Double>,
+    val components: Map<String, Double>,
+    val reasons: List<String>,
+    val pureTankCount: Int = 0,
+    val pureHealerCount: Int = 0,
+    val duplicateRolePenalty: Double = 0.0,
+)
+
+class LabyrinthTeamScorer(
+    val config: LabyrinthTeamScoringConfig,
+) {
+    fun evaluate(
+        members: List<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+    ): LabyrinthTeamEvaluation = evaluateInternal(members, context, explain = true)
+
+    internal fun evaluateForSearch(
+        members: List<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+    ): LabyrinthTeamEvaluation = evaluateInternal(members, context, explain = false)
+
+    private fun evaluateInternal(
+        members: List<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        explain: Boolean,
+    ): LabyrinthTeamEvaluation {
+        require(members.isNotEmpty() && members.size <= TEAM_SIZE)
+        require(members.distinctBy(LabyrinthRoleProfile::characterId).size == members.size)
+
+        val targetCount = context.targetCount.coerceAtMost(3)
+        val attributeCounts = members.mapNotNull(LabyrinthRoleProfile::attribute).groupingBy { it }.eachCount()
+        val activeBonuses = attributeCounts.entries
+            .map { (attribute, count) ->
+                val bonus = config.attributeDamageBonus.getValue(count)
+                val groupDamage = members
+                    .filter { it.attribute == attribute }
+                    .sumOf { scenarioDamage(it, LabyrinthRoleDamageType.PHYSICAL, targetCount) +
+                        scenarioDamage(it, LabyrinthRoleDamageType.MAGIC, targetCount) }
+                Triple(attribute, bonus, groupDamage * bonus)
+            }
+            .filter { (_, bonus, _) -> bonus > 0.0 }
+            .sortedByDescending { (_, _, incrementalDamage) -> incrementalDamage }
+            .take(config.maximumActiveAttributeBonuses)
+            .associate { (attribute, bonus, _) -> attribute to bonus }
+
+        val physicalBase = members.sumOf { role ->
+            scenarioDamage(role, LabyrinthRoleDamageType.PHYSICAL, targetCount) *
+                (1.0 + (role.attribute?.let(activeBonuses::get) ?: 0.0))
+        }
+        val magicBase = members.sumOf { role ->
+            scenarioDamage(role, LabyrinthRoleDamageType.MAGIC, targetCount) *
+                (1.0 + (role.attribute?.let(activeBonuses::get) ?: 0.0))
+        }
+        val physicalUplift = combinedTeamUplift(members, LabyrinthRoleDamageType.PHYSICAL)
+        val magicUplift = combinedTeamUplift(members, LabyrinthRoleDamageType.MAGIC)
+        // V2 raw uplift already includes modeled buff/debuff effects. Percentile-normalized
+        // defense-down remains a function signal until real enemy defense is supplied.
+        val physicalDamage = physicalBase * (1.0 + physicalUplift)
+        val magicDamage = magicBase * (1.0 + magicUplift)
+        val totalDamage = physicalDamage + magicDamage
+        val physicalRatio = if (totalDamage <= 0.0) 0.0 else physicalDamage / totalDamage
+        // Team system is a member-composition fact, not a damage-share estimate.  A 3P+2M team
+        // must remain MIXED even when the physical members happen to contribute >70% of modeled
+        // damage.  Genuine universal tank/healer/support roles are ignored for this classification.
+        val damageType = strictMemberDamageSystem(members)
+
+        val vanguard = members.minBy { it.position ?: Int.MAX_VALUE }
+        val vanguardBaseScore = vanguard.functions.reliableVanguard.orZero() * 0.75 +
+            vanguard.functions.selfSustain.orZero() * 0.25
+        val vanguardFallbackScore = if (vanguard.roleClass == "掩护者") {
+            minOf(
+                100.0,
+                45.0 + vanguard.functions.selfSustain.orZero() * 0.25 +
+                    vanguard.support.universalSurvival.orZero() * 0.20,
+            )
+        } else {
+            0.0
+        }
+        val effectiveCharacterCount = members.count { role ->
+            canonicalLabyrinthRoleId(role.characterId) in context.effectiveCharacterIds
+        }
+        // Effective Effect is a per-role system hint, not a team-total reward. Average the
+        // individual system points across the current team, then let the configured player/system
+        // blend decide how much of that hint reaches the final score. This prevents Effective
+        // Effect from bypassing or diluting a deliberately low player score.
+        val effectiveCharacterSystemBonus = if (
+            effectiveCharacterCount > 0 &&
+            (context.encounterStrategy?.preferEffectiveCharacters ?: true)
+        ) {
+            effectiveCharacterCount * config.encounterEffectiveCharacterBonus / members.size
+        } else {
+            0.0
+        }
+        // Preferred guide capabilities are graded on their actual 0..100 strength.  A true
+        // 1300-range AOE (100) must be worth more than a marginal 300-range AOE (55); treating both
+        // as a binary "hit" was exactly why Rino could lose her intended NY-Karyl niche.
+        val preferredCapabilityContribution = context.encounterStrategy?.let { strategy ->
+            strategy.preferredCapabilities.sumOf { capability ->
+                val target = strategy.preferredCapabilityMemberTargets[capability] ?: 1
+                members.mapNotNull { role -> role.encounterCapabilityScore(capability) }
+                    .filter { it >= 50.0 }
+                    .sortedDescending()
+                    .take(target)
+                    .sumOf { it / 100.0 }
+            }
+        } ?: 0.0
+        val fallbackCapabilityContribution = context.encounterStrategy?.fallbackPreferences.orEmpty().sumOf { fallback ->
+            val primaryCount = members.count { role ->
+                (role.encounterCapabilityScore(fallback.primaryCapability) ?: -1.0) >= 50.0
+            }
+            if (primaryCount >= fallback.primaryTargetCount) {
+                0.0
+            } else {
+                members.map { role ->
+                    fallback.anyOf.maxOfOrNull { capability ->
+                        role.encounterCapabilityScore(capability) ?: 0.0
+                    } ?: 0.0
+                }
+                    .filter { it >= 50.0 }
+                    .sortedDescending()
+                    .take(fallback.maximumCount)
+                    .sumOf { it / 100.0 }
+            }
+        }
+        val preferredCapabilityBonus =
+            (preferredCapabilityContribution + fallbackCapabilityContribution) *
+                config.encounterPreferredCapabilityBonus
+        val encounterBonus = preferredCapabilityBonus
+        val frontlineScore = max(vanguardBaseScore, vanguardFallbackScore)
+        val sustainAnchor = members.maxBy { effectiveSustainScore(it) }
+        val sustainScore = effectiveSustainScore(sustainAnchor)
+        val hasReliableFrontline = frontlineScore >= config.minimumReliableVanguard
+        val hasEffectiveSustain = sustainScore >= config.minimumEffectiveSustain
+        val relevantReduction = when (context.enemyDamageType) {
+            LabyrinthEnemyDamageType.PHYSICAL -> members.maxOf { it.functions.physicalAttackReduction.orZero() }
+            LabyrinthEnemyDamageType.MAGIC -> members.maxOf { it.functions.magicAttackReduction.orZero() }
+            LabyrinthEnemyDamageType.MIXED -> (
+                members.maxOf { it.functions.physicalAttackReduction.orZero() } +
+                    members.maxOf { it.functions.magicAttackReduction.orZero() }
+                ) / 2.0
+            LabyrinthEnemyDamageType.UNKNOWN -> max(
+                members.maxOf { it.functions.physicalAttackReduction.orZero() },
+                members.maxOf { it.functions.magicAttackReduction.orZero() },
+            )
+        }
+        val survivalSupport = (
+            members.sumOf { it.support.universalSurvival.orZero() } / members.size +
+                members.maxOf { max(it.functions.healing.orZero(), it.functions.regeneration.orZero()) } +
+                relevantReduction
+            ) / 3.0
+        val survivalScore = frontlineScore * 0.70 + survivalSupport * 0.30
+
+        val aoe = members.maxOf { it.functions.aoeDamage.orZero() }
+        val singleTarget = members.maxOf { it.functions.singleTargetDamage.orZero() }
+        val multiTarget = if (targetCount >= 3) {
+            members.maxOf {
+                it.functions.threeTargetDamage ?: (
+                    scenarioDamage(it, LabyrinthRoleDamageType.PHYSICAL, 3) +
+                        scenarioDamage(it, LabyrinthRoleDamageType.MAGIC, 3)
+                    )
+            }
+        } else {
+            members.maxOf {
+                it.functions.twoTargetDamage ?: (
+                    scenarioDamage(it, LabyrinthRoleDamageType.PHYSICAL, 2) +
+                        scenarioDamage(it, LabyrinthRoleDamageType.MAGIC, 2)
+                    )
+            }
+        }
+        val bossValue = members.maxOf { it.functions.bossMechanismValue.orZero() }
+        val matchingDefenseDown = when (damageType) {
+            LabyrinthTeamDamageType.PHYSICAL -> members.maxOf { it.functions.physicalDefenseDown.orZero() }
+            LabyrinthTeamDamageType.MAGIC -> members.maxOf { it.functions.magicDefenseDown.orZero() }
+            LabyrinthTeamDamageType.MIXED -> (
+                members.maxOf { it.functions.physicalDefenseDown.orZero() } +
+                    members.maxOf { it.functions.magicDefenseDown.orZero() }
+                ) / 2.0
+            LabyrinthTeamDamageType.NONE -> 0.0
+        }
+        val scenarioFunction = if (targetCount == 1) singleTarget else max(aoe, multiTarget)
+        val functionScore = (scenarioFunction + matchingDefenseDown + bossValue) / 3.0
+        val missing = buildList {
+            if (!hasReliableFrontline) add("可靠一号位/掩护者")
+            if (context.defenseMarkStacks < config.defenseBaselineStacks && !hasEffectiveSustain) {
+                add("有效治疗/续航")
+            }
+            if (targetCount >= 2 && multiTarget < config.minimumAoe) add("${targetCount}目标输出")
+            if (targetCount == 1 && singleTarget < config.minimumSingleTarget) add("单体输出")
+            if (matchingDefenseDown < config.minimumDefenseDown) {
+                add(
+                    when (damageType) {
+                        LabyrinthTeamDamageType.PHYSICAL -> "物防降低"
+                        LabyrinthTeamDamageType.MAGIC -> "魔防降低"
+                        LabyrinthTeamDamageType.MIXED -> "双体系防御降低"
+                        LabyrinthTeamDamageType.NONE -> "有效输出体系"
+                    },
+                )
+            }
+        }
+
+        val ratedRoles = members.mapNotNull(LabyrinthRoleProfile::effectiveUserScore)
+        val playerScore = ratedRoles.takeIf { it.isNotEmpty() }?.average()
+        val playerCoverage = ratedRoles.size.toDouble() / members.size
+        val damageScore = totalDamage / members.size
+        val pureRolePenalty = if (context.defenseMarkStacks >= config.defenseBaselineStacks) {
+            members.sumOf { role ->
+                val bossSpecialist = role.functions.bossMechanismValue.orZero() >= config.bossSpecialistThreshold ||
+                    role.functions.selfSustain.orZero() >= config.bossSpecialistThreshold
+                val pure = role.functions.pureTank.orZero() >= config.pureRoleThreshold ||
+                    role.functions.pureHealer.orZero() >= config.pureRoleThreshold
+                if (pure && !bossSpecialist) config.postFourDefensePureRolePenalty else 0.0
+            }
+        } else {
+            0.0
+        }
+        var pureTankCount = 0
+        var pureHealerCount = 0
+        for (role in members) {
+            if (hasCompositeOffense(role, targetCount, damageType)) continue
+            val tank = role.functions.pureTank.orZero()
+            val healer = role.functions.pureHealer.orZero()
+            // A dual-tagged defensive role occupies one slot, not two redundant slots.
+            if (tank >= config.pureRoleThreshold && tank >= healer) pureTankCount++
+            else if (healer >= config.pureRoleThreshold) pureHealerCount++
+        }
+        val duplicates = (pureTankCount - 1).coerceAtLeast(0) + (pureHealerCount - 1).coerceAtLeast(0)
+        val survivalNeedsHelp = !hasReliableFrontline ||
+            (context.defenseMarkStacks < config.defenseBaselineStacks && !hasEffectiveSustain)
+        val duplicateMultiplier = when {
+            context.defenseMarkStacks >= config.defenseBaselineStacks -> 1.0
+            context.defenseMarkStacks <= 1 -> config.lowestDefenseDuplicateMultiplier
+            else -> config.lowDefenseDuplicateMultiplier
+        } * if (context.survivalRecovery || survivalNeedsHelp) config.survivalRecoveryDuplicateMultiplier else 1.0
+        val duplicatePenalty = duplicates * config.duplicatePureRolePenalty * duplicateMultiplier
+        var survivalMultiplier = 1.0
+        var survivalGatePenalty = 0.0
+        if (context.defenseMarkStacks <= 1) {
+            if (!hasReliableFrontline && !hasEffectiveSustain) {
+                survivalMultiplier = config.lowestDefenseNoAnchorMultiplier
+                survivalGatePenalty = config.lowestDefenseGatePenalty
+            } else if (!hasReliableFrontline || !hasEffectiveSustain) {
+                survivalMultiplier = config.lowestDefenseOneAnchorMultiplier
+            }
+        } else if (context.defenseMarkStacks <= 3) {
+            if (!hasReliableFrontline && !hasEffectiveSustain) {
+                survivalMultiplier = config.lowDefenseNoAnchorMultiplier
+                survivalGatePenalty = config.lowDefenseGatePenalty
+            } else if (!hasReliableFrontline || !hasEffectiveSustain) {
+                survivalMultiplier = config.lowDefenseOneAnchorMultiplier
+            }
+        }
+
+        val systemDamage = (damageScore / config.damageSoftCeiling).coerceIn(0.0, 100.0)
+        val systemSurvival = survivalScore.coerceIn(0.0, 100.0)
+        val systemFunction = functionScore.coerceIn(0.0, 100.0)
+        val systemCohesion = if (totalDamage > 0.0) {
+            (max(physicalRatio, 1.0 - physicalRatio) * 100.0).coerceIn(50.0, 100.0)
+        } else {
+            100.0
+        }
+        val systemFormation = (
+            100.0 - survivalGatePenalty * config.formationSurvivalGatePenaltyMultiplier -
+                missing.size * config.formationMissingFunctionPenalty - pureRolePenalty
+            ).coerceIn(0.0, 100.0)
+        val mixedDamagePenalty = if (
+            context.preferSingleDamageSystem && damageType == LabyrinthTeamDamageType.MIXED
+        ) {
+            config.battleMixedDamagePenalty
+        } else {
+            0.0
+        }
+        val systemComponents = if (!explain) emptyMap() else linkedMapOf(
+            "预计输出" to systemDamage,
+            "生存" to systemSurvival,
+            "功能" to systemFunction,
+            "阵型完整性" to systemFormation,
+            "体系一致性" to systemCohesion,
+            "有效效果角色系统加分" to effectiveCharacterSystemBonus,
+            "重复纯职能扣分" to -duplicatePenalty,
+            "物法混编偏好" to -mixedDamagePenalty,
+            "遭遇攻略偏好" to preferredCapabilityBonus,
+        )
+        val rawSystemScore = (systemDamage * config.systemDamageWeight +
+            systemSurvival * config.systemSurvivalWeight +
+            systemFunction * config.systemFunctionWeight +
+            systemFormation * config.systemFormationWeight +
+            systemCohesion * config.systemCohesionWeight +
+            effectiveCharacterSystemBonus).coerceIn(0.0, 100.0)
+        val systemScore = max(0.0, rawSystemScore - duplicatePenalty - mixedDamagePenalty + encounterBonus)
+        val effectivePlayerWeight = if (playerScore == null) 0.0 else config.playerWeight * playerCoverage
+        val effectiveSystemWeight = 1.0 - effectivePlayerWeight
+        val preRiskScore = (playerScore ?: 0.0) * effectivePlayerWeight + rawSystemScore * effectiveSystemWeight
+        val riskAdjustedScore = max(
+            0.0,
+            preRiskScore * survivalMultiplier - survivalGatePenalty * config.riskGatePenaltyWeight,
+        )
+        val score = max(0.0, riskAdjustedScore - duplicatePenalty - mixedDamagePenalty + encounterBonus)
+        val components = if (!explain) emptyMap() else linkedMapOf(
+            "玩家经验" to (playerScore ?: 0.0) * effectivePlayerWeight,
+            "系统适配" to rawSystemScore * effectiveSystemWeight,
+            "生存风险" to riskAdjustedScore - preRiskScore,
+            "重复纯职能" to -duplicatePenalty,
+            "4守备后纯职能扣分" to -pureRolePenalty,
+            "物法混编" to -mixedDamagePenalty,
+            "遭遇攻略偏好" to preferredCapabilityBonus,
+        )
+        val reasons = if (!explain) emptyList() else buildList {
+            if (duplicates > 0) {
+                add("重复纯职能：纯坦${pureTankCount}名、纯治疗${pureHealerCount}名；扣${duplicatePenalty}分" +
+                    if (context.survivalRecovery || survivalNeedsHelp) "（生存不足或失败后兜底，扣分减半）" else "")
+            }
+            add("预计${damageType.label()}输出，物理占比${(physicalRatio * 100).toInt()}%")
+            if (mixedDamagePenalty > 0.0) {
+                add(
+                    "战斗编组启用单一物/法体系偏好：当前为混合输出，软扣${mixedDamagePenalty.toInt()}分；" +
+                        "若混编综合优势足够大仍可入选",
+                )
+            }
+            context.encounterStrategy?.let { strategy ->
+                add("遭遇攻略：${strategy.identityName}")
+                val hard = strategy.requirements.filter(LabyrinthEncounterRequirement::hard)
+                if (hard.isNotEmpty()) {
+                    add("攻略硬需求：${hard.joinToString("、") { it.label }}")
+                }
+            }
+            if (effectiveCharacterCount > 0) {
+                add(
+                    "官方有效效果角色：${effectiveCharacterCount}名；每名系统侧+" +
+                        "${config.encounterEffectiveCharacterBonus.toInt()}，队伍系统均值+" +
+                        "${"%.1f".format(effectiveCharacterSystemBonus)}，再按玩家/系统权重融合",
+                )
+            }
+            if (activeBonuses.isNotEmpty()) {
+                add(
+                    "属性增伤：" + activeBonuses.entries.joinToString("、") { (attribute, bonus) ->
+                        "${attribute.label}${attributeCounts.getValue(attribute)}人+${(bonus * 100).toInt()}%"
+                    },
+                )
+            }
+            add("一号位${vanguard.displayName}，可靠度${frontlineScore.toInt()}")
+            add("玩家评分覆盖${(playerCoverage * 100).toInt()}%，有效权重${(effectivePlayerWeight * 100).toInt()}%")
+            if (survivalMultiplier < 1.0) {
+                add("低守备生存门槛：存活输出倍率${(survivalMultiplier * 100).toInt()}%")
+            }
+            if (context.defenseMarkStacks >= config.defenseBaselineStacks) {
+                add("已达${config.defenseBaselineStacks}守备，纯坦/纯治疗降权，输出与复合功能升权")
+            } else {
+                add("未达${config.defenseBaselineStacks}守备，保留一号位与续航权重")
+            }
+            if (missing.isNotEmpty()) add("仍缺：${missing.joinToString("、")}")
+        }
+        return LabyrinthTeamEvaluation(
+            // Preserve enumeration order during search, including equal-position tie breaks.
+            members = if (explain) members.sortedBy { it.position ?: Int.MAX_VALUE } else members.toList(),
+            score = score,
+            systemScore = systemScore,
+            playerScore = playerScore,
+            playerCoverage = playerCoverage,
+            requestedPlayerWeight = config.playerWeight,
+            effectivePlayerWeight = effectivePlayerWeight,
+            damageType = damageType,
+            physicalRatio = physicalRatio,
+            physicalDamage = physicalDamage,
+            magicDamage = magicDamage,
+            physicalTeamUplift = physicalUplift,
+            magicTeamUplift = magicUplift,
+            targetCount = targetCount,
+            attributeCounts = attributeCounts,
+            activeAttributeBonuses = activeBonuses,
+            vanguardCharacterId = vanguard.characterId,
+            frontlineScore = frontlineScore,
+            sustainScore = sustainScore,
+            hasReliableFrontline = hasReliableFrontline,
+            hasEffectiveSustain = hasEffectiveSustain,
+            survivalMultiplier = survivalMultiplier,
+            survivalGatePenalty = survivalGatePenalty,
+            survivalAnchorCharacterId = when {
+                hasReliableFrontline -> vanguard.characterId
+                hasEffectiveSustain -> sustainAnchor.characterId
+                else -> null
+            },
+            missingCriticalFunctions = missing,
+            systemComponents = systemComponents,
+            components = components,
+            reasons = reasons,
+            pureTankCount = pureTankCount,
+            pureHealerCount = pureHealerCount,
+            duplicateRolePenalty = duplicatePenalty,
+        )
+    }
+
+    private fun hasCompositeOffense(
+        role: LabyrinthRoleProfile,
+        targetCount: Int,
+        teamType: LabyrinthTeamDamageType,
+    ): Boolean {
+        val threshold = config.compositeOffenseThreshold
+        val damage = scenarioDamage(role, LabyrinthRoleDamageType.PHYSICAL, targetCount) +
+            scenarioDamage(role, LabyrinthRoleDamageType.MAGIC, targetCount)
+        if (damage >= threshold || role.support.universalOffense.orZero() >= threshold) return true
+        // Off-system support alone does not turn a pure healer/tank into useful offensive support.
+        val physical = teamType == LabyrinthTeamDamageType.PHYSICAL || teamType == LabyrinthTeamDamageType.MIXED
+        val magic = teamType == LabyrinthTeamDamageType.MAGIC || teamType == LabyrinthTeamDamageType.MIXED
+        return (physical && (role.support.physicalOffense.orZero() >= threshold ||
+            role.functions.physicalDefenseDown.orZero() >= threshold)) ||
+            (magic && (role.support.magicOffense.orZero() >= threshold ||
+                role.functions.magicDefenseDown.orZero() >= threshold))
+    }
+
+    private fun scenarioDamage(
+        role: LabyrinthRoleProfile,
+        system: LabyrinthRoleDamageType?,
+        targetCount: Int,
+    ): Double {
+        val modeled = when (system) {
+            LabyrinthRoleDamageType.PHYSICAL -> when (targetCount.coerceAtMost(3)) {
+                1 -> role.physicalDamage1Target
+                2 -> role.physicalDamage2Target
+                else -> role.physicalDamage3Target
+            }
+            LabyrinthRoleDamageType.MAGIC -> when (targetCount.coerceAtMost(3)) {
+                1 -> role.magicDamage1Target
+                2 -> role.magicDamage2Target
+                else -> role.magicDamage3Target
+            }
+            else -> null
+        }
+        return modeled ?: when (system) {
+            LabyrinthRoleDamageType.PHYSICAL -> role.physicalDamagePotential.orZero()
+            LabyrinthRoleDamageType.MAGIC -> role.magicDamagePotential.orZero()
+            LabyrinthRoleDamageType.MIXED ->
+                role.physicalDamagePotential.orZero() + role.magicDamagePotential.orZero()
+            else -> 0.0
+        }
+    }
+
+    private fun roleTeamUplift(role: LabyrinthRoleProfile, system: LabyrinthRoleDamageType): Double {
+        val modeled = when (system) {
+            LabyrinthRoleDamageType.PHYSICAL -> role.physicalTeamUplift
+            LabyrinthRoleDamageType.MAGIC -> role.magicTeamUplift
+            else -> null
+        }
+        if (role.modelStatus.startsWith("database-v") && modeled != null) {
+            return modeled.coerceIn(
+                config.modeledRoleNegativeUpliftFloor,
+                config.modeledRolePositiveUpliftCap,
+            )
+        }
+        val specific = when (system) {
+            LabyrinthRoleDamageType.PHYSICAL -> role.support.physicalOffense.orZero()
+            LabyrinthRoleDamageType.MAGIC -> role.support.magicOffense.orZero()
+            else -> 0.0
+        }
+        return ((specific + role.support.universalOffense.orZero()) / 100.0 * config.supportMultiplierAt100)
+            .coerceIn(0.0, config.legacyRoleUpliftCap)
+    }
+
+    private fun combinedTeamUplift(
+        members: List<LabyrinthRoleProfile>,
+        system: LabyrinthRoleDamageType,
+    ): Double = members.fold(1.0) { factor, role ->
+        factor * (1.0 + roleTeamUplift(role, system))
+    }.minus(1.0).coerceIn(config.combinedTeamUpliftFloor, config.combinedTeamUpliftCap)
+
+    private fun effectiveSustainScore(role: LabyrinthRoleProfile): Double = maxOf(
+        role.functions.healing.orZero(),
+        role.functions.regeneration.orZero(),
+        role.support.universalSurvival.orZero() * 0.85,
+    )
+
+    private companion object {
+        const val TEAM_SIZE = 5
+    }
+}
+
+/** Identity-only entries carry no invented attributes, positions, ratings or combat facts. */
+internal fun Map<String, LabyrinthRoleProfile>.withKnownRoleIdentities(
+    ids: Collection<String>,
+    names: Map<String, String> = emptyMap(),
+): Map<String, LabyrinthRoleProfile> = this + ids.distinct().filterNot { containsKey(it) }.associateWith { id ->
+    LabyrinthRoleProfile(characterId = id, displayName = names[id]?.takeIf { it.isNotBlank() } ?: id)
+}
+
+internal val LabyrinthRoleProfile.isLabyrinthBattleTank: Boolean
+    get() = roleClass == "掩护者"
+
+/** Same frontline metric used by team scoring, exposed for Boss main-team tank ordering. */
+internal fun LabyrinthRoleProfile.labyrinthVanguardStrength(): Double {
+    val modeled = functions.reliableVanguard.orZero() * 0.75 + functions.selfSustain.orZero() * 0.25
+    val fallback = if (isLabyrinthBattleTank) {
+        minOf(
+            100.0,
+            45.0 + functions.selfSustain.orZero() * 0.25 + support.universalSurvival.orZero() * 0.20,
+        )
+    } else {
+        0.0
+    }
+    return max(modeled, fallback)
+}
+
+internal fun List<LabyrinthRoleProfile>.hasBattleTankAtActualFront(): Boolean {
+    // Missing scoring data is allowed; an unknown position cannot prove the independent T rule.
+    if (any { it.position == null }) return false
+    val frontPosition = mapNotNull(LabyrinthRoleProfile::position).minOrNull() ?: return false
+    val actualFront = filter { it.position == frontPosition }
+    // Equal database positions are treated conservatively: every possible frontmost unit must be T.
+    return actualFront.isNotEmpty() && actualFront.all(LabyrinthRoleProfile::isLabyrinthBattleTank)
+}
+
+class LabyrinthTeamOptimizer(
+    private val scorer: LabyrinthTeamScorer,
+) {
+    val scoringConfig: LabyrinthTeamScoringConfig
+        get() = scorer.config
+
+    fun bestFormation(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        requiredCharacterId: String? = null,
+    ): LabyrinthTeamEvaluation? = rankedFormationsInternal(
+        roster, context, requiredCharacterId, systemOnly = false, limit = 1,
+        requireFrontmostTank = false,
+    ).firstOrNull()
+
+    /**
+     * Battle-only formation search. Reward/event marginal-value calculations deliberately keep
+     * using [bestFormation], so this hard tank rule does not rewrite acquisition preferences.
+     */
+    fun bestBattleFormation(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+    ): LabyrinthTeamEvaluation? {
+        if (context.preferSingleDamageSystem) {
+            val cohesive = rankedFormationsInternal(
+                roster = roster,
+                context = context,
+                requiredCharacterId = null,
+                systemOnly = false,
+                limit = 1,
+                requireFrontmostTank = true,
+                forbidMixedDamageSystem = true,
+            ).firstOrNull()
+            if (cohesive != null) return cohesive
+        }
+        return rankedFormationsInternal(
+            roster = roster,
+            context = context,
+            requiredCharacterId = null,
+            systemOnly = false,
+            limit = 1,
+            requireFrontmostTank = true,
+        ).firstOrNull()
+    }
+
+    fun bestSystemFormation(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        requiredCharacterId: String? = null,
+    ): LabyrinthTeamEvaluation? = rankedFormationsInternal(
+        roster = roster,
+        context = context,
+        requiredCharacterId = requiredCharacterId,
+        systemOnly = true,
+        limit = 1,
+        requireFrontmostTank = false,
+    ).firstOrNull()
+
+    fun rankedFormations(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        requiredCharacterId: String? = null,
+    ): List<LabyrinthTeamEvaluation> = rankedFormationsInternal(
+        roster = roster,
+        context = context,
+        requiredCharacterId = requiredCharacterId,
+        systemOnly = false,
+        requireFrontmostTank = false,
+    )
+
+    fun rankedBattleFormations(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+    ): List<LabyrinthTeamEvaluation> = rankedFormationsInternal(
+        roster = roster,
+        context = context,
+        requiredCharacterId = null,
+        systemOnly = false,
+        requireFrontmostTank = true,
+    )
+
+    private fun rankedFormationsInternal(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        requiredCharacterId: String?,
+        systemOnly: Boolean,
+        limit: Int = scorer.config.teamSearchBeamWidth,
+        requireFrontmostTank: Boolean,
+        forbidMixedDamageSystem: Boolean = false,
+    ): List<LabyrinthTeamEvaluation> {
+        val unique = roster.distinctBy(LabyrinthRoleProfile::characterId)
+        if (unique.isEmpty()) return emptyList()
+        if (requiredCharacterId != null && unique.none { it.characterId == requiredCharacterId }) return emptyList()
+        if (requireFrontmostTank && unique.none { it.isLabyrinthBattleTank && it.position != null }) {
+            return emptyList()
+        }
+        val searchPool = if (unique.size <= scorer.config.exhaustiveRosterLimit) {
+            unique
+        } else if (requireFrontmostTank) {
+            battleSearchPool(unique, context)
+        } else {
+            unique.sortedByDescending { individualSearchPriority(it, context) }
+                .take(scorer.config.exhaustiveRosterLimit)
+                .let { limited ->
+                    if (requiredCharacterId == null || limited.any { it.characterId == requiredCharacterId }) {
+                        limited
+                    } else {
+                        limited.dropLast(1) + requireNotNull(unique.firstOrNull { it.characterId == requiredCharacterId })
+                    }
+                }
+        }
+        val size = minOf(TEAM_SIZE, searchPool.size)
+        // Worst candidate first. For equal scores keep the earlier enumeration, exactly like
+        // the old stable full sort, without retaining tens of thousands of evaluations.
+        val order = compareBy<RankedCandidate> { it.score }.thenByDescending { it.ordinal }
+        val best = PriorityQueue(order)
+        var ordinal = 0L
+        visitCombinations(searchPool, size) { team ->
+            if (
+                (requiredCharacterId == null || team.any { it.characterId == requiredCharacterId }) &&
+                (!requireFrontmostTank || team.hasBattleTankAtActualFront()) &&
+                teamMeetsEncounterHardRequirements(team, context.encounterStrategy)
+            ) {
+                val evaluation = scorer.evaluateForSearch(team, context)
+                if (
+                    forbidMixedDamageSystem &&
+                    evaluation.damageType !in setOf(
+                        LabyrinthTeamDamageType.PHYSICAL,
+                        LabyrinthTeamDamageType.MAGIC,
+                    )
+                ) {
+                    return@visitCombinations
+                }
+                val score = if (systemOnly) evaluation.systemScore else evaluation.score
+                val currentOrdinal = ordinal++
+                val worst = best.peek()
+                if (best.size < limit || (worst != null && score.compareTo(worst.score) > 0)) {
+                    if (best.size == limit) best.poll()
+                    best.add(RankedCandidate(evaluation.members, score, currentOrdinal))
+                }
+            }
+        }
+        return best.sortedWith(order.reversed()).map { scorer.evaluate(it.members, context) }
+    }
+
+    /**
+     * A bounded search must not trim away a low-scoring tank before combinations are generated.
+     * Reserve one structurally valid cohort around the database-frontmost available tank, then
+     * fill remaining beam input slots by the ordinary individual priority.
+     */
+    internal fun battleSearchPool(
+        unique: List<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+    ): List<LabyrinthRoleProfile> {
+        val limit = scorer.config.exhaustiveRosterLimit
+        val teamSize = minOf(TEAM_SIZE, unique.size)
+        val frontmostTank = unique
+            .asSequence()
+            .filter { it.isLabyrinthBattleTank && it.position != null }
+            .minWithOrNull(compareBy<LabyrinthRoleProfile> { it.position }.thenBy { it.characterId })
+            ?: return emptyList()
+        val tankPosition = requireNotNull(frontmostTank.position)
+        val compatible = unique
+            .asSequence()
+            .filter { role ->
+                role.characterId != frontmostTank.characterId &&
+                    role.position != null &&
+                    (role.isLabyrinthBattleTank || requireNotNull(role.position) > tankPosition)
+            }
+            .sortedByDescending { individualSearchPriority(it, context) }
+            .take(teamSize - 1)
+            .toList()
+        if (compatible.size != teamSize - 1) return emptyList()
+
+        val structuralCohort = listOf(frontmostTank) + compatible
+        val forcedIds = structuralCohort.mapTo(hashSetOf(), LabyrinthRoleProfile::characterId)
+        // Effective Effect is intentionally not force-reserved. It contributes only through the
+        // role's weighted individual score below; if a low player/system score still leaves that
+        // role outside the bounded pool, the prefilter is allowed to trim it normally.
+        val remainder = unique
+            .asSequence()
+            .filterNot { it.characterId in forcedIds }
+            .sortedByDescending { individualSearchPriority(it, context) }
+            .toList()
+        return (structuralCohort + remainder).take(limit)
+    }
+
+    private data class RankedCandidate(
+        val members: List<LabyrinthRoleProfile>,
+        val score: Double,
+        val ordinal: Long,
+    )
+
+    private fun individualSearchPriority(role: LabyrinthRoleProfile, context: LabyrinthRoleDecisionContext): Double {
+        val targetCount = context.targetCount
+        val physical = when (targetCount.coerceAtMost(3)) {
+            1 -> role.physicalDamage1Target
+            2 -> role.physicalDamage2Target
+            else -> role.physicalDamage3Target
+        } ?: role.physicalDamagePotential
+        val magic = when (targetCount.coerceAtMost(3)) {
+            1 -> role.magicDamage1Target
+            2 -> role.magicDamage2Target
+            else -> role.magicDamage3Target
+        } ?: role.magicDamagePotential
+        val scenarioFunction = if (targetCount == 1) {
+            role.functions.singleTargetDamage.orZero()
+        } else {
+            maxOf(
+                role.functions.aoeDamage.orZero(),
+                if (targetCount >= 3) role.functions.threeTargetDamage.orZero()
+                else role.functions.twoTargetDamage.orZero(),
+            )
+        }
+        val effectiveSystemBonus = if (
+            canonicalLabyrinthRoleId(role.characterId) in context.effectiveCharacterIds &&
+            (context.encounterStrategy?.preferEffectiveCharacters ?: true)
+        ) {
+            scorer.config.encounterEffectiveCharacterBonus
+        } else {
+            0.0
+        }
+        val guideCapabilityPriority = context.encounterStrategy?.preferredCapabilities.orEmpty().sumOf { capability ->
+            if ((role.encounterCapabilityScore(capability) ?: -1.0) >= 50.0) {
+                scorer.config.encounterPreferredCapabilityBonus
+            } else {
+                0.0
+            }
+        }
+        // Keep the prefilter on the same conceptual scale as the final player/system blend.
+        // Effective Effect is added only to the system side, so a low player score remains low
+        // instead of being bypassed by an unconditional post-blend bonus.
+        val baseSystemPriority = (
+            maxOf(physical.orZero(), magic.orZero()) +
+                role.functions.reliableVanguard.orZero() * 0.5 +
+                maxOf(
+                    role.functions.physicalDefenseDown.orZero(),
+                    role.functions.magicDefenseDown.orZero(),
+                ) * 0.3 +
+                scenarioFunction * 0.2
+            ) / 2.0
+        val systemPriority = (baseSystemPriority + effectiveSystemBonus + guideCapabilityPriority)
+            .coerceIn(0.0, 100.0)
+        val playerScore = role.effectiveUserScore
+        val playerWeight = if (playerScore == null) 0.0 else scorer.config.playerWeight
+        return (playerScore ?: 0.0) * playerWeight + systemPriority * (1.0 - playerWeight)
+    }
+
+    private fun <T> visitCombinations(values: List<T>, size: Int, consume: (List<T>) -> Unit) {
+        val working = ArrayList<T>(size)
+        fun visit(start: Int) {
+            if (working.size == size) {
+                consume(working)
+                return
+            }
+            val remaining = size - working.size
+            for (index in start..values.size - remaining) {
+                working += values[index]
+                visit(index + 1)
+                working.removeAt(working.lastIndex)
+            }
+        }
+        visit(0)
+    }
+
+    private companion object {
+        const val TEAM_SIZE = 5
+    }
+}
+
+@Serializable
+data class LabyrinthRoleChoiceConfig(
+    /** Empty keeps schema-v1 payloads valid and resolves to 1.00 / 0.35 / 0.20. */
+    val candidateTeamWeights: List<Double> = emptyList(),
+    /** Schema-v1 field: now interpreted as the second-team deployment weight only. */
+    val forcedCandidateTeamWeight: Double? = null,
+    /** Schema-v1 field: now interpreted as the third-team deployment weight only. */
+    val secondTeamPotentialWeight: Double? = null,
+    val requireStrictProfiles: Boolean = true,
+) {
+    init {
+        require(candidateTeamWeights.isEmpty() || candidateTeamWeights.size == 3)
+        require(candidateTeamWeights.all { it >= 0.0 })
+        require(candidateTeamWeights.isEmpty() || candidateTeamWeights.sum() > 0.0)
+        require(forcedCandidateTeamWeight == null || forcedCandidateTeamWeight >= 0.0)
+        require(secondTeamPotentialWeight == null || secondTeamPotentialWeight >= 0.0)
+    }
+
+    fun effectiveCandidateTeamWeights(): List<Double> = if (candidateTeamWeights.isNotEmpty()) {
+        candidateTeamWeights
+    } else {
+        listOf(1.0, forcedCandidateTeamWeight ?: 0.35, secondTeamPotentialWeight ?: 0.20)
+    }
+}
+
+data class LabyrinthRoleCandidateRanking(
+    val characterId: String,
+    val displayName: String,
+    val score: Double,
+    val playerScore: Double?,
+    val systemScore: Double,
+    /** Zero-based candidate deployment layer. */
+    val candidateLayer: Int,
+    val firstTeam: LabyrinthTeamEvaluation,
+    val candidateTeam: LabyrinthTeamEvaluation,
+    val secondTeam: LabyrinthTeamEvaluation?,
+    val thirdTeam: LabyrinthTeamEvaluation?,
+)
+
+sealed interface LabyrinthOneRoleDecision {
+    data class Ready(
+        val chosen: LabyrinthRoleProfile,
+        val rankings: List<LabyrinthRoleCandidateRanking>,
+        val reasons: List<String>,
+    ) : LabyrinthOneRoleDecision
+
+    data class Unavailable(
+        val reason: String,
+        val missingProfileIds: List<String> = emptyList(),
+        val incompleteProfileIds: List<String> = emptyList(),
+    ) : LabyrinthOneRoleDecision
+}
+
+/** Evaluates three known characters; it is deliberately unrelated to connect-attribute choice. */
+class LabyrinthRoleChoicePolicy(
+    private val optimizer: LabyrinthTeamOptimizer,
+    private val config: LabyrinthRoleChoiceConfig = LabyrinthRoleChoiceConfig(),
+) {
+    fun chooseOneRole(
+        candidateIds: List<String>,
+        acquiredCharacterIds: Set<String>,
+        profiles: Map<String, LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        requireStrictProfiles: Boolean = config.requireStrictProfiles,
+    ): LabyrinthOneRoleDecision {
+        if (candidateIds.isEmpty() || candidateIds.distinct().size != candidateIds.size) {
+            return LabyrinthOneRoleDecision.Unavailable("候选角色必须稳定识别且互不重复")
+        }
+        if (candidateIds.any(acquiredCharacterIds::contains)) {
+            return LabyrinthOneRoleDecision.Unavailable("候选中包含已获得角色，拒绝按错误池状态决策")
+        }
+        val requiredIds = candidateIds.toSet() + acquiredCharacterIds
+        val missing = requiredIds.filterNot(profiles::containsKey).sorted()
+        if (missing.isNotEmpty()) {
+            return LabyrinthOneRoleDecision.Unavailable(
+                reason = "角色资料不完整，保持等待而不盲选：${missing.joinToString()}",
+                missingProfileIds = missing,
+            )
+        }
+        val incomplete = requiredIds.filterNot { profiles.getValue(it).isStrictDecisionReady }.sorted()
+        if (requireStrictProfiles && incomplete.isNotEmpty()) {
+            return LabyrinthOneRoleDecision.Unavailable(
+                reason = "角色资料缺少严格决策所需的属性/职阶/物法/站位，保持等待：${incomplete.joinToString()}",
+                incompleteProfileIds = incomplete,
+            )
+        }
+        val acquired = acquiredCharacterIds.map(profiles::getValue)
+        val rankings = candidateIds.map { candidateId ->
+            val candidate = profiles.getValue(candidateId)
+            val pool = acquired + candidate
+            val placement = requireNotNull(bestCandidatePlacementPlan(pool, candidate, context))
+            val playerScore = candidate.effectiveUserScore
+            val playerWeight = optimizer.scoringConfig.playerWeight
+            LabyrinthRoleCandidateRanking(
+                characterId = candidateId,
+                displayName = candidate.displayName,
+                score = if (playerScore == null) {
+                    placement.systemScore
+                } else {
+                    playerScore * playerWeight + placement.systemScore * (1.0 - playerWeight)
+                },
+                playerScore = playerScore,
+                systemScore = placement.systemScore,
+                candidateLayer = placement.candidateLayer,
+                firstTeam = placement.teams.first(),
+                candidateTeam = placement.candidateTeam,
+                secondTeam = placement.teams.getOrNull(1),
+                thirdTeam = placement.teams.getOrNull(2),
+            )
+        }.sortedWith(
+            compareByDescending<LabyrinthRoleCandidateRanking> { it.score }
+                .thenByDescending { profiles.getValue(it.characterId).effectiveUserScore.orZero() }
+                .thenBy { candidateIds.indexOf(it.characterId) },
+        )
+        val best = rankings.first()
+        val chosen = profiles.getValue(best.characterId)
+        val reasons = buildList {
+            add("${chosen.displayName}的最佳部署落点为第${best.candidateLayer + 1}队；第一队保持当前池最优组合")
+            chosen.attribute?.let { attribute ->
+                val sameAttribute = best.candidateTeam.attributeCounts[attribute]
+                val bonus = best.candidateTeam.activeAttributeBonuses[attribute]
+                if (bonus != null && sameAttribute != null) {
+                    add("与队内${attribute.label}属性组成${sameAttribute}人档，角色自身及同属性角色获得${(bonus * 100).toInt()}%伤害")
+                }
+            }
+            addAll(best.candidateTeam.reasons.filterNot { it.startsWith("预计") }.take(3))
+            val runnerUp = rankings.getOrNull(1)
+            if (runnerUp != null) {
+                add("综合边际评分${formatScore(best.score)}，高于${runnerUp.displayName}的${formatScore(runnerUp.score)}")
+            }
+        }
+        return LabyrinthOneRoleDecision.Ready(chosen, rankings, reasons)
+    }
+
+    private fun bestCandidatePlacementPlan(
+        pool: List<LabyrinthRoleProfile>,
+        candidate: LabyrinthRoleProfile,
+        context: LabyrinthRoleDecisionContext,
+    ): CandidatePlacementPlan? {
+        val plans = buildList {
+            config.effectiveCandidateTeamWeights().indices.forEach { candidateLayer ->
+                if (pool.distinctBy(LabyrinthRoleProfile::characterId).size - 1 < candidateLayer * TEAM_SIZE) {
+                    return@forEach
+                }
+                candidatePlacementPlan(pool, candidate, context, candidateLayer)?.let(::add)
+            }
+        }
+        return plans.maxWithOrNull(
+            compareBy<CandidatePlacementPlan> { it.systemScore }
+                .thenBy { -it.candidateLayer },
+        )
+    }
+
+    private fun candidatePlacementPlan(
+        pool: List<LabyrinthRoleProfile>,
+        candidate: LabyrinthRoleProfile,
+        context: LabyrinthRoleDecisionContext,
+        candidateLayer: Int,
+    ): CandidatePlacementPlan? {
+        var remaining = pool.distinctBy(LabyrinthRoleProfile::characterId)
+        val teams = mutableListOf<LabyrinthTeamEvaluation>()
+        config.effectiveCandidateTeamWeights().indices.forEach { layer ->
+            if (layer > 0 && remaining.size < TEAM_SIZE) return@forEach
+            val teamPool: List<LabyrinthRoleProfile>
+            val requiredId: String?
+            when {
+                layer < candidateLayer -> {
+                    teamPool = remaining.filterNot { it.characterId == candidate.characterId }
+                    if (teamPool.size < TEAM_SIZE) return null
+                    requiredId = null
+                }
+                layer == candidateLayer -> {
+                    if (remaining.none { it.characterId == candidate.characterId }) return null
+                    teamPool = remaining
+                    requiredId = candidate.characterId
+                }
+                else -> {
+                    teamPool = remaining
+                    requiredId = null
+                }
+            }
+            val team = optimizer.bestSystemFormation(teamPool, context, requiredId) ?: return null
+            teams += team
+            val used = team.members.map(LabyrinthRoleProfile::characterId).toSet()
+            remaining = remaining.filterNot { it.characterId in used }
+        }
+        val candidateTeam = teams.getOrNull(candidateLayer)
+            ?.takeIf { team -> team.members.any { it.characterId == candidate.characterId } }
+            ?: return null
+        val weights = config.effectiveCandidateTeamWeights()
+        val weightSum = teams.indices.sumOf { weights[it] }
+        val systemScore = teams.indices.sumOf { teams[it].systemScore * weights[it] } / weightSum
+        return CandidatePlacementPlan(candidateLayer, teams, candidateTeam, systemScore)
+    }
+
+    private data class CandidatePlacementPlan(
+        val candidateLayer: Int,
+        val teams: List<LabyrinthTeamEvaluation>,
+        val candidateTeam: LabyrinthTeamEvaluation,
+        val systemScore: Double,
+    )
+
+    private companion object {
+        const val TEAM_SIZE = 5
+    }
+}
+
+enum class LabyrinthTeamPlanKind {
+    FIRST_ATTEMPT_ONE_TEAM,
+    ONE_TEAM_STABLE_KILL,
+    MAIN_PLUS_CLEANUP,
+    TWO_STABLE_TEAMS,
+    THREE_TEAM_FALLBACK,
+    INSUFFICIENT_ROLES,
+    RESTART_RECOMMENDED,
+}
+
+@Serializable
+data class LabyrinthTeamPlanSearchConfig(
+    val oneTeamKillScore: Double,
+    val mainTeamScore: Double,
+    val cleanupTeamScore: Double,
+    val mainPlusCleanupCombinedScore: Double,
+    val stableTeamScore: Double,
+    val fallbackTeamScore: Double,
+    val threeTeamCombinedScore: Double,
+    val multiTeamBeamWidth: Int = 40,
+) {
+    init {
+        listOf(
+            oneTeamKillScore,
+            mainTeamScore,
+            cleanupTeamScore,
+            mainPlusCleanupCombinedScore,
+            stableTeamScore,
+            fallbackTeamScore,
+            threeTeamCombinedScore,
+        ).forEach { require(it >= 0.0) }
+        require(multiTeamBeamWidth > 0)
+    }
+}
+
+data class LabyrinthTeamPlan(
+    val kind: LabyrinthTeamPlanKind,
+    val teams: List<LabyrinthTeamEvaluation>,
+    val reason: String,
+)
+
+/**
+ * Battle planning is intentionally two-stage:
+ * 1) the initial attempt always sends the strongest single team;
+ * 2) only after an observed failure may the caller request fallback/multi-team planning.
+ *
+ * This prevents paper thresholds from weakening the first attempt before the game has shown
+ * that a special EX/Boss counter or an additional team is actually necessary.
+ */
+class LabyrinthTeamPlanSearcher(
+    private val optimizer: LabyrinthTeamOptimizer,
+    private val config: LabyrinthTeamPlanSearchConfig,
+) {
+    fun search(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+    ): LabyrinthTeamPlan = initialSearch(roster, context)
+
+    fun initialSearch(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+    ): LabyrinthTeamPlan {
+        if (roster.distinctBy(LabyrinthRoleProfile::characterId).isEmpty()) {
+            return LabyrinthTeamPlan(
+                LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
+                emptyList(),
+                "没有可用于编组的可靠角色",
+            )
+        }
+        val first = if (context.preferStrongestVanguard) {
+            roster
+                .distinctBy(LabyrinthRoleProfile::characterId)
+                .filter(LabyrinthRoleProfile::isLabyrinthBattleTank)
+                .sortedWith(
+                    compareByDescending<LabyrinthRoleProfile> { it.labyrinthVanguardStrength() }
+                        .thenByDescending { it.effectiveUserScore ?: Double.NEGATIVE_INFINITY }
+                        .thenBy { it.position ?: Int.MAX_VALUE }
+                        .thenBy(LabyrinthRoleProfile::characterId),
+                )
+                .firstNotNullOfOrNull { preferredTank ->
+                    // Keep only this T for the trial so an earlier-position weaker T cannot become
+                    // the actual vanguard while the preferred T is merely carried in the same team.
+                    val restrictedRoster = roster.filter { role ->
+                        !role.isLabyrinthBattleTank || role.characterId == preferredTank.characterId
+                    }
+                    optimizer.bestBattleFormation(restrictedRoster, context)
+                }
+        } else {
+            optimizer.bestBattleFormation(roster, context)
+        } ?: return LabyrinthTeamPlan(
+            LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
+            emptyList(),
+            "自动战斗硬性要求实际一号位必须为T（掩护者）；当前角色池无法组成满足条件的队伍",
+        )
+        return LabyrinthTeamPlan(
+            LabyrinthTeamPlanKind.FIRST_ATTEMPT_ONE_TEAM,
+            listOf(first),
+            if (context.preferStrongestVanguard) {
+                "Boss主力队优先使用当前最强可用T，再优化其余四人，评分${formatScore(first.score)}"
+            } else {
+                "首次挑战使用满足“一号位必须为T”硬约束的当前最佳队伍，评分${formatScore(first.score)}；实际失败后才启用后续队伍"
+            },
+        )
+    }
+
+    fun fallbackSearch(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        excludedTeamSignatures: Set<String> = emptySet(),
+    ): LabyrinthTeamPlan {
+        if (roster.distinctBy(LabyrinthRoleProfile::characterId).size < 5) {
+            return LabyrinthTeamPlan(
+                LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
+                emptyList(),
+                "首战失败后可用角色不足五名，无法生成兜底队",
+            )
+        }
+        val ranked = optimizer.rankedBattleFormations(roster, context.copy(survivalRecovery = true))
+            .filterNot { evaluation ->
+                evaluation.members
+                    .map(LabyrinthRoleProfile::characterId)
+                    .map(::canonicalLabyrinthRoleId)
+                    .sorted()
+                    .joinToString(",") in excludedTeamSignatures
+            }
+        if (ranked.isEmpty()) {
+            return LabyrinthTeamPlan(
+                LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
+                emptyList(),
+                "首战失败后仍无法组成未重复失败阵容且实际一号位为T（掩护者）的兜底队",
+            )
+        }
+        val first = ranked.first()
+        if (first.score >= config.oneTeamKillScore) {
+            return LabyrinthTeamPlan(
+                LabyrinthTeamPlanKind.ONE_TEAM_STABLE_KILL,
+                listOf(first),
+                "首战失败后重新计算到一支可稳定击杀的特化队，评分${formatScore(first.score)}",
+            )
+        }
+
+        val beam = ranked.take(config.multiTeamBeamWidth)
+        val mainCleanup = bestDisjointPair(beam) { main, cleanup ->
+            main.score >= config.mainTeamScore &&
+                cleanup.score >= config.cleanupTeamScore &&
+                main.score + cleanup.score >= config.mainPlusCleanupCombinedScore
+        }
+        if (mainCleanup != null) {
+            return LabyrinthTeamPlan(
+                LabyrinthTeamPlanKind.MAIN_PLUS_CLEANUP,
+                mainCleanup,
+                "一队暂不足单杀，采用主力队＋第二队收尾",
+            )
+        }
+
+        val twoStable = bestDisjointPair(beam) { firstTeam, secondTeam ->
+            firstTeam.score >= config.stableTeamScore && secondTeam.score >= config.stableTeamScore
+        }
+        if (twoStable != null) {
+            return LabyrinthTeamPlan(
+                LabyrinthTeamPlanKind.TWO_STABLE_TEAMS,
+                twoStable,
+                "未找到主力＋收尾阈值方案，改用两队稳定击杀",
+            )
+        }
+
+        val three = bestDisjointTriple(beam)
+        if (three != null) {
+            return LabyrinthTeamPlan(
+                LabyrinthTeamPlanKind.THREE_TEAM_FALLBACK,
+                three,
+                "前两档方案均不足，使用三队兜底",
+            )
+        }
+        return LabyrinthTeamPlan(
+            LabyrinthTeamPlanKind.RESTART_RECOMMENDED,
+            listOf(first),
+            "没有达到任何可靠击杀阈值，建议重开；当前最佳一队${formatScore(first.score)}",
+        )
+    }
+
+    private fun bestDisjointPair(
+        teams: List<LabyrinthTeamEvaluation>,
+        accepted: (LabyrinthTeamEvaluation, LabyrinthTeamEvaluation) -> Boolean,
+    ): List<LabyrinthTeamEvaluation>? {
+        var best: List<LabyrinthTeamEvaluation>? = null
+        var bestScore = Double.NEGATIVE_INFINITY
+        teams.forEachIndexed { firstIndex, first ->
+            val firstIds = first.members.map(LabyrinthRoleProfile::characterId).toSet()
+            teams.drop(firstIndex + 1).forEach { second ->
+                if (second.members.any { it.characterId in firstIds } || !accepted(first, second)) return@forEach
+                val score = first.score + second.score
+                if (score > bestScore) {
+                    best = listOf(first, second)
+                    bestScore = score
+                }
+            }
+        }
+        return best
+    }
+
+    private fun bestDisjointTriple(teams: List<LabyrinthTeamEvaluation>): List<LabyrinthTeamEvaluation>? {
+        var best: List<LabyrinthTeamEvaluation>? = null
+        var bestScore = Double.NEGATIVE_INFINITY
+        teams.forEachIndexed { firstIndex, first ->
+            val firstIds = first.members.map(LabyrinthRoleProfile::characterId).toSet()
+            teams.drop(firstIndex + 1).forEachIndexed secondLoop@{ relativeSecondIndex, second ->
+                if (second.members.any { it.characterId in firstIds }) return@secondLoop
+                val used = firstIds + second.members.map(LabyrinthRoleProfile::characterId)
+                teams.drop(firstIndex + relativeSecondIndex + 2).forEach thirdLoop@{ third ->
+                    if (third.members.any { it.characterId in used }) return@thirdLoop
+                    if (listOf(first, second, third).any { it.score < config.fallbackTeamScore }) return@thirdLoop
+                    val score = first.score + second.score + third.score
+                    if (score >= config.threeTeamCombinedScore && score > bestScore) {
+                        best = listOf(first, second, third)
+                        bestScore = score
+                    }
+                }
+            }
+        }
+        return best
+    }
+}
+
+private fun LabyrinthTeamDamageType.label(): String = when (this) {
+    LabyrinthTeamDamageType.PHYSICAL -> "物理"
+    LabyrinthTeamDamageType.MAGIC -> "法术"
+    LabyrinthTeamDamageType.MIXED -> "混合"
+    LabyrinthTeamDamageType.NONE -> "无有效"
+}
+
+private fun validatePercent(name: String, value: Double) {
+    require(value in 0.0..100.0) { "$name must be in 0..100, was $value" }
+}
+
+private fun validateOptionalPercent(name: String, value: Double?) {
+    if (value != null) validatePercent(name, value)
+}
+
+private fun Double?.orZero(): Double = this ?: 0.0
+
+private fun formatScore(value: Double): String = "%.2f".format(value)

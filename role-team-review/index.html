@@ -1,0 +1,1578 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>黎明界角色与主力队审计台</title>
+  <meta name="description" content="审阅黎明界角色属性、职阶、物法与多维辅助资料，并按当前算法模拟主力队。">
+  <style>
+    :root {
+      --ink: #17203a;
+      --muted: #69718a;
+      --paper: #f6f2e8;
+      --panel: #fffdf8;
+      --line: #ded8c9;
+      --indigo: #243d73;
+      --indigo-2: #355aa0;
+      --gold: #c28b2c;
+      --gold-soft: #f4e5bd;
+      --red: #b74649;
+      --green: #36745b;
+      --blue: #3975a7;
+      --purple: #72539a;
+      --shadow: 0 18px 45px rgba(23, 32, 58, .10);
+    }
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 2%, rgba(194,139,44,.16), transparent 25rem),
+        linear-gradient(180deg, #eef1f7 0, var(--paper) 34rem);
+      font-family: Inter, "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+    }
+    button, input, select, textarea { font: inherit; }
+    button { cursor: pointer; }
+    .hero {
+      color: white;
+      background: #172b54;
+      border-bottom: 5px solid var(--gold);
+      overflow: hidden;
+      position: relative;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background-image: linear-gradient(115deg, transparent 42%, rgba(255,255,255,.055) 42%, rgba(255,255,255,.055) 43%, transparent 43%);
+      background-size: 42px 42px;
+      pointer-events: none;
+    }
+    .hero-inner, main { width: min(1480px, calc(100% - 32px)); margin: 0 auto; }
+    .hero-inner { padding: 48px 0 38px; position: relative; z-index: 1; }
+    .eyebrow { color: #f0cf82; letter-spacing: .18em; font-weight: 800; font-size: 12px; }
+    h1 { margin: 10px 0 8px; font-family: Georgia, "Songti SC", serif; font-size: clamp(32px, 5vw, 58px); line-height: 1.05; }
+    .hero p { max-width: 830px; margin: 0; color: #dbe4f6; line-height: 1.7; }
+    .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 24px; }
+    .btn {
+      border: 1px solid transparent;
+      border-radius: 9px;
+      padding: 10px 15px;
+      color: white;
+      background: var(--indigo-2);
+      font-weight: 750;
+      transition: transform .15s ease, filter .15s ease;
+    }
+    .btn:hover { transform: translateY(-1px); filter: brightness(1.06); }
+    .btn:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid #e6b84d; outline-offset: 2px; }
+    .btn.gold { background: var(--gold); color: #1d263d; }
+    .btn.ghost { background: transparent; border-color: rgba(255,255,255,.35); }
+    .btn.light { background: #eef2fa; color: var(--indigo); border-color: #ccd5e7; }
+    .btn.danger { background: #fff1ef; color: #9d3436; border-color: #e9c4c1; }
+    main { padding: 28px 0 70px; }
+    .stats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin-top: -12px; position: relative; z-index: 2; }
+    .stat { background: var(--panel); border: 1px solid var(--line); border-radius: 13px; padding: 17px; box-shadow: var(--shadow); }
+    .stat strong { display: block; font-family: Georgia, serif; font-size: 28px; }
+    .stat span { color: var(--muted); font-size: 13px; }
+    .notice { display: flex; gap: 13px; align-items: flex-start; margin: 22px 0; padding: 16px 18px; background: #fff7df; border: 1px solid #e8d39c; border-left: 5px solid var(--gold); border-radius: 10px; line-height: 1.6; }
+    .notice b { white-space: nowrap; }
+    .section { margin-top: 28px; }
+    .section-head { display: flex; align-items: end; justify-content: space-between; gap: 16px; margin-bottom: 13px; }
+    .section h2 { margin: 0; font-family: Georgia, "Songti SC", serif; font-size: 28px; }
+    .section-head p { margin: 4px 0 0; color: var(--muted); }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+    .toolbar { display: grid; grid-template-columns: minmax(240px, 2fr) repeat(4, minmax(130px, 1fr)); gap: 10px; padding: 14px; border-bottom: 1px solid var(--line); }
+    .field { display: grid; gap: 5px; }
+    .field label, .field .label { font-size: 12px; color: var(--muted); font-weight: 750; }
+    .field input, .field select, .field textarea {
+      min-width: 0;
+      width: 100%;
+      border: 1px solid #cdd2dc;
+      background: white;
+      border-radius: 8px;
+      padding: 9px 10px;
+      color: var(--ink);
+    }
+    .field textarea { min-height: 82px; resize: vertical; }
+    .subbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 14px; color: var(--muted); font-size: 13px; }
+    .check { display: inline-flex; gap: 8px; align-items: center; color: var(--ink); }
+    .table-wrap { overflow: auto; max-height: 710px; border-top: 1px solid var(--line); }
+    table { width: 100%; min-width: 1320px; border-collapse: separate; border-spacing: 0; font-size: 13px; }
+    th { position: sticky; top: 0; z-index: 2; padding: 10px 8px; color: #eef3ff; background: var(--indigo); text-align: left; white-space: nowrap; }
+    .sort-head { border: 0; padding: 0; color: inherit; background: transparent; font: inherit; font-weight: 800; cursor: pointer; white-space: nowrap; }
+    .sort-head:hover { color: #f0cf82; }
+    .sort-head .sort-mark { display: inline-block; width: 1.1em; margin-left: 3px; color: #f0cf82; }
+    td { padding: 9px 8px; border-bottom: 1px solid #ebe7dd; vertical-align: middle; }
+    tbody tr:nth-child(even) { background: #faf8f2; }
+    tbody tr:hover { background: #f3f0e5; }
+    .role-cell { display: flex; align-items: center; gap: 9px; min-width: 190px; }
+    .avatar { width: 44px; height: 44px; object-fit: cover; border-radius: 9px; border: 2px solid #d6ad55; background: #e8e8e8; }
+    .role-name { font-weight: 800; }
+    .role-id { color: var(--muted); font-size: 11px; }
+    .pill { display: inline-flex; align-items: center; border-radius: 999px; padding: 4px 8px; font-size: 11px; font-weight: 800; background: #e9edf6; color: var(--indigo); white-space: nowrap; }
+    .pill.wait { background: #f4ead0; color: #825f13; }
+    .pill.ok { background: #dceee5; color: #276247; }
+    .pill.bad { background: #f4dfe0; color: #923c3f; }
+    .pill.fire { background: #f6dfda; color: #a33c35; }
+    .pill.water { background: #dcebf6; color: #236994; }
+    .pill.wind { background: #dfefdf; color: #337044; }
+    .pill.light { background: #f8edc5; color: #896a19; }
+    .pill.dark { background: #e8dff2; color: #634584; }
+    .meter { display: inline-block; width: 64px; height: 7px; border-radius: 9px; overflow: hidden; background: #e3e5e9; vertical-align: middle; margin-right: 5px; }
+    .meter i { display: block; height: 100%; background: var(--blue); }
+    .meter.magic i { background: var(--purple); }
+    .meter.support i { background: var(--green); }
+    .score { color: #9b6814; font-weight: 900; white-space: nowrap; }
+    .dim { color: #a1a5b0; }
+    .team-layout { display: grid; grid-template-columns: minmax(290px, .85fr) minmax(0, 2.15fr); }
+    .choice-layout { display: grid; grid-template-columns: minmax(330px, .9fr) minmax(0, 2.1fr); }
+    .choice-controls { padding: 18px; border-right: 1px solid var(--line); }
+    .choice-results { padding: 18px; min-width: 0; }
+    .choice-rank { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 12px; background: white; }
+    .choice-rank.best { border: 2px solid var(--gold); box-shadow: 0 12px 28px rgba(194,139,44,.14); }
+    .choice-input { min-height: 92px; resize: vertical; line-height: 1.55; }
+    .choice-summary { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin-top: 10px; }
+    .choice-summary > span { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: var(--paper); }
+    .team-controls { padding: 18px; border-right: 1px solid var(--line); }
+    .team-controls h3, .team-results h3 { margin: 0 0 12px; }
+    .preset-list { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 17px; }
+    .preset { border: 1px solid #cfd6e4; background: #f4f7fc; color: var(--indigo); border-radius: 999px; padding: 6px 10px; font-size: 12px; font-weight: 750; }
+    .bonus-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+    .bonus-grid input { padding: 8px 5px; text-align: center; }
+    .team-results { padding: 18px; min-width: 0; }
+    .team-card { border: 1px solid var(--line); border-radius: 12px; padding: 14px; margin-top: 12px; background: white; }
+    .team-card.primary { border: 2px solid var(--gold); box-shadow: 0 12px 28px rgba(194,139,44,.14); }
+    .team-top { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
+    .team-score { font-family: Georgia, serif; font-size: 27px; color: var(--indigo); }
+    .members { display: grid; grid-template-columns: repeat(5, minmax(90px, 1fr)); gap: 8px; margin: 13px 0; }
+    .member { min-width: 0; border-radius: 10px; background: #f4f2eb; padding: 8px; text-align: center; }
+    .member img { width: 58px; height: 58px; object-fit: cover; border-radius: 10px; border: 2px solid #d2a956; }
+    .member strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
+    .reason-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 12px; color: var(--muted); font-size: 12px; }
+    .audit-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+    .audit-card { padding: 18px; }
+    .audit-card h3 { margin: 0 0 10px; }
+    .audit-card ul { margin: 0; padding-left: 19px; color: var(--muted); line-height: 1.75; }
+    .source-list { font-size: 12px; color: var(--muted); line-height: 1.7; word-break: break-all; }
+    dialog { border: 0; border-radius: 16px; padding: 0; width: min(920px, calc(100% - 24px)); max-height: 92vh; color: var(--ink); box-shadow: 0 30px 90px rgba(13,20,40,.4); }
+    dialog::backdrop { background: rgba(15,23,43,.68); backdrop-filter: blur(4px); }
+    .dialog-head { position: sticky; top: 0; z-index: 2; display: flex; justify-content: space-between; align-items: center; padding: 17px 20px; color: white; background: var(--indigo); }
+    .dialog-head h3 { margin: 0; }
+    .close { border: 0; color: white; background: transparent; font-size: 24px; }
+    .dialog-body { padding: 20px; background: var(--panel); }
+    .edit-identity { display: flex; gap: 12px; align-items: center; margin-bottom: 18px; }
+    .edit-identity img { width: 68px; height: 68px; border-radius: 12px; object-fit: cover; border: 2px solid var(--gold); }
+    .edit-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+    .edit-group { grid-column: 1 / -1; margin-top: 8px; padding-top: 14px; border-top: 1px solid var(--line); font-weight: 900; color: var(--indigo); }
+    .dialog-actions { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }
+    .empty { padding: 38px 18px; text-align: center; color: var(--muted); border: 1px dashed #c8c6bd; border-radius: 11px; }
+    footer { margin-top: 34px; color: var(--muted); font-size: 12px; text-align: center; }
+    @media (max-width: 980px) {
+      .stats { grid-template-columns: repeat(2, 1fr); }
+      .toolbar { grid-template-columns: 1fr 1fr; }
+      .team-layout { grid-template-columns: 1fr; }
+      .team-controls { border-right: 0; border-bottom: 1px solid var(--line); }
+      .choice-layout { grid-template-columns: 1fr; }
+      .choice-controls { border-right: 0; border-bottom: 1px solid var(--line); }
+      .choice-summary { grid-template-columns: 1fr; }
+      .audit-grid { grid-template-columns: 1fr; }
+      .edit-grid { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 620px) {
+      .hero-inner, main { width: min(100% - 18px, 1480px); }
+      .stats { grid-template-columns: 1fr 1fr; }
+      .toolbar { grid-template-columns: 1fr; }
+      .members { grid-template-columns: repeat(5, 104px); overflow-x: auto; }
+      .reason-grid { grid-template-columns: 1fr; }
+      .edit-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <header class="hero">
+    <div class="hero-inner">
+      <div class="eyebrow">DAWN REALM / DECISION AUDIT</div>
+      <h1>黎明界角色与主力队审计台</h1>
+      <p>查看所有角色的属性、职阶、物理/法术贡献、多维辅助与国服真实用户综合评分；日服榜单仅作为旁路参考，不进入最终评分。补齐或修正资料后，页面会使用当前选人配队算法枚举五人主力队并解释结果。</p>
+      <div class="hero-actions">
+        <a class="btn gold" href="#roles">审阅角色资料</a>
+        <a class="btn ghost" href="#choice-simulator">实时三选一</a>
+        <a class="btn ghost" href="#teams">生成主力队</a>
+        <button class="btn ghost" id="exportButton" type="button">导出校准JSON</button>
+        <button class="btn ghost" id="importButton" type="button">导入校准JSON</button>
+        <input id="importFile" type="file" accept="application/json,.json" hidden>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="stats" aria-label="资料覆盖概览">
+      <div class="stat"><strong id="roleCount">—</strong><span>角色目录</span></div>
+      <div class="stat"><strong id="iconCount">—</strong><span>本地图标</span></div>
+      <div class="stat"><strong id="scoreCount">—</strong><span>有真实用户评分</span></div>
+      <div class="stat"><strong id="completeCount">—</strong><span>决策资料完整</span></div>
+      <div class="stat"><strong id="rosterCount">—</strong><span>当前候选池</span></div>
+    </section>
+
+    <div class="notice">
+      <b>资料边界</b>
+      <span>属性、职阶来自现有黎明界强度表；最终强度分只采用浙江刘德华、巴托鲁、逆理之裁、gozen、neko 五列真实用户评分等权平均并换算为 0–100，もりりん（日服）只作参考。物理/法术与站位优先使用当前国服数据库；输出、物辅、法辅、通辅、破防等优先由“黎明界强化模板 + 面板 + 行动循环 + skill_action”战斗模型 V2 计算，并考虑条件档位、友军负面效果和1/2/3目标场景；缺数据角色才回退技能文本初判。</span>
+    </div>
+
+    <section class="section" id="roles">
+      <div class="section-head">
+        <div><h2>角色资料总表</h2><p>勾选角色加入候选池；点击“校准”可补齐算法需要的全部维度。</p></div>
+        <button class="btn danger" id="resetButton" type="button">清除本机校准</button>
+      </div>
+      <div class="panel">
+        <div class="toolbar">
+          <div class="field"><label for="searchInput">名称 / ID / 别名</label><input id="searchInput" type="search" placeholder="例如：怜、新年、1089"></div>
+          <div class="field"><label for="attributeFilter">属性</label><select id="attributeFilter"><option value="">全部属性</option></select></div>
+          <div class="field"><label for="classFilter">职阶</label><select id="classFilter"><option value="">全部职阶</option></select></div>
+          <div class="field"><label for="damageFilter">伤害体系</label><select id="damageFilter"><option value="">全部体系</option></select></div>
+          <div class="field"><label for="scoreFilter">用户综合评分</label><select id="scoreFilter"><option value="">全部评分</option><option value="90">90–100</option><option value="80">80–89.9</option><option value="70">70–79.9</option><option value="60">60–69.9</option><option value="50">50–59.9</option><option value="lt50">低于50</option><option value="unrated">未评分</option></select></div>
+        </div>
+        <div class="subbar">
+          <span id="visibleCount">—</span>
+          <label class="check"><input id="incompleteOnly" type="checkbox">只看待校准角色</label>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr>
+              <th>候选</th>
+              <th><button class="sort-head" type="button" data-sort="name">角色<span class="sort-mark"></span></button></th>
+              <th><button class="sort-head" type="button" data-sort="attribute">属性<span class="sort-mark"></span></button></th>
+              <th><button class="sort-head" type="button" data-sort="roleClass">职阶<span class="sort-mark"></span></button></th>
+              <th><button class="sort-head" type="button" data-sort="damageType">物/法<span class="sort-mark"></span></button></th>
+              <th><button class="sort-head" type="button" data-sort="physicalDamage">物理(1目标)<span class="sort-mark"></span></button></th>
+              <th><button class="sort-head" type="button" data-sort="magicDamage">法术(1目标)<span class="sort-mark"></span></button></th>
+              <th><button class="sort-head" type="button" data-sort="physicalSupport">物辅<span class="sort-mark"></span></button></th>
+              <th><button class="sort-head" type="button" data-sort="magicSupport">法辅<span class="sort-mark"></span></button></th>
+              <th><button class="sort-head" type="button" data-sort="universalSupport">通辅<span class="sort-mark"></span></button></th>
+              <th><button class="sort-head" type="button" data-sort="referenceScore">用户综合评分<span class="sort-mark"></span></button></th>
+              <th><button class="sort-head" type="button" data-sort="completeness">资料状态<span class="sort-mark"></span></button></th>
+              <th></th>
+            </tr></thead>
+            <tbody id="roleRows"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="choice-simulator">
+      <div class="section-head"><div><h2>实时角色选择模拟</h2><p>输入“当前已获得角色”和本次候选；系统会分别尝试把候选部署到一队、二队、三队，比较整体价值后再给出推荐落点与同属性配对。</p></div></div>
+      <div class="panel choice-layout">
+        <aside class="choice-controls">
+          <h3>当前局面</h3>
+          <div class="field"><label for="choiceOwned">已有角色</label><textarea class="choice-input" id="choiceOwned" placeholder="每行一个角色；支持名称、ID、别名。例如：\n贪吃佩可(夏日)\n雪菲(夏日)\n可可萝"></textarea></div>
+          <div class="field" style="margin-top:10px"><span class="label">开局快速填充</span><div class="preset-list" id="choicePresetList"></div></div>
+          <div class="field" style="margin-top:10px"><label for="choiceCandidates">本次候选</label><textarea class="choice-input" id="choiceCandidates" placeholder="通常填写3个候选，每行一个。合卡成员名/成员ID会自动合并到合卡主体。"></textarea></div>
+          <div class="field" style="margin-top:10px"><label for="choiceDefenseStacks">守备层数</label><input id="choiceDefenseStacks" type="number" min="0" max="99" value="1"></div>
+          <div class="field" style="margin-top:10px"><label for="choiceEnemyType">敌方伤害类型</label><select id="choiceEnemyType"><option value="UNKNOWN">未知</option><option value="PHYSICAL">物理</option><option value="MAGIC">法术</option><option value="MIXED">混合</option></select></div>
+          <div class="field" style="margin-top:10px"><label for="choiceTargetCount">主要目标数</label><select id="choiceTargetCount"><option value="1">1目标 / BOSS</option><option value="2">2目标</option><option value="3">3+目标</option></select></div>
+          <div class="field" style="margin-top:10px"><label for="choicePlayerWeight">玩家评分权重（%）</label><input id="choicePlayerWeight" type="number" min="0" max="100" step="5" value="70"><span class="source-list">系统适配自动使用剩余权重；默认 70 / 30。</span></div>
+          <div class="field" style="margin-top:10px"><label for="teamDisplayOrder">队伍显示顺序</label><select id="teamDisplayOrder"><option value="PCR" selected>PCR程序习惯：右→左（前排→后排）</option><option value="GAME">游戏视觉：左→右（后排→前排）</option></select></div>
+          <div class="field" style="margin-top:14px"><span class="label">同属性伤害倍率（当前算法配置，可改）</span><div class="bonus-grid">
+            <label class="field"><span class="label">1人</span><input id="choiceBonus1" value="0" readonly></label>
+            <label class="field"><span class="label">2人</span><input id="choiceBonus2" value="0.08" inputmode="decimal"></label>
+            <label class="field"><span class="label">3人</span><input id="choiceBonus3" value="0.16" inputmode="decimal"></label>
+            <label class="field"><span class="label">4人</span><input id="choiceBonus4" value="0.25" inputmode="decimal"></label>
+            <label class="field"><span class="label">5人</span><input id="choiceBonus5" value="0.75" inputmode="decimal"></label>
+          </div></div>
+          <label class="check" style="margin:16px 0"><input id="choiceLooseMode" type="checkbox" checked>允许资料不完整角色参与预览</label>
+          <p class="source-list" id="choiceResolveStatus">输入角色后实时计算。</p>
+        </aside>
+        <div class="choice-results">
+          <h3>候选排序与配对</h3>
+          <div id="choiceResults" class="empty">先填写已有角色与候选。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="event-simulator">
+      <div class="section-head"><div><h2>实时事件选择模拟</h2><p>直接读取国服数据库的黎明界事件与中文选项；角色奖励按当前已有阵容计算边际价值，遗物按4加速/4会心/4守备→冲15层规则估值，概率事件按期望值展开。</p></div></div>
+      <div class="panel choice-layout">
+        <aside class="choice-controls">
+          <h3>事件上下文</h3>
+          <div class="field"><label for="eventSelect">当前事件</label><select id="eventSelect"></select></div>
+          <div class="field" style="margin-top:10px"><label for="eventCoins">当前 α币</label><input id="eventCoins" type="number" min="0" step="100" value="0"></div>
+          <div class="field" style="margin-top:10px"><span class="label">当前遗物印记层数</span><div class="bonus-grid">
+            <label class="field"><span class="label">加速</span><input id="eventRelicAcceleration" type="number" min="0" max="99" value="0"></label>
+            <label class="field"><span class="label">会心</span><input id="eventRelicCritical" type="number" min="0" max="99" value="0"></label>
+            <label class="field"><span class="label">守备</span><input id="eventRelicDefense" type="number" min="0" max="99" value="1"></label>
+            <label class="field"><span class="label">强化</span><input id="eventRelicEnhancement" type="number" min="0" max="99" value="0"></label>
+            <label class="field"><span class="label">弱体</span><input id="eventRelicDebuff" type="number" min="0" max="99" value="0"></label>
+          </div></div>
+          <div class="field" style="margin-top:10px"><label for="eventNormalWinRate">NORMAL预计胜率</label><input id="eventNormalWinRate" type="number" min="0" max="100" step="1" value="95"></div>
+          <div class="field" style="margin-top:10px"><label for="eventExtremeWinRate">EXTREME预计胜率</label><input id="eventExtremeWinRate" type="number" min="0" max="100" step="1" value="70"></div>
+          <p class="source-list">已有角色、守备层数、敌方类型、目标数和属性倍率直接复用上面的“实时角色选择模拟”。事件中的数据库条件会单独显示；未知条件不会伪装成已确认规则。</p>
+        </aside>
+        <div class="choice-results">
+          <h3>事件选项排序</h3>
+          <div id="eventTitle" class="source-list"></div>
+          <div id="eventResults" class="empty">选择事件后计算。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="teams">
+      <div class="section-head"><div><h2>一队优先 / 失败后备用编成</h2><p>第一队锁定当前候选池最强五人并作为默认出战队；第二、第三队仅在首次失败后启用，不再为了备用队完整度牺牲第一队。</p></div></div>
+      <div class="panel team-layout">
+        <aside class="team-controls">
+          <h3>候选池与上下文</h3>
+          <div class="field"><span class="label">开局配置候选预设</span><div class="preset-list" id="presetList"></div></div>
+          <div class="field"><label for="defenseStacks">守备层数</label><input id="defenseStacks" type="number" min="0" max="99" value="4"></div>
+          <div class="field" style="margin-top:10px"><label for="enemyType">敌方伤害类型</label><select id="enemyType"><option value="UNKNOWN">未知</option><option value="PHYSICAL">物理</option><option value="MAGIC">法术</option><option value="MIXED">混合</option></select></div>
+          <div class="field" style="margin-top:10px"><label for="targetCount">敌方目标数</label><select id="targetCount"><option value="1">1目标 / BOSS</option><option value="2">2目标</option><option value="3">3+目标</option></select></div>
+          <div class="field" style="margin-top:14px"><span class="label">同属性伤害倍率（小数）</span><div class="bonus-grid">
+            <label class="field"><span class="label">1人</span><input id="bonus1" value="0" readonly></label>
+            <label class="field"><span class="label">2人</span><input id="bonus2" value="0.08" inputmode="decimal"></label>
+            <label class="field"><span class="label">3人</span><input id="bonus3" value="0.16" inputmode="decimal"></label>
+            <label class="field"><span class="label">4人</span><input id="bonus4" value="0.25" inputmode="decimal"></label>
+            <label class="field"><span class="label">5人</span><input id="bonus5" value="0.75" inputmode="decimal"></label>
+          </div></div>
+          <label class="check" style="margin:16px 0"><input id="looseMode" type="checkbox" checked>宽松预览：缺失数值按0处理</label>
+          <button class="btn gold" id="generateTeams" type="button" style="width:100%">重新生成三队方案</button>
+          <p class="source-list" id="plannerStatus"></p>
+        </aside>
+        <div class="team-results">
+          <h3>结果与解释</h3>
+          <div id="teamResults" class="empty">选择至少五名角色后生成队伍；15人以上时会生成三支互不重复的队伍。</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="audit">
+      <div class="section-head"><div><h2>我建议补充的资料</h2><p>这些字段会显著改变选人和配队，不能只靠“物理/法术/辅助”三个标签。</p></div></div>
+      <div class="audit-grid">
+        <article class="panel audit-card"><h3>生存与一号位</h3><ul><li>站位数值与可靠一号位</li><li>自回复、吸血和承伤能力</li><li>治疗、缓回、护盾与加防</li><li>减物攻和减魔攻分开记录</li></ul></article>
+        <article class="panel audit-card"><h3>输出与体系</h3><ul><li>物理/法术预计输出贡献</li><li>物防降低与魔防降低</li><li>AOE与单体能力</li><li>技能目标覆盖、启动速度和持续率</li></ul></article>
+        <article class="panel audit-card"><h3>黎明界专项</h3><ul><li>BOSS机制对策价值</li><li>4守备后纯坦/纯治疗降权</li><li>二队收尾潜力</li><li>属性2/3/4人档实际倍率</li></ul></article>
+      </div>
+      <div class="panel audit-card" style="margin-top:12px"><h3>数据来源</h3><div id="sourceList" class="source-list"></div></div>
+    </section>
+    <footer>校准内容只保存在当前浏览器；导出JSON后可交回用于生成正式决策资料。</footer>
+  </main>
+
+  <dialog id="editorDialog">
+    <form id="editorForm" method="dialog">
+      <div class="dialog-head"><h3>校准角色资料</h3><button class="close" value="cancel" aria-label="关闭">×</button></div>
+      <div class="dialog-body">
+        <div class="edit-identity"><img id="editorAvatar" alt=""><div><strong id="editorName"></strong><div class="role-id" id="editorId"></div><div id="editorScore"></div></div></div>
+        <div class="edit-grid" id="editorFields"></div>
+        <div class="dialog-actions"><button class="btn light" value="cancel">取消</button><button class="btn gold" id="saveProfile" value="default">保存校准</button></div>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="data.js"></script>
+  <script>
+    (() => {
+      "use strict";
+      const source = window.LABYRINTH_REVIEW_DATA;
+      if (!source) { document.body.innerHTML = "<p>data.js 未生成。</p>"; return; }
+      const STORAGE_KEY = "labyrinth-role-review-v1";
+      const ATTRIBUTES = ["FIRE", "WATER", "WIND", "LIGHT", "DARK"];
+      const ATTRIBUTE_LABEL = { FIRE: "火", WATER: "水", WIND: "风", LIGHT: "光", DARK: "暗" };
+      const DAMAGE_TYPES = ["PHYSICAL", "MAGIC", "MIXED", "NONE"];
+      const DAMAGE_LABEL = { PHYSICAL: "物理", MAGIC: "法术", MIXED: "混合", NONE: "无输出" };
+      const combinedRoleMerges = source.combinedRoleMerges || {};
+      const canonicalRoleId = (id) => combinedRoleMerges[String(id)] || String(id);
+      const NUMERIC_FIELDS = [
+        "position", "physicalDamage", "magicDamage", "physicalSupport", "magicSupport", "universalSupport",
+        "survivalSupport", "controlSupport", "reliableVanguard", "selfSustain", "healing", "regeneration",
+        "physicalAttackReduction", "magicAttackReduction", "physicalDefenseDown", "magicDefenseDown", "aoeDamage",
+        "singleTargetDamage", "bossMechanismValue", "pureTank", "pureHealer",
+      ];
+      const REQUIRED_FIELDS = ["referenceScore", "attribute", "roleClass", "damageType", "position", ...NUMERIC_FIELDS];
+      const FIELD_LABELS = {
+        attribute: "属性", roleClass: "职阶", damageType: "自身伤害类型", position: "站位（越小越靠前）",
+        physicalDamage: "物理输出潜力（1目标）", magicDamage: "法术输出潜力（1目标）", physicalSupport: "物理输出辅助",
+        magicSupport: "法术输出辅助", universalSupport: "通用输出辅助", survivalSupport: "通用生存辅助",
+        controlSupport: "控制", reliableVanguard: "可靠一号位", selfSustain: "自我续航", healing: "治疗",
+        regeneration: "缓回", physicalAttackReduction: "减物攻", magicAttackReduction: "减魔攻",
+        physicalDefenseDown: "物防降低", magicDefenseDown: "魔防降低", aoeDamage: "AOE",
+        singleTargetDamage: "单体输出", bossMechanismValue: "BOSS机制价值", pureTank: "纯坦程度",
+        pureHealer: "纯治疗程度", reviewNote: "校准备注",
+      };
+      const loaded = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+      const overrides = loaded.overrides || {};
+      let liveRun = loaded.liveRun || {};
+      let profiles = source.characters.map((role) => ({ ...role, ...(overrides[role.id] || {}) }));
+      let selected = new Set((loaded.selected || source.openingGuilds.flatMap((guild) => guild.roleIds)).map(canonicalRoleId));
+      let editingId = null;
+      let sortKey = "referenceScore";
+      let sortDirection = "desc";
+
+      const $ = (id) => document.getElementById(id);
+      const esc = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
+      const valueOrZero = (value) => Number.isFinite(Number(value)) ? Number(value) : 0;
+      const isMissing = (value) => value === null || value === undefined || value === "";
+      const missingFields = (role) => REQUIRED_FIELDS.filter((field) => isMissing(role[field]));
+      const roleById = () => new Map(profiles.map((role) => [role.id, role]));
+      const normalizeLookup = (value) => String(value ?? "").trim().toLowerCase()
+        .replaceAll("＆", "&")
+        .replaceAll("（", "(").replaceAll("）", ")")
+        .replaceAll("＝", "=")
+        .replaceAll("·", "=").replaceAll("・", "=").replaceAll("‧", "=")
+        .replace(/\s+/g, "");
+      const attributePill = (attribute) => attribute
+        ? `<span class="pill ${attribute.toLowerCase()}">${ATTRIBUTE_LABEL[attribute] || esc(attribute)}</span>`
+        : '<span class="pill wait">待校准</span>';
+      const metric = (value, kind = "") => isMissing(value)
+        ? '<span class="dim">—</span>'
+        : `<span class="meter ${kind}"><i style="width:${Math.max(0, Math.min(100, Number(value)))}%"></i></span>${Number(value).toFixed(0)}`;
+      const scoreHtml = (role) => {
+        const userScore = isMissing(role.referenceScore)
+          ? '<span class="pill bad">未评分</span>'
+          : `<span class="score">${Number(role.referenceScore).toFixed(1)} / 100</span> <span class="pill" title="五位国服真实用户评分等权平均">用户均分 ${Number(role.userRatingAverage).toFixed(2)} / 5 · ${role.userRatingCount}人</span>`;
+        const japan = isMissing(role.japanReferenceRating)
+          ? ""
+          : ` <span class="pill wait" title="日服もりりん，仅作参考，不进入最终综合评分">日服参考 ${Number(role.japanReferenceRating).toFixed(0)}★</span>`;
+        return userScore + japan;
+      };
+      const confidenceHtml = (role) => {
+        const confidence = role.dataConfidence || {};
+        const facts = [confidence.attribute, confidence.roleClass, confidence.damageType, confidence.position]
+          .filter((value) => ["excel-fact", "database-fact", "legacy-database-fact"].includes(value)).length;
+        if (String(confidence.support || "").startsWith("database-combat-v")) {
+          const legacy = [confidence.damageType, confidence.position].includes("legacy-database-fact");
+          return `<span class="pill ok" title="输出/辅助来自黎明界强化模板、面板、行动循环与skill_action计算">战斗模型 V2</span>${legacy ? ' <span class="pill wait" title="部分基础事实来自可读旧国服库回退">旧库回退</span>' : ""}`;
+        }
+        const derived = confidence.support === "skill-text-fallback" || confidence.damageType === "skill-text-derived";
+        if (missingFields(role).length === 0 && !derived) return '<span class="pill ok">事实完整</span>';
+        if (facts >= 2 && derived) return '<span class="pill wait" title="基础字段有数据库事实；输出/辅助无法进入战斗模型，回退技能文本初判">事实 + 文本回退</span>';
+        if (derived) return '<span class="pill wait">技能文本回退</span>';
+        return '<span class="pill bad">资料不足</span>';
+      };
+
+      function persist() {
+        liveRun = {
+          ...liveRun,
+          ownedText: $("choiceOwned")?.value ?? liveRun.ownedText ?? "",
+          defenseStacks: $("choiceDefenseStacks")?.value ?? liveRun.defenseStacks ?? "1",
+          enemyType: $("choiceEnemyType")?.value ?? liveRun.enemyType ?? "UNKNOWN",
+          targetCount: $("choiceTargetCount")?.value ?? liveRun.targetCount ?? "1",
+          playerWeight: $("choicePlayerWeight")?.value ?? liveRun.playerWeight ?? "70",
+          displayOrder: $("teamDisplayOrder")?.value ?? liveRun.displayOrder ?? "PCR",
+        };
+        localStorage.setItem(STORAGE_KEY, JSON.stringify({ overrides, selected: [...selected], liveRun }));
+      }
+
+      function refreshStats() {
+        $("roleCount").textContent = source.coverage.characters;
+        $("iconCount").textContent = source.coverage.icons;
+        $("scoreCount").textContent = source.coverage.matchedScores;
+        $("completeCount").textContent = profiles.filter((role) => missingFields(role).length === 0).length;
+        $("rosterCount").textContent = selected.size;
+      }
+
+      function refreshFilters() {
+        const currentClass = $("classFilter").value;
+        const classes = [...new Set(profiles.map((role) => role.roleClass).filter(Boolean))].sort((a, b) => a.localeCompare(b, "zh-CN"));
+        $("classFilter").innerHTML = '<option value="">全部职阶</option>' + classes.map((value) => `<option>${esc(value)}</option>`).join("");
+        $("classFilter").value = classes.includes(currentClass) ? currentClass : "";
+      }
+
+      function scoreMatchesFilter(role, filter) {
+        if (!filter) return true;
+        if (filter === "unrated") return isMissing(role.referenceScore);
+        if (isMissing(role.referenceScore)) return false;
+        const value = Number(role.referenceScore);
+        if (filter === "lt50") return value < 50;
+        const floor = Number(filter);
+        return value >= floor && (floor === 90 ? value <= 100 : value < floor + 10);
+      }
+
+      function sortValue(role, key) {
+        if (key === "attribute") return ATTRIBUTE_LABEL[role.attribute] || role.attribute || null;
+        if (key === "damageType") return DAMAGE_LABEL[role.damageType] || role.damageType || null;
+        if (key === "completeness") return missingFields(role).length;
+        return role[key];
+      }
+
+      function sortRoles(roles) {
+        const direction = sortDirection === "asc" ? 1 : -1;
+        return roles.slice().sort((left, right) => {
+          const a = sortValue(left, sortKey);
+          const b = sortValue(right, sortKey);
+          const aMissing = isMissing(a);
+          const bMissing = isMissing(b);
+          if (aMissing !== bMissing) return aMissing ? 1 : -1;
+          if (aMissing && bMissing) return left.name.localeCompare(right.name, "zh-CN");
+          if (typeof a === "number" || typeof b === "number") {
+            const delta = Number(a) - Number(b);
+            return delta === 0 ? left.name.localeCompare(right.name, "zh-CN") : delta * direction;
+          }
+          const delta = String(a).localeCompare(String(b), "zh-CN", { numeric: true });
+          return delta === 0 ? left.name.localeCompare(right.name, "zh-CN") : delta * direction;
+        });
+      }
+
+      function displayOrderLabel() {
+        return ($("teamDisplayOrder")?.value || "PCR") === "GAME"
+          ? "游戏画面左→右：后排→前排"
+          : "PCR程序右→左读法：前排→后排";
+      }
+
+      function refreshSortHeaders() {
+        document.querySelectorAll(".sort-head").forEach((button) => {
+          const active = button.dataset.sort === sortKey;
+          const mark = button.querySelector(".sort-mark");
+          if (mark) mark.textContent = active ? (sortDirection === "asc" ? "▲" : "▼") : "↕";
+          button.closest("th")?.setAttribute("aria-sort", active ? (sortDirection === "asc" ? "ascending" : "descending") : "none");
+        });
+      }
+
+      function renderRows() {
+        const query = $("searchInput").value.trim().toLowerCase();
+        const attribute = $("attributeFilter").value;
+        const roleClass = $("classFilter").value;
+        const damage = $("damageFilter").value;
+        const score = $("scoreFilter").value;
+        const incompleteOnly = $("incompleteOnly").checked;
+        const visible = sortRoles(profiles.filter((role) => {
+          const haystack = [role.id, role.name, role.officialName, ...(role.aliases || [])].join(" ").toLowerCase();
+          const attributeMatches = !attribute || (attribute === "__MISSING__" ? !role.attribute : role.attribute === attribute);
+          return (!query || haystack.includes(query)) && attributeMatches &&
+            (!roleClass || role.roleClass === roleClass) && (!damage || role.damageType === damage) &&
+            scoreMatchesFilter(role, score) && (!incompleteOnly || missingFields(role).length > 0);
+        }));
+        $("visibleCount").textContent = `显示 ${visible.length} / ${profiles.length}；当前候选池 ${selected.size} 人`;
+        $("roleRows").innerHTML = visible.map((role) => {
+          const missing = missingFields(role);
+          return `<tr>
+            <td><input class="roster-toggle" type="checkbox" data-id="${esc(role.id)}" aria-label="将${esc(role.name)}加入候选池" ${selected.has(role.id) ? "checked" : ""}></td>
+            <td><div class="role-cell">${role.icon ? `<img class="avatar" src="${esc(role.icon)}" alt="">` : '<span class="avatar"></span>'}<div><div class="role-name">${esc(role.name)}</div><div class="role-id">ID ${esc(role.id)}</div></div></div></td>
+            <td>${attributePill(role.attribute)}</td>
+            <td>${role.roleClass ? `<span class="pill">${esc(role.roleClass)}</span>` : '<span class="dim">—</span>'}</td>
+            <td>${role.damageType ? `<span class="pill">${DAMAGE_LABEL[role.damageType] || esc(role.damageType)}</span>` : '<span class="dim">—</span>'}</td>
+            <td>${metric(role.physicalDamage)}</td><td>${metric(role.magicDamage, "magic")}</td>
+            <td>${metric(role.physicalSupport, "support")}</td><td>${metric(role.magicSupport, "support")}</td><td>${metric(role.universalSupport, "support")}</td>
+            <td>${scoreHtml(role)}</td>
+            <td>${confidenceHtml(role)} ${missing.length ? `<span class="pill wait">缺 ${missing.length} 项</span>` : '<span class="pill ok">可计算</span>'}</td>
+            <td><button class="btn light edit-role" type="button" data-id="${esc(role.id)}">校准</button></td>
+          </tr>`;
+        }).join("");
+        document.querySelectorAll(".roster-toggle").forEach((input) => input.addEventListener("change", (event) => {
+          const id = event.currentTarget.dataset.id;
+          event.currentTarget.checked ? selected.add(id) : selected.delete(id);
+          persist(); refreshStats(); $("visibleCount").textContent = `当前候选池 ${selected.size} 人`;
+        }));
+        document.querySelectorAll(".edit-role").forEach((button) => button.addEventListener("click", () => openEditor(button.dataset.id)));
+        refreshSortHeaders();
+      }
+
+      function editorField(field, role) {
+        if (field === "attribute") return `<div class="field"><label for="edit-${field}">${FIELD_LABELS[field]}</label><select id="edit-${field}"><option value="">待校准</option>${ATTRIBUTES.map((value) => `<option value="${value}" ${role[field] === value ? "selected" : ""}>${ATTRIBUTE_LABEL[value]}</option>`).join("")}</select></div>`;
+        if (field === "damageType") return `<div class="field"><label for="edit-${field}">${FIELD_LABELS[field]}</label><select id="edit-${field}"><option value="">待校准</option>${DAMAGE_TYPES.map((value) => `<option value="${value}" ${role[field] === value ? "selected" : ""}>${DAMAGE_LABEL[value]}</option>`).join("")}</select></div>`;
+        if (field === "roleClass") return `<div class="field"><label for="edit-${field}">${FIELD_LABELS[field]}</label><input id="edit-${field}" value="${esc(role[field] || "")}" placeholder="按游戏正式职阶填写"></div>`;
+        if (field === "reviewNote") return `<div class="field" style="grid-column:1/-1"><label for="edit-${field}">${FIELD_LABELS[field]}</label><textarea id="edit-${field}">${esc(role[field] || "")}</textarea></div>`;
+        const max = field === "position" ? 2000 : 100;
+        return `<div class="field"><label for="edit-${field}">${FIELD_LABELS[field]}</label><input id="edit-${field}" type="number" min="0" max="${max}" step="1" value="${isMissing(role[field]) ? "" : esc(role[field])}" placeholder="待校准"></div>`;
+      }
+
+      function combatModelHtml(role) {
+        const model = role.combatModel;
+        if (!model || !String(model.modelStatus || "").startsWith("database-v")) {
+          return '<div class="edit-group">数据库战斗模型</div><div class="field" style="grid-column:1/-1"><span class="pill wait">当前角色无法完整建模，页面使用技能文本回退值</span></div>';
+        }
+        const build = model.build || {};
+        const panel = model.panel || {};
+        const rotation = model.rotation || {};
+        const impact = model.supportImpact || {};
+        const skillNames = Object.entries(model.skills || {}).map(([key, value]) => `${key}=${value}`).join(" / ");
+        const sequence = (rotation.actions || []).join(" → ");
+        const signedPercent = (value) => `${valueOrZero(value) >= 0 ? "+" : ""}${(valueOrZero(value) * 100).toFixed(1)}%`;
+        return [
+          '<div class="edit-group">数据库战斗模型 V2（只读）</div>',
+          `<div class="field"><span class="label">黎明界配置</span><div class="source-list">Lv${esc(build.level)} / ${esc(build.rarity)}★ / Rank ${esc(build.rank)} / 专武1 Lv${esc(build.uniqueLevel1)}</div></div>`,
+          `<div class="field"><span class="label">攻击面板</span><div class="source-list">物攻 ${esc(panel.atk ?? "—")} / 魔攻 ${esc(panel.magic_str ?? "—")} / 物暴 ${esc(panel.physical_critical ?? "—")} / 法暴 ${esc(panel.magic_critical ?? "—")}</div></div>`,
+          `<div class="field"><span class="label">生存面板</span><div class="source-list">HP ${esc(panel.hp ?? "—")} / 物防 ${esc(panel.def ?? "—")} / 魔防 ${esc(panel.magic_def ?? "—")}</div></div>`,
+          `<div class="field"><span class="label">90秒循环</span><div class="source-list">开场 ${Math.max(0,(rotation.loopStart || 1)-1)} 步 / 循环 ${(rotation.loop || []).length} 步 / 循环约 ${Number(rotation.cycleDuration || 0).toFixed(2)}s</div></div>`,
+          `<div class="field" style="grid-column:1/-1"><span class="label">动作序列</span><div class="source-list">${esc(sequence || "—")}</div></div>`,
+          `<div class="field" style="grid-column:1/-1"><span class="label">实际辅助净增益（组队器使用）</span><div class="source-list">标准物理队 ${signedPercent(impact.physicalTeamUplift)} / 标准法术队 ${signedPercent(impact.magicTeamUplift)} / 其中通用 ${signedPercent(impact.universalUplift)}</div></div>`,
+          `<div class="field" style="grid-column:1/-1"><span class="label">目标数输出</span><div class="source-list">物理 1/2/3目标：${valueOrZero(model.scores?.physicalDamage1Target).toFixed(1)} / ${valueOrZero(model.scores?.physicalDamage2Target).toFixed(1)} / ${valueOrZero(model.scores?.physicalDamage3Target).toFixed(1)}；法术：${valueOrZero(model.scores?.magicDamage1Target).toFixed(1)} / ${valueOrZero(model.scores?.magicDamage2Target).toFixed(1)} / ${valueOrZero(model.scores?.magicDamage3Target).toFixed(1)}</div></div>`,
+          `<div class="field" style="grid-column:1/-1"><span class="label">技能映射</span><div class="source-list">${esc(skillNames || "—")}</div></div>`,
+        ].join("");
+      }
+
+      function openEditor(id) {
+        const role = roleById().get(id); if (!role) return;
+        editingId = id;
+        $("editorAvatar").src = role.icon || "";
+        $("editorName").textContent = role.name;
+        $("editorId").textContent = `角色 ID ${role.id}`;
+        $("editorScore").innerHTML = scoreHtml(role);
+        $("editorFields").innerHTML = [
+          combatModelHtml(role),
+          '<div class="edit-group">基础分类</div>', ...["attribute", "roleClass", "damageType", "position"].map((field) => editorField(field, role)),
+          '<div class="edit-group">输出与多维辅助（0–100）</div>', ...["physicalDamage", "magicDamage", "physicalSupport", "magicSupport", "universalSupport", "survivalSupport", "controlSupport"].map((field) => editorField(field, role)),
+          '<div class="edit-group">队伍功能（0–100）</div>', ...["reliableVanguard", "selfSustain", "healing", "regeneration", "physicalAttackReduction", "magicAttackReduction", "physicalDefenseDown", "magicDefenseDown", "aoeDamage", "singleTargetDamage", "bossMechanismValue", "pureTank", "pureHealer"].map((field) => editorField(field, role)),
+          '<div class="edit-group">复核说明</div>', editorField("reviewNote", role),
+        ].join("");
+        $("editorDialog").showModal();
+      }
+
+      function saveEditor(event) {
+        event.preventDefault();
+        const original = roleById().get(editingId); if (!original) return;
+        const next = { ...original };
+        for (const field of ["attribute", "roleClass", "damageType", "reviewNote"]) next[field] = $(`edit-${field}`).value.trim() || null;
+        {
+          const raw = $("edit-position").value;
+          next.position = raw === "" ? null : Math.max(0, Number(raw));
+        }
+        for (const field of NUMERIC_FIELDS) {
+          const raw = $(`edit-${field}`).value;
+          next[field] = raw === "" ? null : Math.max(0, Number(raw));
+        }
+        overrides[editingId] = Object.fromEntries([...REQUIRED_FIELDS, "reviewNote"].map((field) => [field, next[field]]));
+        profiles = profiles.map((role) => role.id === editingId ? next : role);
+        persist(); $("editorDialog").close(); refreshFilters(); renderRows(); refreshStats();
+      }
+
+      function scenarioDamage(role, system, targetCount = 1) {
+        const count = Number(targetCount) >= 3 ? 3 : Number(targetCount) === 2 ? 2 : 1;
+        const prefix = system === "PHYSICAL" ? "physicalDamage" : "magicDamage";
+        const scenario = role[`${prefix}${count}Target`];
+        return isMissing(scenario) ? valueOrZero(role[prefix]) : valueOrZero(scenario);
+      }
+
+      // Safety fallback only.  The generator now emits Summer Sheffy's externally verified
+      // search distance (143) directly and marks it as external-verified rather than a DB fact.
+      const POSITION_CALIBRATIONS = { "1351": 143 };
+
+      function effectivePosition(role) {
+        const raw = Number(role.position);
+        if (!isMissing(role.position) && Number.isFinite(raw)) return raw;
+        const calibrated = Number(POSITION_CALIBRATIONS[String(role.id)]);
+        return Number.isFinite(calibrated) ? calibrated : 9999;
+      }
+
+      function displayOrderedTeam(team) {
+        const mode = $("teamDisplayOrder")?.value || "PCR";
+        const direction = mode === "GAME" ? -1 : 1;
+        return team.slice().sort((a, b) => {
+          const pa = effectivePosition(a);
+          const pb = effectivePosition(b);
+          return (pa - pb) * direction;
+        });
+      }
+
+      function individualPriority(role, targetCount = 1) {
+        const scenarioFunction = Number(targetCount) === 1
+          ? valueOrZero(role.singleTargetDamage)
+          : Math.max(valueOrZero(role.aoeDamage), Number(targetCount) >= 3 ? valueOrZero(role.threeTargetDamage) : valueOrZero(role.twoTargetDamage));
+        return valueOrZero(role.referenceScore) + scenarioDamage(role, "PHYSICAL", targetCount) + scenarioDamage(role, "MAGIC", targetCount) +
+          valueOrZero(role.reliableVanguard) * .5 + valueOrZero(role.physicalDefenseDown) * .3 +
+          valueOrZero(role.magicDefenseDown) * .3 + scenarioFunction * .2;
+      }
+
+      function roleTeamUplift(role, system) {
+        const model = role.combatModel;
+        if (String(model?.modelStatus || "").startsWith("database-v") && model.supportImpact) {
+          return Math.max(-.95, Math.min(.8, valueOrZero(
+            system === "PHYSICAL" ? model.supportImpact.physicalTeamUplift : model.supportImpact.magicTeamUplift
+          )));
+        }
+        // Explicit fallback for roles that cannot be modeled yet.  This keeps legacy preview
+        // behavior without pretending the normalized display score is a real percentage.
+        const specific = system === "PHYSICAL" ? valueOrZero(role.physicalSupport) : valueOrZero(role.magicSupport);
+        return Math.max(0, Math.min(.5, (specific + valueOrZero(role.universalSupport)) / 100 * .22));
+      }
+
+      function combinedTeamUplift(team, system) {
+        return Math.max(-.95, Math.min(2.0, team.reduce((factor, role) => factor * (1 + roleTeamUplift(role, system)), 1) - 1));
+      }
+
+      function effectiveSustainScore(role) {
+        return Math.max(
+          valueOrZero(role.healing),
+          valueOrZero(role.regeneration),
+          valueOrZero(role.survivalSupport) * .85,
+        );
+      }
+
+      function fallbackTankScore(role) {
+        if (role.roleClass !== "掩护者") return 0;
+        // Newer roles can have complete class/self-sustain data but no readable position or
+        // reliable-vanguard calibration in the legacy combat DB.  Do not treat those protectors
+        // as zero survivability while the data gap is being filled.
+        return Math.min(100,
+          45 + valueOrZero(role.selfSustain) * .25 + valueOrZero(role.survivalSupport) * .20
+        );
+      }
+
+      function evaluateTeam(team, config, defenseStacks, enemyType, targetCount = 1) {
+        const attributeGroups = {};
+        for (const role of team) if (role.attribute) (attributeGroups[role.attribute] ||= []).push(role);
+        const active = Object.entries(attributeGroups).map(([attribute, roles]) => {
+          const bonus = config.attributeBonus[roles.length] || 0;
+          const groupDamage = roles.reduce((sum, role) => sum + scenarioDamage(role, "PHYSICAL", targetCount) + scenarioDamage(role, "MAGIC", targetCount), 0);
+          return { attribute, count: roles.length, bonus, incremental: groupDamage * bonus };
+        }).filter((item) => item.bonus > 0).sort((a, b) => b.incremental - a.incremental).slice(0, 2);
+        const bonusByAttribute = Object.fromEntries(active.map((item) => [item.attribute, item.bonus]));
+        const physicalBase = team.reduce((sum, role) => sum + scenarioDamage(role, "PHYSICAL", targetCount) * (1 + (bonusByAttribute[role.attribute] || 0)), 0);
+        const magicBase = team.reduce((sum, role) => sum + scenarioDamage(role, "MAGIC", targetCount) * (1 + (bonusByAttribute[role.attribute] || 0)), 0);
+        const physicalUplift = combinedTeamUplift(team, "PHYSICAL");
+        const magicUplift = combinedTeamUplift(team, "MAGIC");
+        const physicalDownScore = Math.max(...team.map((role) => valueOrZero(role.physicalDefenseDown)));
+        const magicDownScore = Math.max(...team.map((role) => valueOrZero(role.magicDefenseDown)));
+        // Defense-down display scores are percentile-normalized, not percentages.  Until a
+        // concrete enemy-defense profile is supplied they affect function quality, not the
+        // raw damage multiplier.  This avoids converting a 0-100 display score into fake DPS.
+        const physicalDamage = physicalBase * (1 + physicalUplift);
+        const magicDamage = magicBase * (1 + magicUplift);
+        const totalDamage = physicalDamage + magicDamage;
+        const physicalRatio = totalDamage ? physicalDamage / totalDamage : 0;
+        const damageType = !totalDamage ? "NONE" : physicalRatio >= .7 ? "PHYSICAL" : 1 - physicalRatio >= .7 ? "MAGIC" : "MIXED";
+        const vanguard = team.slice().sort((a, b) => effectivePosition(a) - effectivePosition(b))[0];
+        const vanguardBaseScore = valueOrZero(vanguard.reliableVanguard) * .75 + valueOrZero(vanguard.selfSustain) * .25;
+        // A protector elsewhere in the party does not automatically make the actual
+        // first-position character safe.  Fallback tank credit is allowed only when
+        // the actual vanguard itself is that protector.
+        const vanguardFallbackScore = fallbackTankScore(vanguard);
+        const vanguardScore = Math.max(vanguardBaseScore, vanguardFallbackScore);
+        const frontlineScore = vanguardScore;
+        const sustainAnchor = team
+          .map((role) => ({ role, score: effectiveSustainScore(role) }))
+          .sort((a, b) => b.score - a.score)[0];
+        const sustainScore = sustainAnchor?.score || 0;
+        const hasReliableFrontline = frontlineScore >= 55;
+        const hasEffectiveSustain = sustainScore >= 35;
+        const reductions = enemyType === "PHYSICAL" ? Math.max(...team.map((r) => valueOrZero(r.physicalAttackReduction))) :
+          enemyType === "MAGIC" ? Math.max(...team.map((r) => valueOrZero(r.magicAttackReduction))) :
+          enemyType === "MIXED" ? (Math.max(...team.map((r) => valueOrZero(r.physicalAttackReduction))) + Math.max(...team.map((r) => valueOrZero(r.magicAttackReduction)))) / 2 :
+          Math.max(...team.map((r) => Math.max(valueOrZero(r.physicalAttackReduction), valueOrZero(r.magicAttackReduction))));
+        const survivalSupport = (team.reduce((sum, r) => sum + valueOrZero(r.survivalSupport), 0) / team.length +
+          Math.max(...team.map((r) => Math.max(valueOrZero(r.healing), valueOrZero(r.regeneration)))) + reductions) / 3;
+        const survival = frontlineScore * .7 + survivalSupport * .3;
+        const aoe = Math.max(...team.map((r) => valueOrZero(r.aoeDamage)));
+        const single = Math.max(...team.map((r) => valueOrZero(r.singleTargetDamage)));
+        const boss = Math.max(...team.map((r) => valueOrZero(r.bossMechanismValue)));
+        const matchingDown = damageType === "PHYSICAL" ? physicalDownScore : damageType === "MAGIC" ? magicDownScore : damageType === "MIXED" ? (physicalDownScore + magicDownScore) / 2 : 0;
+        const missing = [];
+        if (!hasReliableFrontline) missing.push("可靠一号位/掩护者");
+        if (defenseStacks < 4 && !hasEffectiveSustain) missing.push("有效治疗/续航");
+        const multi = Number(targetCount) >= 3 ? Math.max(...team.map((r) => valueOrZero(r.threeTargetDamage))) : Math.max(...team.map((r) => valueOrZero(r.twoTargetDamage)));
+        if (Number(targetCount) >= 2 && multi < 35) missing.push(`${targetCount}目标输出`);
+        if (Number(targetCount) === 1 && single < 35) missing.push("单体输出");
+        if (matchingDown < 25) missing.push(damageType === "PHYSICAL" ? "物防降低" : damageType === "MAGIC" ? "魔防降低" : "双体系防御降低");
+        const ratedRoles = team.filter((role) => !isMissing(role.referenceScore));
+        const playerScore = ratedRoles.length
+          ? ratedRoles.reduce((sum, role) => sum + Number(role.referenceScore), 0) / ratedRoles.length
+          : null;
+        const playerCoverage = ratedRoles.length / team.length;
+        const damageScore = totalDamage / team.length;
+        const scenarioFunction = Number(targetCount) === 1 ? single : Math.max(aoe, multi);
+        const functionScore = (scenarioFunction + matchingDown + boss) / 3;
+        const purePenalty = defenseStacks >= 4 ? team.reduce((sum, role) => {
+          const pure = valueOrZero(role.pureTank) >= 60 || valueOrZero(role.pureHealer) >= 60;
+          const specialist = valueOrZero(role.bossMechanismValue) >= 50 || valueOrZero(role.selfSustain) >= 50;
+          return sum + (pure && !specialist ? 6 : 0);
+        }, 0) : 0;
+        let survivalMultiplier = 1;
+        let survivalGatePenalty = 0;
+        if (defenseStacks <= 1) {
+          if (!hasReliableFrontline && !hasEffectiveSustain) {
+            // At 0–1 Guard, a glass-cannon team that has neither a stable front nor meaningful
+            // sustain often loses members before its paper DPS can be realized.  Treat this as a
+            // hard survival failure rather than a seven-point checklist miss.
+            survivalMultiplier = .58;
+            survivalGatePenalty = 18;
+          } else if (!hasReliableFrontline || !hasEffectiveSustain) {
+            survivalMultiplier = .88;
+          }
+        } else if (defenseStacks <= 3) {
+          if (!hasReliableFrontline && !hasEffectiveSustain) {
+            survivalMultiplier = .76;
+            survivalGatePenalty = 8;
+          } else if (!hasReliableFrontline || !hasEffectiveSustain) {
+            survivalMultiplier = .95;
+          }
+        }
+        // System fit is deliberately normalized to 0-100 before mixing with the 0-100
+        // CN player rating.  Damage has a 150-point soft ceiling because role-level damage
+        // scores are already relative 0-100 values and team buffs can legitimately lift the
+        // raw per-member result above 100.
+        const systemDamage = Math.max(0, Math.min(100, damageScore / 1.5));
+        const systemSurvival = Math.max(0, Math.min(100, survival));
+        const systemFunction = Math.max(0, Math.min(100, functionScore));
+        // Damage-system cohesion is intentionally a light system-side signal.  It rewards
+        // a physical/magic core whose buffs and damage point in the same direction, while
+        // still allowing tanks, healers and genuinely useful mixed teams to win elsewhere.
+        const systemCohesion = totalDamage > 0
+          ? Math.max(50, Math.min(100, Math.max(physicalRatio, 1 - physicalRatio) * 100))
+          : 100;
+        const systemFormation = Math.max(0, Math.min(100,
+          100 - survivalGatePenalty * 2 - missing.length * 8 - purePenalty
+        ));
+        const systemScore = systemDamage * .50 + systemSurvival * .23 + systemFunction * .13 + systemFormation * .04 + systemCohesion * .10;
+        const requestedPlayerWeight = Math.max(0, Math.min(1, Number(config.playerWeight ?? .70)));
+        // Never invent a player rating for unrated roles.  Missing rating coverage transfers
+        // proportionally to the system side instead.
+        const effectivePlayerWeight = playerScore === null ? 0 : requestedPlayerWeight * playerCoverage;
+        const effectiveSystemWeight = 1 - effectivePlayerWeight;
+        const preRiskScore = (playerScore ?? 0) * effectivePlayerWeight + systemScore * effectiveSystemWeight;
+        // Survival is a safety correction after the 70/30 mix.  This is what lets a strong
+        // empirical rating remain dominant without allowing a no-frontline EX team to win on
+        // paper damage alone.
+        const riskAdjustedScore = Math.max(0, preRiskScore * survivalMultiplier - survivalGatePenalty * .35);
+        const components = {
+          "玩家经验": (playerScore ?? 0) * effectivePlayerWeight,
+          "系统适配": systemScore * effectiveSystemWeight,
+          "生存风险": riskAdjustedScore - preRiskScore,
+        };
+        const incomplete = team.reduce((sum, role) => sum + missingFields(role).length, 0);
+        const survivalAnchor = hasReliableFrontline
+          ? { type: "T", role: vanguard, score: vanguardScore }
+          : hasEffectiveSustain ? { type: "HEAL", role: sustainAnchor.role, score: sustainScore } : null;
+        return {
+          team,
+          score: riskAdjustedScore,
+          components, active, physicalRatio, damageType, vanguard, missing, incomplete,
+          physicalUplift, magicUplift, targetCount: Number(targetCount),
+          frontlineScore, sustainScore, hasReliableFrontline, hasEffectiveSustain,
+          survivalMultiplier, survivalAnchor,
+          playerScore, playerCoverage, systemScore, requestedPlayerWeight,
+          systemBreakdown: { damage: systemDamage, survival: systemSurvival, function: systemFunction, formation: systemFormation, cohesion: systemCohesion },
+        };
+      }
+
+      function topCombinations(pool, config, defenseStacks, enemyType, targetCount, limit = 6, scoreField = "score") {
+        if (pool.length < 5) return [];
+        const best = [];
+        const working = [];
+        const visit = (start) => {
+          if (working.length === 5) {
+            const evaluation = evaluateTeam(working.slice(), config, defenseStacks, enemyType, targetCount);
+            best.push(evaluation);
+            best.sort((a, b) => valueOrZero(b[scoreField]) - valueOrZero(a[scoreField]));
+            if (best.length > limit) best.pop();
+            return;
+          }
+          const remaining = 5 - working.length;
+          for (let index = start; index <= pool.length - remaining; index += 1) { working.push(pool[index]); visit(index + 1); working.pop(); }
+        };
+        visit(0); return best;
+      }
+
+      function optimizeMultiTeamPlan(pool, config, defenseStacks, enemyType, targetCount, maxTeams = 3) {
+        const teamWeights = [1.00, .35, .20];
+        const teamCount = Math.min(maxTeams, Math.floor(pool.length / 5));
+        if (teamCount <= 0) return null;
+
+        // First-team kill is the default battle policy.  Team two/three are failure fallbacks
+        // and must never make the planner weaken the strongest available first team merely to
+        // improve the theoretical three-team total.
+        const firstTeam = topCombinations(pool, config, defenseStacks, enemyType, targetCount, 1)[0];
+        if (!firstTeam) return null;
+        let plans = [{
+          teams: [firstTeam],
+          usedIds: new Set(firstTeam.team.map((role) => role.id)),
+          weightedScore: firstTeam.score * teamWeights[0],
+          weightSum: teamWeights[0],
+        }];
+
+        for (let teamIndex = 1; teamIndex < teamCount; teamIndex += 1) {
+          const expanded = [];
+          for (const plan of plans) {
+            const remaining = pool.filter((role) => !plan.usedIds.has(role.id));
+            const nextCandidates = topCombinations(
+              remaining,
+              config,
+              defenseStacks,
+              enemyType,
+              targetCount,
+              teamIndex === 1 ? 4 : 2,
+            );
+            for (const team of nextCandidates) {
+              const usedIds = new Set(plan.usedIds);
+              team.team.forEach((role) => usedIds.add(role.id));
+              expanded.push({
+                teams: [...plan.teams, team],
+                usedIds,
+                weightedScore: plan.weightedScore + team.score * teamWeights[teamIndex],
+                weightSum: plan.weightSum + teamWeights[teamIndex],
+              });
+            }
+          }
+          expanded.sort((a, b) => b.weightedScore / b.weightSum - a.weightedScore / a.weightSum);
+          plans = expanded.slice(0, 12);
+          if (!plans.length) break;
+        }
+
+        if (!plans.length) return null;
+        const best = plans[0];
+        return {
+          ...best,
+          score: best.weightedScore / best.weightSum,
+          teamCount: best.teams.length,
+          weights: teamWeights.slice(0, best.teams.length),
+          firstTeamLocked: true,
+        };
+      }
+
+      function roleLookupTerms(role) {
+        return [role.id, role.name, role.officialName, ...(role.aliases || [])].filter(Boolean);
+      }
+
+      function resolveChoiceText(text) {
+        const tokens = String(text || "").split(/[\n,，;；、|]+/).map((value) => value.trim()).filter(Boolean);
+        const exact = new Map();
+        for (const role of profiles) {
+          for (const term of roleLookupTerms(role)) {
+            const key = normalizeLookup(term);
+            if (!key) continue;
+            if (!exact.has(key)) exact.set(key, []);
+            if (!exact.get(key).some((item) => item.id === role.id)) exact.get(key).push(role);
+          }
+        }
+        const resolved = [];
+        const unresolved = [];
+        const ambiguous = [];
+        for (const token of tokens) {
+          const canonical = canonicalRoleId(token);
+          const direct = roleById().get(canonical);
+          if (direct) {
+            resolved.push(direct);
+            continue;
+          }
+          const key = normalizeLookup(token);
+          const canonicalNameMatches = profiles.filter((role) => normalizeLookup(role.name) === key);
+          if (canonicalNameMatches.length === 1) {
+            resolved.push(canonicalNameMatches[0]);
+            continue;
+          }
+          if (canonicalNameMatches.length > 1) {
+            ambiguous.push({ token, matches: canonicalNameMatches });
+            continue;
+          }
+          const exactMatches = exact.get(key) || [];
+          if (exactMatches.length === 1) {
+            resolved.push(exactMatches[0]);
+            continue;
+          }
+          if (exactMatches.length > 1) {
+            ambiguous.push({ token, matches: exactMatches });
+            continue;
+          }
+          const fuzzy = profiles.filter((role) => roleLookupTerms(role).some((term) => normalizeLookup(term).includes(key)));
+          if (fuzzy.length === 1) resolved.push(fuzzy[0]);
+          else if (fuzzy.length > 1) ambiguous.push({ token, matches: fuzzy.slice(0, 8) });
+          else unresolved.push(token);
+        }
+        const unique = [];
+        const seen = new Set();
+        for (const role of resolved) if (!seen.has(role.id)) { seen.add(role.id); unique.push(role); }
+        return { tokens, roles: unique, unresolved, ambiguous };
+      }
+
+      function choiceConfig() {
+        return {
+          attributeBonus: {
+            1: 0,
+            2: valueOrZero($("choiceBonus2").value),
+            3: valueOrZero($("choiceBonus3").value),
+            4: valueOrZero($("choiceBonus4").value),
+            5: valueOrZero($("choiceBonus5").value),
+          },
+          playerWeight: Math.max(0, Math.min(1, valueOrZero($("choicePlayerWeight").value) / 100)),
+        };
+      }
+
+      function bestFormationForPool(roster, config, defenseStacks, enemyType, targetCount, requiredId = null, scoreField = "score") {
+        const unique = [...new Map(roster.map((role) => [role.id, role])).values()];
+        if (!unique.length || (requiredId && !unique.some((role) => role.id === requiredId))) return null;
+        let searchPool = unique;
+        if (searchPool.length > 24) {
+          searchPool = searchPool.slice().sort((a, b) => individualPriority(b, targetCount) - individualPriority(a, targetCount)).slice(0, 24);
+          if (requiredId && !searchPool.some((role) => role.id === requiredId)) {
+            searchPool = searchPool.slice(0, 23).concat(unique.find((role) => role.id === requiredId));
+          }
+        }
+        const size = Math.min(5, searchPool.length);
+        let best = null;
+        const working = [];
+        const visit = (start) => {
+          if (working.length === size) {
+            if (requiredId && !working.some((role) => role.id === requiredId)) return;
+            const evaluation = evaluateTeam(working.slice(), config, defenseStacks, enemyType, targetCount);
+            const value = valueOrZero(evaluation[scoreField]);
+            const bestValue = best ? valueOrZero(best[scoreField]) : -Infinity;
+            if (!best || value > bestValue) best = evaluation;
+            return;
+          }
+          const remaining = size - working.length;
+          for (let index = start; index <= searchPool.length - remaining; index += 1) {
+            working.push(searchPool[index]); visit(index + 1); working.pop();
+          }
+        };
+        visit(0);
+        return best;
+      }
+
+      const CANDIDATE_TEAM_WEIGHTS = [1, .35, .20];
+
+      function removeFormation(roster, evaluation) {
+        if (!evaluation) return roster.slice();
+        const used = new Set(evaluation.team.map((role) => role.id));
+        return roster.filter((role) => !used.has(role.id));
+      }
+
+      function candidatePlacementPlan(pool, candidate, config, defenseStacks, enemyType, targetCount, candidateLayer) {
+        let remaining = [...new Map(pool.map((role) => [role.id, role])).values()];
+        const teams = [];
+        for (let layer = 0; layer < CANDIDATE_TEAM_WEIGHTS.length; layer += 1) {
+          // Second/third teams represent real five-person EX/BOSS teams.  Do not invent a
+          // partial secondary team just to make a candidate look usable.
+          if (layer > 0 && remaining.length < 5) break;
+          let teamPool = remaining;
+          let requiredId = null;
+          if (layer < candidateLayer) {
+            // Preserve the candidate for a later team instead of allowing the earlier team to
+            // consume it and then "force" an impossible duplicate copy later.
+            teamPool = remaining.filter((role) => role.id !== candidate.id);
+            if (teamPool.length < 5) return null;
+          } else if (layer === candidateLayer) {
+            if (!remaining.some((role) => role.id === candidate.id)) return null;
+            requiredId = candidate.id;
+          }
+          const team = bestFormationForPool(
+            teamPool,
+            config,
+            defenseStacks,
+            enemyType,
+            targetCount,
+            requiredId,
+            "systemScore",
+          );
+          if (!team) return null;
+          teams.push(team);
+          remaining = removeFormation(remaining, team);
+        }
+        const candidateTeam = teams[candidateLayer];
+        if (!candidateTeam || !candidateTeam.team.some((role) => role.id === candidate.id)) return null;
+        let weighted = 0;
+        let weightSum = 0;
+        teams.forEach((team, layer) => {
+          const weight = CANDIDATE_TEAM_WEIGHTS[layer];
+          weighted += valueOrZero(team.systemScore) * weight;
+          weightSum += weight;
+        });
+        return {
+          candidateLayer,
+          teams,
+          candidateTeam,
+          systemScore: weightSum ? weighted / weightSum : 0,
+        };
+      }
+
+      function bestCandidatePlacementPlan(pool, candidate, config, defenseStacks, enemyType, targetCount) {
+        const plans = [];
+        for (let layer = 0; layer < CANDIDATE_TEAM_WEIGHTS.length; layer += 1) {
+          // Need five non-candidate characters for every complete team that comes before the
+          // candidate's intended layer.
+          if (pool.length - 1 < layer * 5) break;
+          const plan = candidatePlacementPlan(pool, candidate, config, defenseStacks, enemyType, targetCount, layer);
+          if (plan) plans.push(plan);
+        }
+        return plans.sort((a, b) => b.systemScore - a.systemScore || a.candidateLayer - b.candidateLayer)[0] || null;
+      }
+
+      function activePairingText(result) {
+        if (!result?.active?.length) return "暂无同属性伤害加成";
+        return result.active.map((item) => `${ATTRIBUTE_LABEL[item.attribute] || item.attribute}${item.count}人 +${Math.round(item.bonus * 100)}%`).join("、");
+      }
+
+      function candidatePairingText(result, candidate) {
+        const count = result.team.filter((role) => role.attribute && role.attribute === candidate.attribute).length;
+        const active = result.active.find((item) => item.attribute === candidate.attribute);
+        if (!candidate.attribute) return "候选属性待校准";
+        return `${ATTRIBUTE_LABEL[candidate.attribute] || candidate.attribute}${count}人${active ? ` +${Math.round(active.bonus * 100)}%` : ""}`;
+      }
+
+      function renderChoiceRanking(ranking, index, looseMode) {
+        const candidate = ranking.candidate;
+        const bestTeam = ranking.firstTeam;
+        const deployment = ranking.candidateTeam;
+        const members = displayOrderedTeam(deployment.team);
+        const second = ranking.secondTeam ? ranking.secondTeam.systemScore.toFixed(1) : "—";
+        const third = ranking.thirdTeam ? ranking.thirdTeam.systemScore.toFixed(1) : "—";
+        const placementLabel = `${ranking.candidateLayer + 1}队`;
+        const incomplete = missingFields(candidate).length;
+        const playerText = ranking.playerScore === null ? "未评分（本次仅系统）" : `${ranking.playerScore.toFixed(1)}`;
+        return `<article class="choice-rank ${index === 0 ? "best" : ""}">
+          <div class="team-top"><div><span class="pill ${index === 0 ? "ok" : ""}">${index === 0 ? "当前推荐" : `第 ${index + 1} 名`}</span> ${attributePill(candidate.attribute)} <strong>${esc(candidate.name)}</strong> <span class="role-id">ID ${esc(candidate.id)}</span>${incomplete ? ` <span class="pill wait">候选缺 ${incomplete} 项</span>` : ""}</div><div class="team-score">${ranking.score.toFixed(2)}</div></div>
+          <div class="choice-summary"><span>玩家评分 <b>${playerText}</b></span><span>系统适配 <b>${ranking.systemScore.toFixed(1)}</b></span><span>最终 ${Math.round(ranking.playerWeight * 100)}/${Math.round((1 - ranking.playerWeight) * 100)} <b>${ranking.score.toFixed(1)}</b></span><span>候选最佳落点 <b>${placementLabel}</b></span><span>一队系统 <b>${bestTeam.systemScore.toFixed(1)}</b></span><span>二队系统 <b>${second}</b></span><span>三队系统 <b>${third}</b></span></div>
+          <div class="members">${members.map((role) => `<div class="member">${role.icon ? `<img src="${esc(role.icon)}" alt="">` : ""}<strong title="${esc(role.name)}">${esc(role.name)}</strong><span class="role-id">${attributePill(role.attribute)}</span></div>`).join("")}</div>
+          <div class="reason-grid"><span>显示顺序：${displayOrderLabel()}</span><span>候选部署：${placementLabel}</span><span>候选配对：${candidatePairingText(deployment, candidate)}</span><span>队伍属性：${activePairingText(deployment)}</span><span>体系：${DAMAGE_LABEL[deployment.damageType] || deployment.damageType}，物理贡献 ${Math.round(deployment.physicalRatio * 100)}%，体系一致性 ${deployment.systemBreakdown?.cohesion?.toFixed(0) ?? "—"}</span><span>一号位：${esc(deployment.vanguard.name)}</span><span>生存锚点：${deployment.survivalAnchor ? `${deployment.survivalAnchor.type === "T" ? "前排" : "治疗"} ${esc(deployment.survivalAnchor.role.name)}` : "无"}；存活输出倍率 ${(deployment.survivalMultiplier * 100).toFixed(0)}%</span><span>模型辅助：物理 ${(deployment.physicalUplift >= 0 ? "+" : "")}${(deployment.physicalUplift * 100).toFixed(1)}% / 法术 ${(deployment.magicUplift >= 0 ? "+" : "")}${(deployment.magicUplift * 100).toFixed(1)}%</span><span>仍缺：${deployment.missing.join("、") || "无关键缺口"}</span><span>系统适配：分别尝试候选进入一队/二队/三队；队伍权重 1.00 / 0.35 / 0.20，选择整体系统价值最高的落点。</span><span>${looseMode ? "宽松预览：资料缺失按0" : "严格资料模式"}</span></div>
+          <button class="btn ${index === 0 ? "gold" : "light"} adopt-choice" type="button" data-id="${esc(candidate.id)}" style="margin-top:12px">采用这个角色并加入已有</button>
+        </article>`;
+      }
+
+      function simulateChoice() {
+        const owned = resolveChoiceText($("choiceOwned").value);
+        const candidates = resolveChoiceText($("choiceCandidates").value);
+        const issues = [];
+        if (owned.unresolved.length) issues.push(`已有角色未识别：${owned.unresolved.join("、")}`);
+        if (candidates.unresolved.length) issues.push(`候选未识别：${candidates.unresolved.join("、")}`);
+        for (const item of [...owned.ambiguous, ...candidates.ambiguous]) issues.push(`${item.token} 有歧义：${item.matches.map((role) => role.name).join(" / ")}`);
+        if (!candidates.tokens.length) {
+          $("choiceResolveStatus").textContent = owned.roles.length ? `已识别已有角色 ${owned.roles.length} 人；等待候选。` : "输入角色后实时计算。";
+          $("choiceResults").className = "empty"; $("choiceResults").textContent = "先填写本次候选。"; return;
+        }
+        if (issues.length) {
+          $("choiceResolveStatus").textContent = issues.join("；");
+          $("choiceResults").className = "empty"; $("choiceResults").textContent = "存在未识别或歧义角色，请改用完整名称或ID。"; return;
+        }
+        if (candidates.roles.length !== candidates.tokens.length) {
+          $("choiceResolveStatus").textContent = "候选中存在重复角色（合卡成员ID也会归并为同一角色）。";
+          $("choiceResults").className = "empty"; $("choiceResults").textContent = "候选必须是不同角色。"; return;
+        }
+        const ownedIds = new Set(owned.roles.map((role) => role.id));
+        const duplicated = candidates.roles.filter((role) => ownedIds.has(role.id));
+        if (duplicated.length) {
+          $("choiceResolveStatus").textContent = `候选包含已获得角色：${duplicated.map((role) => role.name).join("、")}`;
+          $("choiceResults").className = "empty"; $("choiceResults").textContent = "按正式安全策略拒绝这种池状态。"; return;
+        }
+        const looseMode = $("choiceLooseMode").checked;
+        if (!looseMode) {
+          const incomplete = [...owned.roles, ...candidates.roles].filter((role) => missingFields(role).length);
+          if (incomplete.length) {
+            $("choiceResolveStatus").textContent = `严格模式资料不完整：${incomplete.map((role) => `${role.name}(缺${missingFields(role).length})`).join("、")}`;
+            $("choiceResults").className = "empty"; $("choiceResults").textContent = "可勾选“允许资料不完整角色参与预览”，或先补齐资料。"; return;
+          }
+        }
+        const config = choiceConfig();
+        const defenseStacks = valueOrZero($("choiceDefenseStacks").value);
+        const enemyType = $("choiceEnemyType").value;
+        const targetCount = Number($("choiceTargetCount").value || 1);
+        const rankings = candidates.roles.map((candidate) => {
+          const pool = [...owned.roles, candidate];
+          const plan = bestCandidatePlacementPlan(pool, candidate, config, defenseStacks, enemyType, targetCount);
+          if (!plan) return null;
+          const firstTeam = plan.teams[0];
+          const candidateTeam = plan.candidateTeam;
+          const secondTeam = plan.teams[1] || null;
+          const thirdTeam = plan.teams[2] || null;
+          const systemScore = plan.systemScore;
+          const playerWeight = Math.max(0, Math.min(1, Number(config.playerWeight ?? .70)));
+          const candidatePlayerScore = isMissing(candidate.referenceScore) ? null : Number(candidate.referenceScore);
+          const score = candidatePlayerScore === null
+            ? systemScore
+            : candidatePlayerScore * playerWeight + systemScore * (1 - playerWeight);
+          return {
+            candidate, firstTeam, candidateTeam, secondTeam, thirdTeam, candidateLayer: plan.candidateLayer,
+            playerScore: candidatePlayerScore, systemScore, playerWeight, score,
+          };
+        }).filter(Boolean).sort((a, b) => b.score - a.score || valueOrZero(b.candidate.referenceScore) - valueOrZero(a.candidate.referenceScore) || candidates.roles.indexOf(a.candidate) - candidates.roles.indexOf(b.candidate));
+        $("choiceResolveStatus").textContent = `已有 ${owned.roles.length} 人；候选 ${candidates.roles.length} 人${candidates.roles.length === 3 ? "（标准三选一）" : ""}；守备 ${defenseStacks}；${targetCount >= 3 ? "3+" : targetCount}目标；选人权重 玩家${Math.round(config.playerWeight * 100)}% / 系统${Math.round((1 - config.playerWeight) * 100)}%。${looseMode ? " 当前为宽松预览。" : " 当前为严格模式。"}`;
+        $("choiceResults").className = "";
+        $("choiceResults").innerHTML = rankings.map((ranking, index) => renderChoiceRanking(ranking, index, looseMode)).join("");
+        document.querySelectorAll(".adopt-choice").forEach((button) => button.addEventListener("click", () => {
+          const role = roleById().get(canonicalRoleId(button.dataset.id)); if (!role) return;
+          const current = resolveChoiceText($("choiceOwned").value).roles;
+          const next = [...new Map([...current, role].map((item) => [item.id, item])).values()];
+          $("choiceOwned").value = next.map((item) => item.name).join("\n");
+          $("choiceCandidates").value = "";
+          persist();
+          simulateChoice();
+          renderEventSimulator();
+          generateTeams();
+        }));
+      }
+
+      const EVENT_ROLE_CLASS_BY_CHOICE = {
+        11011: "掩护者", 11012: "治疗者",
+        11021: "增幅者", 11022: "增益者",
+        11031: "减益者", 11032: "妨碍者",
+        11041: "攻击者", 11042: "破防者",
+      };
+      const EVENT_ROLE_CLASSES = ["掩护者", "治疗者", "增幅者", "增益者", "减益者", "妨碍者", "攻击者", "破防者"];
+      const EVENT_RELIC_MARKS = ["ACCELERATION", "CRITICAL", "DEFENSE", "ENHANCEMENT", "DEBUFF"];
+      const EVENT_RELIC_LABELS = { ACCELERATION: "加速", CRITICAL: "会心", DEFENSE: "守备", ENHANCEMENT: "强化", DEBUFF: "弱体" };
+      const EVENT_CHAIN_FAILURE_COIN = 500;
+      const eventRoleCache = new Map();
+
+      function eventOwnedRoles() {
+        return resolveChoiceText($("choiceOwned").value).roles;
+      }
+
+      function eventRelicStacks() {
+        return {
+          ACCELERATION: valueOrZero($("eventRelicAcceleration").value),
+          CRITICAL: valueOrZero($("eventRelicCritical").value),
+          DEFENSE: valueOrZero($("eventRelicDefense").value),
+          ENHANCEMENT: valueOrZero($("eventRelicEnhancement").value),
+          DEBUFF: valueOrZero($("eventRelicDebuff").value),
+        };
+      }
+
+      function relicMarkUtility(mark, amount, stacks = eventRelicStacks()) {
+        let value = 0;
+        let current = valueOrZero(stacks[mark]);
+        const baseline = ["ACCELERATION", "CRITICAL", "DEFENSE"];
+        const baselineComplete = baseline.every((key) => valueOrZero(stacks[key]) >= 4);
+        for (let step = 0; step < amount; step += 1) {
+          const next = current + 1;
+          if (!baselineComplete && baseline.includes(mark) && current < 4) value += 8;
+          else if (!baselineComplete) value += 2.5;
+          else {
+            const unfinished = EVENT_RELIC_MARKS.filter((key) => valueOrZero(stacks[key]) < 15);
+            const highest = unfinished.slice().sort((a, b) => valueOrZero(stacks[b]) - valueOrZero(stacks[a]))[0];
+            const debuffPivot = valueOrZero(stacks.DEBUFF) >= 12 && (!highest || valueOrZero(stacks.DEBUFF) + 2 >= valueOrZero(stacks[highest]));
+            const focus = debuffPivot ? "DEBUFF" : highest;
+            value += mark === focus ? 6 : 3;
+          }
+          if (current < 15 && next >= 15) value += mark === "DEBUFF" ? 16 : 10;
+          current = next;
+        }
+        return value;
+      }
+
+      function randomRelicUtility(rarity) {
+        const amount = Math.max(1, Math.min(3, Number(rarity) || 1));
+        return EVENT_RELIC_MARKS.reduce((sum, mark) => sum + relicMarkUtility(mark, amount), 0) / EVENT_RELIC_MARKS.length;
+      }
+
+      function bestRelicUtility(rarity = 1) {
+        return Math.max(...EVENT_RELIC_MARKS.map((mark) => relicMarkUtility(mark, rarity)));
+      }
+
+      function eventCoinUtility(coins) {
+        // In the current Dawn Realm data, normal ★1 relics are priced at 1800 α coins.
+        // Convert coins into the value of a targeted one-mark relic, with a small floor so
+        // coins remain useful after the 4/4/4 baseline is already complete.
+        const oneStarTarget = Math.max(2.5, bestRelicUtility(1));
+        return valueOrZero(coins) / 1800 * oneStarTarget;
+      }
+
+      function eventContextKey(owned) {
+        return [
+          owned.map((role) => role.id).sort().join(","),
+          $("choiceDefenseStacks").value,
+          $("choiceEnemyType").value,
+          $("choiceTargetCount").value,
+          $("choiceBonus2").value, $("choiceBonus3").value, $("choiceBonus4").value, $("choiceBonus5").value,
+        ].join("|");
+      }
+
+      function eventCandidateMarginal(candidate, owned) {
+        const key = `${eventContextKey(owned)}|${candidate.id}`;
+        if (eventRoleCache.has(key)) return eventRoleCache.get(key);
+        const targetCount = Number($("choiceTargetCount").value || 1);
+        const defenseStacks = valueOrZero($("choiceDefenseStacks").value);
+        const enemyType = $("choiceEnemyType").value;
+        const config = choiceConfig();
+        // Pool events can contain dozens of roles.  Keep the expectation calculation bounded
+        // while retaining the strongest currently-owned formation candidates.
+        const boundedOwned = owned.slice().sort((a, b) => individualPriority(b, targetCount) - individualPriority(a, targetCount)).slice(0, 12);
+        const baseline = bestFormationForPool(boundedOwned, config, defenseStacks, enemyType, targetCount);
+        const pool = [...boundedOwned, candidate];
+        const first = bestFormationForPool(pool, config, defenseStacks, enemyType, targetCount);
+        const forced = bestFormationForPool(pool, config, defenseStacks, enemyType, targetCount, candidate.id);
+        const baselineComposite = baseline ? baseline.score * 1.35 : 0;
+        const candidateComposite = (first?.score || 0) + (forced?.score || 0) * .35;
+        const value = Math.max(0, candidateComposite - baselineComposite);
+        eventRoleCache.set(key, value);
+        return value;
+      }
+
+      function eventRolePool(roleClass, owned = eventOwnedRoles()) {
+        const ownedIds = new Set(owned.map((role) => role.id));
+        const looseMode = $("choiceLooseMode").checked;
+        const roles = profiles.filter((role) => role.available !== false && role.roleClass === roleClass && !ownedIds.has(role.id) && (looseMode || missingFields(role).length === 0));
+        const scored = roles.map((role) => ({ role, value: eventCandidateMarginal(role, owned) })).sort((a, b) => b.value - a.value);
+        const average = scored.length ? scored.reduce((sum, item) => sum + item.value, 0) / scored.length : 0;
+        return { roleClass, scored, average, best: scored[0]?.value || 0 };
+      }
+
+      function allEventRolePool(owned = eventOwnedRoles()) {
+        const ownedIds = new Set(owned.map((role) => role.id));
+        const looseMode = $("choiceLooseMode").checked;
+        const scored = profiles
+          .filter((role) => role.available !== false && role.roleClass && !ownedIds.has(role.id) && (looseMode || missingFields(role).length === 0))
+          .map((role) => ({ role, value: eventCandidateMarginal(role, owned) }))
+          .sort((a, b) => b.value - a.value);
+        const average = scored.length ? scored.reduce((sum, item) => sum + item.value, 0) / scored.length : 0;
+        return { scored, average };
+      }
+
+      function randomClassRandomRoleUtility(count, owned = eventOwnedRoles()) {
+        const pools = EVENT_ROLE_CLASSES.map((roleClass) => eventRolePool(roleClass, owned)).filter((pool) => pool.scored.length);
+        return pools.length ? pools.reduce((sum, pool) => sum + pool.average * count, 0) / pools.length : 0;
+      }
+
+      function randomClassSelectableRoleUtility(count, owned = eventOwnedRoles()) {
+        const pools = EVENT_ROLE_CLASSES.map((roleClass) => eventRolePool(roleClass, owned)).filter((pool) => pool.scored.length);
+        return pools.length ? pools.reduce((sum, pool) => sum + pool.scored.slice(0, count).reduce((acc, item) => acc + item.value, 0), 0) / pools.length : 0;
+      }
+
+      function allRandomRoleUtility(count, owned = eventOwnedRoles()) {
+        return allEventRolePool(owned).average * count;
+      }
+
+      function allSelectableRoleUtility(count, owned = eventOwnedRoles()) {
+        return allEventRolePool(owned).scored.slice(0, count).reduce((sum, item) => sum + item.value, 0);
+      }
+
+      function specificRoleUtility(name, owned = eventOwnedRoles()) {
+        const target = profiles.find((role) => role.name === name || role.officialName === name);
+        if (!target || owned.some((role) => role.id === target.id)) return 0;
+        return eventCandidateMarginal(target, owned);
+      }
+
+      function eventById(eventId) {
+        return (source.eventCatalog || []).find((event) => Number(event.eventId) === Number(eventId));
+      }
+
+      function eventOptionUtility(choiceId, owned = eventOwnedRoles(), visiting = new Set()) {
+        const coins = (value) => eventCoinUtility(value);
+        const roleClass = EVENT_ROLE_CLASS_BY_CHOICE[choiceId];
+        if (roleClass) {
+          const pool = eventRolePool(roleClass, owned);
+          return {
+            value: pool.average * 2 + coins(200),
+            detail: `${roleClass}未获得角色 ${pool.scored.length} 人；随机×2平均边际 ${ (pool.average * 2).toFixed(2) }；α币200`,
+            highlights: pool.scored.slice(0, 4).map((item) => `${item.role.name} +${item.value.toFixed(1)}`),
+          };
+        }
+        const battleRewards = {
+          11051: ["NORMAL", 200], 11052: ["EXTREME", 300],
+          11091: ["NORMAL", 300], 11092: ["EXTREME", 450],
+          11131: ["NORMAL", 400], 11132: ["EXTREME", 600],
+          11171: ["NORMAL", 500], 11172: ["EXTREME", 750],
+        };
+        if (battleRewards[choiceId]) {
+          const [kind, reward] = battleRewards[choiceId];
+          const rate = Math.max(0, Math.min(1, valueOrZero($(kind === "NORMAL" ? "eventNormalWinRate" : "eventExtremeWinRate").value) / 100));
+          return { value: coins(reward) * rate, detail: `${kind}奖励 α币${reward}；按当前手填胜率 ${(rate * 100).toFixed(0)}% 计算`, highlights: [] };
+        }
+        if (choiceId === 11073) return { value: coins(1750), detail: "50%×1500 + 50%×2000，期望 α币1750", highlights: [] };
+        if (choiceId === 11072) return { value: .5 * randomClassSelectableRoleUtility(1, owned) + .5 * allSelectableRoleUtility(1, owned), detail: "50%随机职阶自选1 + 50%全角色自选1", highlights: [] };
+        if (choiceId === 11071) return { value: .5 * randomRelicUtility(2) + .5 * randomRelicUtility(3), detail: "50%★2遗物 + 50%★3遗物", highlights: [] };
+        if (choiceId === 11082) return { value: coins(1000), detail: "固定 α币1000", highlights: [] };
+        if (choiceId === 11081) return { value: .5 * randomRelicUtility(1) + .5 * randomClassRandomRoleUtility(2, owned), detail: "50%★1遗物 + 50%随机职阶随机角色×2", highlights: [] };
+        if ([11101, 11102, 11103].includes(choiceId)) return { value: coins(5000 / 3), detail: "猜拳三个选项奖励结构相同；按对手三手等概率时约1/3胜、2/3失败，仅用于显示且三项仍完全等价", highlights: [] };
+        if (choiceId === 11111) return { value: coins(2000), detail: "固定 α币2000", highlights: [] };
+        if (choiceId === 11112) return { value: (randomRelicUtility(1) + randomRelicUtility(2) + randomRelicUtility(3)) / 3, detail: "★1～3随机遗物；数据库描述未给稀有度概率，暂按三档等权估值", highlights: [] };
+        if (choiceId === 11121) return { value: coins(2000), detail: "固定 α币2000", highlights: [] };
+        if (choiceId === 11122) return { value: specificRoleUtility("纯", owned) + allRandomRoleUtility(3, owned), detail: "纯加入 + 全角色随机×2～4；随机数量暂按期望3人", highlights: ["特定角色：纯"] };
+
+        const continuation = (nextEventId) => eventBestUtility(nextEventId, owned, visiting).value;
+        if (choiceId === 13141) return { value: .5 * (randomRelicUtility(1) + continuation(2314)) + .5 * coins(EVENT_CHAIN_FAILURE_COIN), detail: "钓鱼第1段：50%★1遗物并继续；失败按β2后500α币", highlights: [] };
+        if (choiceId === 23141) return { value: .25 * (randomRelicUtility(2) + continuation(3314)) + .75 * coins(EVENT_CHAIN_FAILURE_COIN), detail: "钓鱼第2段：25%★2遗物并继续；失败500α币", highlights: [] };
+        if (choiceId === 33141) return { value: .10 * randomRelicUtility(3) + .90 * coins(EVENT_CHAIN_FAILURE_COIN), detail: "钓鱼第3段：10%★3遗物；失败500α币", highlights: [] };
+        if (choiceId === 13151) return { value: .5 * continuation(2315) + .5 * coins(EVENT_CHAIN_FAILURE_COIN), detail: "料理第1段：50%继续；失败500α币", highlights: [] };
+        if (choiceId === 23152) return { value: randomClassRandomRoleUtility(2, owned), detail: "结束料理并获得随机职阶随机角色×2", highlights: [] };
+        if (choiceId === 23151) return { value: .5 * continuation(3315) + .5 * coins(EVENT_CHAIN_FAILURE_COIN), detail: "继续料理：50%进入第3段；失败500α币", highlights: [] };
+        if (choiceId === 33152) return { value: randomClassSelectableRoleUtility(2, owned), detail: "随机职阶角色自选×2", highlights: [] };
+        if (choiceId === 33151) return { value: .5 * allSelectableRoleUtility(2, owned) + .5 * coins(EVENT_CHAIN_FAILURE_COIN), detail: "50%全角色自选×2；失败500α币", highlights: [] };
+        if (choiceId === 13161) return { value: .5 * (coins(2000) + continuation(2316)) + .5 * coins(EVENT_CHAIN_FAILURE_COIN), detail: "老虎机第1段：50% α币2000并继续；失败500α币", highlights: [] };
+        if (choiceId === 23162 || choiceId === 33162) return { value: 0, detail: "结束挑战，保留已有收益", highlights: [] };
+        if (choiceId === 23161) return { value: .5 * (coins(4000) + continuation(3316)) + .5 * coins(EVENT_CHAIN_FAILURE_COIN), detail: "老虎机第2段：50% α币4000并继续；失败500α币", highlights: [] };
+        if (choiceId === 33161) return { value: .5 * coins(8000) + .5 * coins(EVENT_CHAIN_FAILURE_COIN), detail: "老虎机第3段：50% α币8000；失败500α币", highlights: [] };
+        return { value: 0, detail: "该选项已收录，但暂未建立跨资源效用规则；只展示数据库原始奖励", highlights: [] };
+      }
+
+      function eventBestUtility(eventId, owned = eventOwnedRoles(), visiting = new Set()) {
+        const event = eventById(eventId);
+        if (!event || visiting.has(Number(eventId))) return { value: 0, choice: null };
+        const nextVisited = new Set(visiting); nextVisited.add(Number(eventId));
+        const ranked = event.choices.map((choice) => ({ choice, ...eventOptionUtility(Number(choice.choiceId), owned, nextVisited) })).sort((a, b) => b.value - a.value);
+        return { value: ranked[0]?.value || 0, choice: ranked[0]?.choice || null, ranked };
+      }
+
+      function renderEventSimulator() {
+        const event = eventById($("eventSelect").value);
+        if (!event) {
+          $("eventTitle").textContent = "没有可用的国服事件目录。";
+          $("eventResults").className = "empty"; $("eventResults").textContent = "事件数据不可用。"; return;
+        }
+        eventRoleCache.clear();
+        const owned = eventOwnedRoles();
+        const result = eventBestUtility(event.eventId, owned);
+        const ranked = result.ranked || [];
+        $("eventTitle").innerHTML = `<b>Event ${event.eventId}</b> · ${esc(event.text)} · 已有角色 ${owned.length} 人 · 当前α币 ${valueOrZero($("eventCoins").value).toFixed(0)}`;
+        $("eventResults").className = "";
+        $("eventResults").innerHTML = ranked.map((item, index) => {
+          const choice = item.choice;
+          const condition = Number(choice.conditionType) ? `数据库条件 type=${choice.conditionType}, value=${choice.conditionValue}` : "无额外数据库条件";
+          const highlights = item.highlights?.length ? `<span>高价值候选：${item.highlights.map(esc).join("、")}</span>` : "";
+          return `<article class="choice-rank ${index === 0 ? "best" : ""}">
+            <div class="team-top"><div><span class="pill ${index === 0 ? "ok" : ""}">${index === 0 ? "当前推荐" : `第 ${index + 1} 名`}</span> <strong>${esc(choice.label)}</strong> <span class="role-id">choice ${choice.choiceId}</span></div><div class="team-score">${item.value.toFixed(2)}</div></div>
+            <div class="reason-grid"><span>数据库奖励：${esc(choice.description)}</span><span>估值解释：${esc(item.detail)}</span><span>${esc(condition)}</span>${highlights}<span>事件效用是用于不同奖励之间排序的内部量，不是伤害百分比或用户评分。</span></div>
+          </article>`;
+        }).join("");
+      }
+
+      function renderEventCatalog() {
+        const events = source.eventCatalog || [];
+        $("eventSelect").innerHTML = events.map((event) => `<option value="${event.eventId}">${event.eventId} · ${esc(event.text)}</option>`).join("");
+        renderEventSimulator();
+      }
+
+      function renderChoicePresets() {
+        $("choicePresetList").innerHTML = source.openingGuilds.map((guild) => `<button class="preset choice-preset" type="button" data-guild="${guild.id}">${esc(guild.name)}</button>`).join("") + '<button class="preset choice-preset" type="button" data-guild="clear">清空已有</button>';
+        document.querySelectorAll(".choice-preset").forEach((button) => button.addEventListener("click", () => {
+          const mode = button.dataset.guild;
+          if (mode === "clear") $("choiceOwned").value = "";
+          else {
+            const guild = source.openingGuilds.find((item) => String(item.id) === mode);
+            const all = roleById();
+            $("choiceOwned").value = (guild?.roleIds || []).map(canonicalRoleId).map((id) => all.get(id)?.name || id).join("\n");
+          }
+          persist();
+          simulateChoice();
+          renderEventSimulator();
+          generateTeams();
+        }));
+      }
+
+      let choiceSimulationTimer = null;
+      function scheduleChoiceSimulation() {
+        clearTimeout(choiceSimulationTimer);
+        choiceSimulationTimer = setTimeout(() => {
+          persist();
+          simulateChoice();
+          renderEventSimulator();
+          generateTeams();
+        }, 220);
+      }
+
+      function renderTeamCard(result, index, looseMode) {
+        const typeLabel = DAMAGE_LABEL[result.damageType];
+        const bonus = result.active.length ? result.active.map((item) => `${ATTRIBUTE_LABEL[item.attribute]}${item.count}人 +${Math.round(item.bonus * 100)}%`).join("、") : "未触发已配置属性倍率";
+        const teamLabel = index === 0 ? "第一队 / 默认出战" : index === 1 ? "第二队 / 失败后备用" : "第三队 / 失败后备用";
+        return `<article class="team-card ${index === 0 ? "primary" : ""}">
+          <div class="team-top"><div><span class="pill ${index === 0 ? "ok" : ""}">${teamLabel}</span> <span class="pill">${typeLabel}</span> ${result.incomplete ? `<span class="pill wait">缺失 ${result.incomplete} 项</span>` : '<span class="pill ok">严格资料</span>'}</div><div class="team-score">${result.score.toFixed(2)}</div></div>
+          <div class="members">${displayOrderedTeam(result.team).map((role) => `<div class="member">${role.icon ? `<img src="${esc(role.icon)}" alt="">` : ""}<strong title="${esc(role.name)}">${esc(role.name)}</strong><span class="role-id">${attributePill(role.attribute)}</span></div>`).join("")}</div>
+          <div class="reason-grid"><span>显示顺序：${displayOrderLabel()}</span><span>场景：${result.targetCount >= 3 ? "3+" : result.targetCount}目标</span><span>玩家经验原分：${result.playerScore === null ? "无评分" : result.playerScore.toFixed(1)}（覆盖 ${Math.round(result.playerCoverage * 100)}%）</span><span>系统适配原分：${result.systemScore.toFixed(1)} / 100</span><span>体系：物理贡献 ${Math.round(result.physicalRatio * 100)}%；体系一致性 ${result.systemBreakdown?.cohesion?.toFixed(0) ?? "—"}</span><span>一号位：${esc(result.vanguard.name)}</span><span>生存锚点：${result.survivalAnchor ? `${result.survivalAnchor.type === "T" ? "前排" : "治疗"} ${esc(result.survivalAnchor.role.name)}` : "无"}；存活输出倍率 ${(result.survivalMultiplier * 100).toFixed(0)}%</span><span>属性：${bonus}</span><span>模型辅助增益：物理 ${(result.physicalUplift >= 0 ? "+" : "")}${(result.physicalUplift * 100).toFixed(1)}% / 法术 ${(result.magicUplift >= 0 ? "+" : "")}${(result.magicUplift * 100).toFixed(1)}%</span><span>仍缺：${result.missing.join("、") || "无关键缺口"}</span><span>评分拆解：${Object.entries(result.components).map(([key,value]) => `${key}${value >= 0 ? "+" : ""}${value.toFixed(1)}`).join(" / ")}</span><span>${looseMode ? "宽松预览，不得直接自动点击" : "严格模式结果"}</span></div>
+        </article>`;
+      }
+
+      function generateTeams() {
+        const all = roleById();
+        const looseMode = $("looseMode").checked;
+        const liveOwnedText = $("choiceOwned")?.value?.trim() || "";
+        let poolSource = "角色表已勾选候选池";
+        let pool;
+        if (liveOwnedText) {
+          const liveOwned = resolveChoiceText(liveOwnedText);
+          const issues = [];
+          if (liveOwned.unresolved.length) issues.push(`未识别：${liveOwned.unresolved.join("、")}`);
+          for (const item of liveOwned.ambiguous) {
+            issues.push(`${item.token} 有歧义：${item.matches.map((role) => role.name).join(" / ")}`);
+          }
+          if (issues.length) {
+            $("plannerStatus").textContent = `实时已有角色解析失败：${issues.join("；")}`;
+            $("teamResults").className = "empty";
+            $("teamResults").textContent = "请先修正“实时角色选择模拟”中的已有角色名称，或使用角色ID。";
+            return;
+          }
+          pool = liveOwned.roles;
+          poolSource = "实时已有角色";
+        } else {
+          pool = [...selected].map((id) => all.get(id)).filter(Boolean);
+        }
+        if (!looseMode) pool = pool.filter((role) => missingFields(role).length === 0);
+        const liveContext = Boolean(liveOwnedText);
+        const bonusRaw = liveContext
+          ? [0, $("choiceBonus2").value, $("choiceBonus3").value, $("choiceBonus4").value, $("choiceBonus5").value]
+          : [0, $("bonus2").value, $("bonus3").value, $("bonus4").value, $("bonus5").value];
+        const missingBonus = [1,2,3].filter((index) => bonusRaw[index] === "");
+        if (!looseMode && missingBonus.length) {
+          $("teamResults").className = "empty"; $("teamResults").textContent = "严格模式需要先填写属性2/3/4人档倍率。"; return;
+        }
+        const attributeBonus = { 1: 0, 2: valueOrZero(bonusRaw[1]), 3: valueOrZero(bonusRaw[2]), 4: valueOrZero(bonusRaw[3]), 5: valueOrZero(bonusRaw[4]) };
+        if (pool.length < 5) {
+          $("teamResults").className = "empty"; $("teamResults").textContent = looseMode ? "候选池不足五人。" : `完整资料角色仅 ${pool.length} 人，无法严格组队。`; return;
+        }
+        const originalCount = pool.length;
+        const targetCount = Number($(liveContext ? "choiceTargetCount" : "targetCount").value || 1);
+        const defenseStacks = valueOrZero($(liveContext ? "choiceDefenseStacks" : "defenseStacks").value);
+        const enemyType = $(liveContext ? "choiceEnemyType" : "enemyType").value;
+        pool = pool.sort((a,b) => individualPriority(b, targetCount) - individualPriority(a, targetCount)).slice(0, 24);
+        const playerWeight = Math.max(0, Math.min(1, valueOrZero($("choicePlayerWeight").value) / 100));
+        const plan = optimizeMultiTeamPlan(pool, { attributeBonus, playerWeight }, defenseStacks, enemyType, targetCount, 3);
+        $("plannerStatus").textContent = `来源：${poolSource}；候选 ${originalCount} 人；守备 ${defenseStacks}；${targetCount >= 3 ? "3+" : targetCount}目标；玩家/系统=${Math.round(playerWeight * 100)}/${Math.round((1 - playerWeight) * 100)}；进入组合搜索 ${pool.length} 人；${plan ? `生成 ${plan.teamCount} 支互不重复队伍` : "评估失败"}。${liveContext ? " 当前使用实时局面上下文。" : ""}${missingBonus.length ? " 2/3/4人属性倍率为空，宽松预览按0处理。" : ""}`;
+        if (!plan) {
+          $("teamResults").className = "empty";
+          $("teamResults").textContent = "未能生成有效队伍方案。";
+          return;
+        }
+        $("teamResults").className = "";
+        const usedCount = plan.teams.reduce((sum, team) => sum + team.team.length, 0);
+        const weightsText = plan.weights.map((weight, index) => `${index + 1}队×${weight.toFixed(2)}`).join(" + ");
+        $("teamResults").innerHTML = `
+          <div class="choice-summary" style="margin-bottom:12px"><span>首战策略 <b>只上第一队</b></span><span>第一队 <b>锁定当前全池最优</b></span><span>备用方案综合 <b>${plan.score.toFixed(2)}</b></span><span>已分配 <b>${usedCount}</b> 人</span><span>备用权重 <b>${weightsText}</b></span><span>第二/三队不反向影响第一队</span></div>
+          ${plan.teams.map((result, index) => renderTeamCard(result, index, looseMode)).join("")}`;
+      }
+
+      function renderPresets() {
+        $("presetList").innerHTML = source.openingGuilds.map((guild) => `<button class="preset" type="button" data-guild="${guild.id}">${esc(guild.name)}</button>`).join("") + '<button class="preset" type="button" data-guild="all">五公会合集</button><button class="preset" type="button" data-guild="clear">清空</button>';
+        document.querySelectorAll(".preset").forEach((button) => button.addEventListener("click", () => {
+          const mode = button.dataset.guild;
+          if (mode === "clear") selected = new Set();
+          else if (mode === "all") selected = new Set(source.openingGuilds.flatMap((guild) => guild.roleIds));
+          else selected = new Set(source.openingGuilds.find((guild) => String(guild.id) === mode)?.roleIds || []);
+          persist(); refreshStats(); renderRows(); generateTeams();
+        }));
+      }
+
+      function exportData() {
+        const documentData = { schemaVersion: 1, exportedAt: new Date().toISOString(), selected: [...selected], profiles: Object.entries(overrides).map(([id, value]) => ({ id, ...value })) };
+        const blob = new Blob([JSON.stringify(documentData, null, 2)], { type: "application/json" });
+        const link = document.createElement("a"); link.href = URL.createObjectURL(blob); link.download = "黎明界角色校准.json"; link.click(); URL.revokeObjectURL(link.href);
+      }
+
+      async function importData(file) {
+        const data = JSON.parse(await file.text());
+        for (const profile of data.profiles || []) if (profile.id) overrides[profile.id] = { ...profile, id: undefined };
+        if (Array.isArray(data.selected)) selected = new Set(data.selected.map(canonicalRoleId));
+        profiles = source.characters.map((role) => ({ ...role, ...(overrides[role.id] || {}) }));
+        persist(); refreshFilters(); renderRows(); refreshStats(); generateTeams(); simulateChoice();
+      }
+
+      $("attributeFilter").innerHTML += ATTRIBUTES.map((value) => `<option value="${value}">${ATTRIBUTE_LABEL[value]}</option>`).join("") + '<option value="__MISSING__">待校准</option>';
+      $("damageFilter").innerHTML += DAMAGE_TYPES.map((value) => `<option value="${value}">${DAMAGE_LABEL[value]}</option>`).join("");
+      for (const id of ["searchInput", "attributeFilter", "classFilter", "damageFilter", "scoreFilter", "incompleteOnly"]) $(id).addEventListener(id === "searchInput" ? "input" : "change", renderRows);
+      document.querySelectorAll(".sort-head").forEach((button) => button.addEventListener("click", () => {
+        const nextKey = button.dataset.sort;
+        if (sortKey === nextKey) sortDirection = sortDirection === "desc" ? "asc" : "desc";
+        else { sortKey = nextKey; sortDirection = "desc"; }
+        renderRows();
+      }));
+      $("editorForm").addEventListener("submit", saveEditor);
+      $("generateTeams").addEventListener("click", generateTeams);
+      for (const id of ["choiceOwned", "choiceCandidates"]) $(id).addEventListener("input", scheduleChoiceSimulation);
+      for (const id of ["choiceDefenseStacks", "choiceEnemyType", "choiceTargetCount", "choicePlayerWeight", "teamDisplayOrder", "choiceBonus2", "choiceBonus3", "choiceBonus4", "choiceBonus5", "choiceLooseMode"]) $(id).addEventListener("change", () => {
+        persist();
+        simulateChoice();
+        renderEventSimulator();
+        generateTeams();
+      });
+      $("eventSelect").addEventListener("change", renderEventSimulator);
+      for (const id of ["eventCoins", "eventRelicAcceleration", "eventRelicCritical", "eventRelicDefense", "eventRelicEnhancement", "eventRelicDebuff", "eventNormalWinRate", "eventExtremeWinRate"]) $(id).addEventListener("change", renderEventSimulator);
+      $("exportButton").addEventListener("click", exportData);
+      $("importButton").addEventListener("click", () => $("importFile").click());
+      $("importFile").addEventListener("change", (event) => event.target.files[0] && importData(event.target.files[0]).catch((error) => alert(`导入失败：${error.message}`)));
+      $("resetButton").addEventListener("click", () => {
+        if (!confirm("确认清除当前浏览器中的全部校准和候选池状态？")) return;
+        localStorage.removeItem(STORAGE_KEY); location.reload();
+      });
+      $("sourceList").innerHTML = Object.entries(source.sources).map(([key, value]) => `<div><b>${esc(key)}</b>：${esc(value)}</div>`).join("");
+      if (liveRun.ownedText) $("choiceOwned").value = liveRun.ownedText;
+      if (liveRun.defenseStacks !== undefined) $("choiceDefenseStacks").value = liveRun.defenseStacks;
+      if (liveRun.enemyType) $("choiceEnemyType").value = liveRun.enemyType;
+      if (liveRun.targetCount !== undefined) $("choiceTargetCount").value = liveRun.targetCount;
+      if (liveRun.playerWeight !== undefined) $("choicePlayerWeight").value = liveRun.playerWeight;
+      if (liveRun.displayOrder) $("teamDisplayOrder").value = liveRun.displayOrder;
+      refreshFilters(); renderPresets(); renderChoicePresets(); renderRows(); refreshStats(); generateTeams(); simulateChoice(); renderEventCatalog();
+    })();
+  </script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "data_headers": {
+    "result_code": 1,
+    "viewer_id": "900000001",
+    "request_id": "fixture-request-id",
+    "sid": "fixture-session-id"
+  },
+  "data": {
+    "is_risk": false,
+    "server_error": null
+  }
+}

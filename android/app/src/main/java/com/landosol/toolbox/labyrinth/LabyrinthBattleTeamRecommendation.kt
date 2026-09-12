@@ -1,0 +1,396 @@
+package com.landosol.toolbox.labyrinth
+
+data class LabyrinthRecommendedTeamMember(
+    val characterId: String,
+    val displayName: String,
+)
+
+/** Five-member recommendation consumed by the guarded battle-team executor. */
+data class LabyrinthBattleTeamRecommendation(
+    val members: List<LabyrinthRecommendedTeamMember>,
+    val damageType: LabyrinthTeamDamageType,
+    val score: Double,
+    val vanguard: LabyrinthRecommendedTeamMember,
+    val survivalAnchor: LabyrinthRecommendedTeamMember?,
+    val reasons: List<String>,
+    val defenseMarkStacks: Int,
+    val targetCount: Int,
+    val excludedIncompleteCharacterIds: List<String> = emptyList(),
+) {
+    init {
+        require(members.size in 1..5)
+        require(members.distinctBy(LabyrinthRecommendedTeamMember::characterId).size == members.size)
+        require(vanguard.characterId in members.map(LabyrinthRecommendedTeamMember::characterId))
+        require(survivalAnchor == null || survivalAnchor.characterId in members.map(LabyrinthRecommendedTeamMember::characterId))
+        require(defenseMarkStacks >= 0)
+        require(targetCount >= 1)
+    }
+
+    val damageTypeLabel: String
+        get() = when (damageType) {
+            LabyrinthTeamDamageType.PHYSICAL -> "物理"
+            LabyrinthTeamDamageType.MAGIC -> "法术"
+            LabyrinthTeamDamageType.MIXED -> "混合"
+            LabyrinthTeamDamageType.NONE -> "无有效输出"
+        }
+
+    fun overlayLines(): List<String> = listOf(
+        "推荐第一队：" + members.joinToString(" / ") { "${it.characterId} ${it.displayName}" },
+        "体系：$damageTypeLabel · 评分：${formatBattleTeamScore(score)} · " +
+            "一号位：${vanguard.characterId} ${vanguard.displayName} · " +
+            "生存锚点：${survivalAnchor?.let { "${it.characterId} ${it.displayName}" } ?: "无"}",
+        "推荐原因：" + reasons.take(3).joinToString("；").ifBlank { "当前角色池最多五人的最高分队伍" },
+    )
+
+    /** Compact running-overlay summary. Full details remain available while paused and in logs. */
+    fun compactOverlayLine(): String =
+        "主力：$damageTypeLabel ${formatBattleTeamScore(score)} · 一号位 ${vanguard.displayName}"
+
+    fun logText(): String = buildString {
+        append(overlayLines().joinToString(" | "))
+        append(" | 守备=")
+        append(defenseMarkStacks)
+        append(" | 目标数=")
+        append(if (targetCount >= 3) "3+" else targetCount)
+        if (excludedIncompleteCharacterIds.isNotEmpty()) {
+            append(" | 严格资料排除=")
+            append(excludedIncompleteCharacterIds.joinToString())
+        }
+    }
+}
+
+internal fun labyrinthBattleTeamSignature(characterIds: Collection<String>): String =
+    characterIds
+        .map(::canonicalLabyrinthRoleId)
+        .distinct()
+        .sorted()
+        .joinToString(",")
+
+sealed interface LabyrinthBattleTeamRecommendationResult {
+    data class Ready(val recommendation: LabyrinthBattleTeamRecommendation) :
+        LabyrinthBattleTeamRecommendationResult
+
+    data class Unavailable(val reason: String) : LabyrinthBattleTeamRecommendationResult
+}
+
+/** Bridges persisted run-state IDs to the production team planner. */
+class LabyrinthBattleTeamRecommendationPlanner(
+    private val profiles: Map<String, LabyrinthRoleProfile>,
+    private val teamPlanSearcher: LabyrinthTeamPlanSearcher,
+) {
+    fun initialRecommendation(
+        acquiredCharacterIds: Collection<String>,
+        context: LabyrinthRoleDecisionContext,
+    ): LabyrinthBattleTeamRecommendationResult {
+        val canonicalIds = acquiredCharacterIds.map(::canonicalLabyrinthRoleId).distinct()
+        val knownProfiles = profiles.withKnownRoleIdentities(canonicalIds)
+        val resolved = canonicalIds.map(knownProfiles::getValue)
+        val incompleteIds = resolved
+            .filterNot(LabyrinthRoleProfile::isStrictDecisionReady)
+            .map(LabyrinthRoleProfile::characterId)
+            .sorted()
+        if (resolved.isEmpty()) {
+            return LabyrinthBattleTeamRecommendationResult.Unavailable("没有已获得的可用角色")
+        }
+        if (resolved.none(LabyrinthRoleProfile::isLabyrinthBattleTank)) {
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                "当前角色池中没有T（掩护者）的可确认记录；自动战斗硬性要求实际站位最前的一号位必须为T",
+            )
+        }
+        encounterRequirementFailureReason(resolved, context.encounterStrategy)?.let { reason ->
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(reason)
+        }
+
+        val plan = teamPlanSearcher.initialSearch(resolved, context)
+        val evaluation = plan.teams.singleOrNull()
+            ?: return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                plan.reason + resolved.filter { it.position == null }.takeIf { it.isNotEmpty() }?.let {
+                    "；无法确认T站位关系的角色：${it.joinToString { role -> role.displayName }}"
+                }.orEmpty(),
+            )
+        val expectedTeamSize = minOf(TEAM_SIZE, resolved.size)
+        if (plan.kind != LabyrinthTeamPlanKind.FIRST_ATTEMPT_ONE_TEAM ||
+            evaluation.members.size != expectedTeamSize
+        ) {
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                "首次战斗规划未返回预期的${expectedTeamSize}人队伍：${plan.reason}",
+            )
+        }
+        val members = evaluation.members.map { it.toRecommendedMember() }
+        val memberById = members.associateBy(LabyrinthRecommendedTeamMember::characterId)
+        val vanguard = requireNotNull(memberById[evaluation.vanguardCharacterId])
+        if (profiles[evaluation.vanguardCharacterId]?.isLabyrinthBattleTank != true) {
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                "自动战斗T硬约束校验失败：推荐阵容实际一号位不是T，已拒绝进入自动编组",
+            )
+        }
+        val survivalAnchor = evaluation.survivalAnchorCharacterId?.let(memberById::get)
+        val reasons = buildList {
+            addAll(evaluation.reasons)
+            if (incompleteIds.isNotEmpty()) {
+                add("部分角色资料不完整，按已有信息参与编组评分：${incompleteIds.joinToString()}")
+            }
+            add(plan.reason)
+        }.distinct()
+        return LabyrinthBattleTeamRecommendationResult.Ready(
+            LabyrinthBattleTeamRecommendation(
+                members = members,
+                damageType = evaluation.damageType,
+                score = evaluation.score,
+                vanguard = vanguard,
+                survivalAnchor = survivalAnchor,
+                reasons = reasons,
+                defenseMarkStacks = context.defenseMarkStacks,
+                targetCount = context.targetCount,
+            ),
+        )
+    }
+
+    /**
+     * After an EX has already failed twice, treat the repeated wipe as a survival signal instead
+     * of merely asking the generic fallback search for another nearby high-score formation.
+     *
+     * Keep the tank and every official “有效效果” member intact, remove the lowest-rated remaining
+     * non-tank from the most recently failed team, and add one healer from the owned roster.  If
+     * replacing that exact role would break an EX hard requirement (DOT/control/etc.), try the
+     * next-lowest non-tank rather than discarding either the official counter role or the encounter
+     * mechanic.  The resulting five roles are then re-evaluated by the normal scorer so all
+     * existing position/frontmost-tank safety checks still apply.
+     */
+    private fun exSecondFailureHealerRecovery(
+        roster: List<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        failedTeamSignatures: Set<String>,
+        lastFailedTeamSignature: String,
+    ): LabyrinthBattleTeamRecommendationResult? {
+        val failedIds = lastFailedTeamSignature
+            .split(',')
+            .map(String::trim)
+            .filter(String::isNotBlank)
+            .map(::canonicalLabyrinthRoleId)
+            .distinct()
+        if (failedIds.size != TEAM_SIZE) return null
+
+        val byId = roster.associateBy(LabyrinthRoleProfile::characterId)
+        val failedTeam = failedIds.mapNotNull(byId::get)
+        if (failedTeam.size != TEAM_SIZE) return null
+
+        val protectedEffectiveIds = context.effectiveCharacterIds
+            .map(::canonicalLabyrinthRoleId)
+            .toSet()
+        val removable = failedTeam
+            .filterNot(LabyrinthRoleProfile::isLabyrinthBattleTank)
+            .filterNot { it.characterId in protectedEffectiveIds }
+            .sortedWith(
+                compareBy<LabyrinthRoleProfile> { it.effectiveUserScore ?: Double.NEGATIVE_INFINITY }
+                    .thenBy { it.characterId },
+            )
+        if (removable.isEmpty()) return null
+
+        val failedIdSet = failedTeam.map(LabyrinthRoleProfile::characterId).toSet()
+        val healers = roster
+            .filterNot { it.characterId in failedIdSet }
+            .filter { it.isExRetryHealer() }
+            .sortedWith(
+                compareByDescending<LabyrinthRoleProfile> { it.roleClass == "治疗者" }
+                    .thenByDescending { it.exRetryHealingStrength() }
+                    .thenByDescending { it.effectiveUserScore ?: 0.0 }
+                    .thenBy { it.characterId },
+            )
+        if (healers.isEmpty()) return null
+
+        for (removed in removable) {
+            for (healer in healers) {
+                val candidate = failedTeam.filterNot { it.characterId == removed.characterId } + healer
+                if (!teamMeetsEncounterHardRequirements(candidate, context.encounterStrategy)) continue
+                val signature = labyrinthBattleTeamSignature(candidate.map(LabyrinthRoleProfile::characterId))
+                if (signature in failedTeamSignatures) continue
+
+                val plan = teamPlanSearcher.initialSearch(
+                    roster = candidate,
+                    context = context.copy(survivalRecovery = true),
+                )
+                val evaluation = plan.teams.singleOrNull() ?: continue
+                if (evaluation.members.size != TEAM_SIZE) continue
+                val members = evaluation.members.map { it.toRecommendedMember() }
+                val memberById = members.associateBy(LabyrinthRecommendedTeamMember::characterId)
+                val vanguard = memberById[evaluation.vanguardCharacterId] ?: continue
+                if (profiles[evaluation.vanguardCharacterId]?.isLabyrinthBattleTank != true) continue
+
+                return LabyrinthBattleTeamRecommendationResult.Ready(
+                    LabyrinthBattleTeamRecommendation(
+                        members = members,
+                        damageType = evaluation.damageType,
+                        score = evaluation.score,
+                        vanguard = vanguard,
+                        survivalAnchor = evaluation.survivalAnchorCharacterId?.let(memberById::get),
+                        reasons = (
+                            evaluation.reasons +
+                                "EX第二次失败生存兜底：保留T，移除最低分非T ${removed.displayName}" +
+                                "（${formatBattleTeamScore(removed.effectiveUserScore ?: 0.0)}），加入治疗 ${healer.displayName}" +
+                                "（治疗强度${formatBattleTeamScore(healer.exRetryHealingStrength())}）" +
+                                "；有效效果角色全部保留；仍保持EX攻略硬要求"
+                            ).distinct(),
+                        defenseMarkStacks = context.defenseMarkStacks,
+                        targetCount = context.targetCount,
+                    ),
+                )
+            }
+        }
+        return null
+    }
+
+    private fun LabyrinthRoleProfile.isExRetryHealer(): Boolean =
+        roleClass == "治疗者" || exRetryHealingStrength() >= EX_RETRY_HEALER_MIN_STRENGTH
+
+    private fun LabyrinthRoleProfile.exRetryHealingStrength(): Double = maxOf(
+        functions.healing ?: 0.0,
+        functions.regeneration ?: 0.0,
+        functions.pureHealer ?: 0.0,
+    )
+
+    fun retryRecommendation(
+        acquiredCharacterIds: Collection<String>,
+        context: LabyrinthRoleDecisionContext,
+        failedTeamSignatures: Set<String>,
+        retryNumber: Int = 1,
+        lastFailedTeamSignature: String? = null,
+    ): LabyrinthBattleTeamRecommendationResult {
+        val canonicalIds = acquiredCharacterIds.map(::canonicalLabyrinthRoleId).distinct()
+        val knownProfiles = profiles.withKnownRoleIdentities(canonicalIds)
+        val resolved = canonicalIds.map(knownProfiles::getValue)
+        if (resolved.size < TEAM_SIZE) {
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                "战斗失败后可用角色不足${TEAM_SIZE}名，无法生成完整重试队伍",
+            )
+        }
+        if (resolved.none(LabyrinthRoleProfile::isLabyrinthBattleTank)) {
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                "战斗失败后角色池中没有T（掩护者）；不能生成安全重试队伍",
+            )
+        }
+        encounterRequirementFailureReason(resolved, context.encounterStrategy)?.let { reason ->
+            return LabyrinthBattleTeamRecommendationResult.Unavailable("失败重试仍不满足攻略机制：$reason")
+        }
+
+        if (context.encounterStrategy != null && retryNumber >= 2 && lastFailedTeamSignature != null) {
+            val recovery = exSecondFailureHealerRecovery(
+                roster = resolved,
+                context = context,
+                failedTeamSignatures = failedTeamSignatures,
+                lastFailedTeamSignature = lastFailedTeamSignature,
+            )
+            if (recovery != null) return recovery
+
+            val failedIds = lastFailedTeamSignature
+                .split(',')
+                .map(String::trim)
+                .filter(String::isNotBlank)
+                .map(::canonicalLabyrinthRoleId)
+                .toSet()
+            val protectedEffectiveIds = context.effectiveCharacterIds
+                .map(::canonicalLabyrinthRoleId)
+                .toSet()
+            val safeRemovableExists = resolved.any { role ->
+                role.characterId in failedIds &&
+                    !role.isLabyrinthBattleTank &&
+                    role.characterId !in protectedEffectiveIds
+            }
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                if (!safeRemovableExists) {
+                    "EX第二次失败生存兜底无法执行：当前失败队没有可替换的非T、非有效效果角色；" +
+                        "有效效果角色禁止换出"
+                } else {
+                    "EX第二次失败生存兜底无法生成安全换奶阵容：已锁定T和全部有效效果角色，" +
+                        "且不会退回可能换走有效角色的普通fallback"
+                },
+            )
+        }
+
+        val plan = teamPlanSearcher.fallbackSearch(
+            roster = resolved,
+            context = context,
+            excludedTeamSignatures = failedTeamSignatures,
+        )
+        val evaluation = plan.teams.firstOrNull()
+            ?: return LabyrinthBattleTeamRecommendationResult.Unavailable(plan.reason)
+        if (evaluation.members.size != TEAM_SIZE) {
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                "失败重试规划未返回完整${TEAM_SIZE}人队伍：${plan.reason}",
+            )
+        }
+        val signature = labyrinthBattleTeamSignature(
+            evaluation.members.map(LabyrinthRoleProfile::characterId),
+        )
+        if (signature in failedTeamSignatures) {
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                "失败重试规划仍返回已经失败过的同一阵容，已拒绝再次提交",
+            )
+        }
+        val members = evaluation.members.map { it.toRecommendedMember() }
+        val memberById = members.associateBy(LabyrinthRecommendedTeamMember::characterId)
+        val vanguard = memberById[evaluation.vanguardCharacterId]
+            ?: return LabyrinthBattleTeamRecommendationResult.Unavailable("失败重试阵容缺少可确认的一号位")
+        if (profiles[evaluation.vanguardCharacterId]?.isLabyrinthBattleTank != true) {
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                "失败重试T硬约束校验失败：实际一号位不是T",
+            )
+        }
+        return LabyrinthBattleTeamRecommendationResult.Ready(
+            LabyrinthBattleTeamRecommendation(
+                members = members,
+                damageType = evaluation.damageType,
+                score = evaluation.score,
+                vanguard = vanguard,
+                survivalAnchor = evaluation.survivalAnchorCharacterId?.let(memberById::get),
+                reasons = (evaluation.reasons + plan.reason + "失败重试：禁止复用已失败的完整阵容").distinct(),
+                defenseMarkStacks = context.defenseMarkStacks,
+                targetCount = context.targetCount,
+            ),
+        )
+    }
+
+    private fun LabyrinthRoleProfile.toRecommendedMember() = LabyrinthRecommendedTeamMember(
+        characterId = characterId,
+        displayName = displayName,
+    )
+
+    private companion object {
+        const val TEAM_SIZE = 5
+        const val EX_RETRY_HEALER_MIN_STRENGTH = 50.0
+    }
+}
+
+internal fun labyrinthBattleTeamSelectionMessage(
+    combatContext: LabyrinthCombatContext?,
+    recommendation: LabyrinthBattleTeamRecommendation?,
+    unavailableReason: String?,
+    selectionPlan: LabyrinthBattleTeamSelectionPlan? = null,
+): String {
+    val waiting = combatContext?.let { context ->
+        when (context.kind) {
+            LabyrinthCombatKind.BOSS -> "准备 Boss 第${context.teamIndex}/3 队编组"
+            LabyrinthCombatKind.NORMAL -> "准备普通战编组"
+            LabyrinthCombatKind.EX -> "准备 EX 战编组"
+        }
+    } ?: "准备战斗编组"
+    return listOfNotNull(
+        waiting,
+        recommendation?.let {
+            "推荐第一队：${it.members.joinToString("、") { member -> member.displayName }}；" +
+                "${it.damageTypeLabel}；评分${formatBattleTeamScore(it.score)}"
+        },
+        unavailableReason?.let { "第一队建议不可用：$it" },
+        selectionPlan?.let { plan ->
+            when {
+                plan.teamReady -> "第一队编组已与推荐一致，准备开始战斗"
+                plan.readyToExecute ->
+                    "自动编组：保持${plan.alreadyCorrectIds.size}、取消${plan.needDeselectIds.size}、" +
+                        "选择${plan.needSelectIds.size}"
+                else -> "自动编组阻塞：${plan.blockedReason ?: "未知原因"}"
+            }
+        },
+    ).joinToString("；")
+}
+
+private fun formatBattleTeamScore(value: Double): String = "%.2f".format(value)

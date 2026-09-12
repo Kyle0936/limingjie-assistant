@@ -1,0 +1,7 @@
+// Local regression only: keep test-worker heap at the failing device's 192 MiB limit.
+allprojects {
+    tasks.withType(org.gradle.api.tasks.testing.Test).configureEach {
+        maxHeapSize = '192m'
+        maxParallelForks = 1
+    }
+}

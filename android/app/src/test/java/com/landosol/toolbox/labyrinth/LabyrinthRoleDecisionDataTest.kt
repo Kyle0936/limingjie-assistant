@@ -1,0 +1,454 @@
+package com.landosol.toolbox.labyrinth
+
+import com.landosol.toolbox.labyrinth.vision.EntryPixelRect
+import com.landosol.toolbox.labyrinth.vision.LabyrinthCharacterMatch
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
+import java.io.File
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class LabyrinthRoleDecisionDataTest {
+    @Test
+    fun `generated production data preserves ratings and latest database facts`() {
+        val asset = listOf(
+            File("app/src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+            File("src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+        ).first { it.isFile }
+
+        val parsed = when (val result = LabyrinthRoleDecisionDataParser.parse(asset.readText())) {
+            is LabyrinthRoleDecisionDataResult.Ready -> result
+            is LabyrinthRoleDecisionDataResult.Unavailable -> error(result.reason)
+        }
+        val violet = parsed.runtime.profiles.getValue("1331")
+        val nephira = parsed.runtime.profiles.getValue("1297")
+        val summerSheffy = parsed.runtime.profiles.getValue("1351")
+
+        assertEquals(2, parsed.runtime.document.schemaVersion)
+        assertEquals(100.0, violet.userScore ?: error("missing Violet score"), 0.0001)
+        assertEquals(5, violet.userRatingCount)
+        assertEquals(93.3, nephira.userScore ?: error("missing Nephira score"), 0.0001)
+        assertEquals(80.0, summerSheffy.userScore ?: error("missing Summer Sheffy score"), 0.0001)
+        assertEquals(143, summerSheffy.position)
+        assertEquals(LabyrinthRoleDamageType.PHYSICAL, summerSheffy.damageType)
+        assertTrue(violet.isStrictDecisionReady)
+        assertEquals(LabyrinthCharacterAttribute.DARK, violet.attribute)
+        assertEquals("掩护者", violet.roleClass)
+        assertEquals(LabyrinthRoleDamageType.PHYSICAL, violet.damageType)
+        assertEquals(154, violet.position)
+        listOf("1183", "1184", "1204", "1205", "1206", "1217", "1218", "1243", "1244", "1281", "1282")
+            .forEach { memberId -> assertFalse(parsed.runtime.profiles.containsKey(memberId)) }
+        listOf("1807", "1808", "1809", "1810", "1811")
+            .forEach { canonicalId -> assertTrue(parsed.runtime.profiles.containsKey(canonicalId)) }
+    }
+
+    @Test
+    fun `production tactical data distinguishes true wide aoe and summer misogi backline pull`() {
+        val asset = listOf(
+            File("app/src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+            File("src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+        ).first { it.isFile }
+        val parsed = when (val result = LabyrinthRoleDecisionDataParser.parse(asset.readText())) {
+            is LabyrinthRoleDecisionDataResult.Ready -> result
+            is LabyrinthRoleDecisionDataResult.Unavailable -> error(result.reason)
+        }
+
+        val rino = parsed.runtime.profiles.getValue("1011")
+        val summerMisogi = parsed.runtime.profiles.getValue("1228")
+
+        assertTrue((rino.functions.wideAoeCoverage ?: 0.0) >= 90.0)
+        assertTrue((summerMisogi.functions.backlineAoeCoverage ?: 0.0) >= 90.0)
+        assertTrue((summerMisogi.functions.enemyPull ?: 0.0) >= 50.0)
+        assertTrue((summerMisogi.functions.enemyPush ?: 0.0) <= 0.0)
+        assertTrue(
+            (rino.functions.wideAoeCoverage ?: 0.0) >
+                (summerMisogi.functions.wideAoeCoverage ?: 0.0),
+        )
+    }
+
+    @Test
+    fun `versioned role decision data builds reward and team runtimes`() {
+        val document = document(
+            acquiredProfiles() + listOf(
+                role("left", "高价值候选", damage = 95.0),
+                role("center", "普通候选", damage = 50.0),
+                role("right", "较弱候选", damage = 35.0),
+            ),
+        )
+
+        val parsed = LabyrinthRoleDecisionDataParser.parse(Json.encodeToString(document))
+            as LabyrinthRoleDecisionDataResult.Ready
+        val choice = parsed.runtime.rewardChoicePlanner.decide(
+            candidates = recognizedCandidates(),
+            acquiredCharacterIds = acquiredProfiles().map(LabyrinthRoleProfile::characterId).toSet(),
+            context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
+            frameWidth = 1920,
+            frameHeight = 1080,
+        ) as LabyrinthRoleRewardChoiceDecision.Select
+
+        assertEquals("left", choice.characterId)
+        assertEquals(EntryPixelRect(260, 810, 290, 155), choice.buttonRect)
+        assertTrue(choice.explanation.isNotEmpty())
+        assertEquals(7, parsed.runtime.profiles.size)
+
+        val recommendation = parsed.runtime.battleTeamRecommendationPlanner.initialRecommendation(
+            acquiredCharacterIds = parsed.runtime.profiles.keys,
+            context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertEquals(5, recommendation.recommendation.members.size)
+        assertEquals(4, recommendation.recommendation.defenseMarkStacks)
+    }
+
+    @Test
+    fun `reward planner allows known visual identity without audited profile`() {
+        val profiles = (acquiredProfiles() + listOf(
+            role("left", "高价值候选", damage = 95.0),
+            role("right", "较弱候选", damage = 35.0),
+        )).associateBy(LabyrinthRoleProfile::characterId)
+        val scorer = LabyrinthTeamScorer(scoring())
+        val planner = LabyrinthRoleRewardChoicePlanner(
+            profiles,
+            LabyrinthRoleChoicePolicy(LabyrinthTeamOptimizer(scorer)),
+        )
+
+        val result = planner.decide(
+            candidates = recognizedCandidates(),
+            acquiredCharacterIds = acquiredProfiles().map(LabyrinthRoleProfile::characterId).toSet(),
+            context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
+            frameWidth = 1920,
+            frameHeight = 1080,
+        ) as LabyrinthRoleRewardChoiceDecision.Select
+
+        assertTrue(result.actionSafe)
+        assertTrue(result.safetyNote.orEmpty().contains("center"))
+        assertEquals("left", result.characterId)
+    }
+
+    @Test
+    fun `reward planner permits auto tap for incomplete profile`() {
+        val profiles = (acquiredProfiles() + listOf(
+            role("left", "高价值候选", damage = 95.0).copy(position = null),
+            role("center", "普通候选", damage = 50.0),
+            role("right", "较弱候选", damage = 35.0),
+        )).associateBy(LabyrinthRoleProfile::characterId)
+        val planner = LabyrinthRoleRewardChoicePlanner(
+            profiles,
+            LabyrinthRoleChoicePolicy(LabyrinthTeamOptimizer(LabyrinthTeamScorer(scoring()))),
+        )
+
+        val result = planner.decide(
+            candidates = recognizedCandidates(),
+            acquiredCharacterIds = acquiredProfiles().map(LabyrinthRoleProfile::characterId).toSet(),
+            context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
+            frameWidth = 1920,
+            frameHeight = 1080,
+        ) as LabyrinthRoleRewardChoiceDecision.Select
+
+        assertEquals("left", result.characterId)
+        assertTrue(result.actionSafe)
+        assertTrue(result.safetyNote.orEmpty().contains("left"))
+    }
+
+    @Test fun `missing acquired and candidate profiles retain only known identities`() {
+        val source = emptyMap<String, LabyrinthRoleProfile>()
+        val known = source.withKnownRoleIdentities(listOf("left"), mapOf("left" to "可靠识别的角色"))
+        assertEquals("可靠识别的角色", known.getValue("left").displayName)
+        assertEquals(null, known.getValue("left").position)
+        assertEquals(null, known.getValue("left").userScore)
+        assertEquals(null, known.getValue("left").attribute)
+        val planner = LabyrinthRoleRewardChoicePlanner(source,
+            LabyrinthRoleChoicePolicy(LabyrinthTeamOptimizer(LabyrinthTeamScorer(scoring()))))
+        val decision = planner.decide(recognizedCandidates(), setOf("old"),
+            LabyrinthRoleDecisionContext(defenseMarkStacks = 0), 1920, 1080) as LabyrinthRoleRewardChoiceDecision.Select
+        assertTrue(decision.actionSafe)
+        assertTrue(decision.characterId in listOf("left", "center", "right"))
+        assertTrue(decision.safetyNote.orEmpty().contains("old"))
+        val weak = recognizedCandidates().map { it.copy(trusted = false) }
+        assertTrue(planner.decide(weak, setOf("old"), LabyrinthRoleDecisionContext(defenseMarkStacks = 0),
+            1920, 1080) is LabyrinthRoleRewardChoiceDecision.Wait)
+    }
+
+    @Test
+    fun `reward planner canonicalizes combined card member ids`() {
+        val profiles = (acquiredProfiles() + listOf(
+            role("1809", "秋乃&咲恋", damage = 95.0),
+            role("center", "普通候选", damage = 50.0),
+            role("right", "较弱候选", damage = 35.0),
+        )).associateBy(LabyrinthRoleProfile::characterId)
+        val scorer = LabyrinthTeamScorer(scoring())
+        val planner = LabyrinthRoleRewardChoicePlanner(
+            profiles,
+            LabyrinthRoleChoicePolicy(LabyrinthTeamOptimizer(scorer)),
+        )
+
+        val result = planner.decide(
+            candidates = listOf(
+                match("role_reward_left", "1217", "秋乃(秋乃&咲恋)", 0.91),
+                match("role_reward_center", "center", "普通候选", 0.90),
+                match("role_reward_right", "right", "较弱候选", 0.92),
+            ),
+            acquiredCharacterIds = acquiredProfiles().map(LabyrinthRoleProfile::characterId).toSet(),
+            context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
+            frameWidth = 1920,
+            frameHeight = 1080,
+        ) as LabyrinthRoleRewardChoiceDecision.Select
+
+        assertEquals("1809", result.characterId)
+        assertEquals("秋乃&咲恋", result.displayName)
+        assertEquals(EntryPixelRect(260, 810, 290, 155), result.buttonRect)
+    }
+
+    @Test
+    fun `reward planner blocks weak shared matcher result until name verification`() {
+        val profiles = (acquiredProfiles() + listOf(
+            role("left", "高价值候选", damage = 95.0),
+            role("center", "普通候选", damage = 50.0),
+            role("right", "较弱候选", damage = 35.0),
+        )).associateBy(LabyrinthRoleProfile::characterId)
+        val planner = LabyrinthRoleRewardChoicePlanner(
+            profiles,
+            LabyrinthRoleChoicePolicy(LabyrinthTeamOptimizer(LabyrinthTeamScorer(scoring()))),
+        )
+
+        val result = planner.decide(
+            candidates = listOf(
+                trustedMatch("role_reward_left", "left", "高价值候选", confidence = 0.39, margin = 0.15),
+                trustedMatch("role_reward_center", "center", "普通候选", confidence = 0.41, margin = 0.10),
+                trustedMatch("role_reward_right", "right", "较弱候选", confidence = 0.40, margin = 0.09),
+            ),
+            acquiredCharacterIds = acquiredProfiles().map(LabyrinthRoleProfile::characterId).toSet(),
+            context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
+            frameWidth = 1920,
+            frameHeight = 1080,
+        )
+
+        assertTrue(result is LabyrinthRoleRewardChoiceDecision.Wait)
+        assertTrue(
+            labyrinthRoleRewardNeedsNameVerification(
+                trustedMatch("role_reward_right", "right", "较弱候选", confidence = 0.45, margin = 0.07),
+            ),
+        )
+    }
+
+    @Test
+    fun `reward planner accepts weak icon after trusted name verification`() {
+        val profiles = (acquiredProfiles() + listOf(
+            role("left", "高价值候选", damage = 95.0),
+            role("center", "普通候选", damage = 50.0),
+            role("right", "较弱候选", damage = 35.0),
+        )).associateBy(LabyrinthRoleProfile::characterId)
+        val planner = LabyrinthRoleRewardChoicePlanner(
+            profiles,
+            LabyrinthRoleChoicePolicy(LabyrinthTeamOptimizer(LabyrinthTeamScorer(scoring()))),
+        )
+        val nameVerifiedRight = trustedMatch(
+            "role_reward_right",
+            "right",
+            "较弱候选",
+            confidence = 0.45,
+            margin = 0.07,
+        ).copy(
+            nameEvidenceText = "较弱候选",
+            nameEvidenceScore = 1.0,
+            nameEvidenceMargin = 0.40,
+            nameAssisted = true,
+        )
+
+        val result = planner.decide(
+            candidates = listOf(
+                trustedMatch("role_reward_left", "left", "高价值候选", confidence = 0.62, margin = 0.18),
+                trustedMatch("role_reward_center", "center", "普通候选", confidence = 0.60, margin = 0.16),
+                nameVerifiedRight,
+            ),
+            acquiredCharacterIds = acquiredProfiles().map(LabyrinthRoleProfile::characterId).toSet(),
+            context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
+            frameWidth = 1920,
+            frameHeight = 1080,
+        )
+
+        assertTrue(result is LabyrinthRoleRewardChoiceDecision.Select)
+        assertFalse(labyrinthRoleRewardNeedsNameVerification(nameVerifiedRight))
+    }
+
+    @Test
+    fun `all combined member ids canonicalize to one battle unit`() {
+        val expected = mapOf(
+            "1183" to "1807",
+            "1184" to "1807",
+            "1204" to "1808",
+            "1205" to "1808",
+            "1206" to "1808",
+            "1217" to "1809",
+            "1218" to "1809",
+            "1243" to "1810",
+            "1244" to "1810",
+            "1281" to "1811",
+            "1282" to "1811",
+        )
+
+        expected.forEach { (member, canonical) ->
+            assertEquals(canonical, canonicalLabyrinthRoleId(member))
+        }
+        expected.values.toSet().forEach { canonical ->
+            assertEquals(canonical, canonicalLabyrinthRoleId(canonical))
+        }
+    }
+
+    @Test
+    fun `verified final boss replacement favors Nephira over Rino without id special casing`() {
+        val asset = listOf(
+            File("app/src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+            File("src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+        ).first { it.isFile }
+        val runtime = when (val result = LabyrinthRoleDecisionDataParser.parse(asset.readText())) {
+            is LabyrinthRoleDecisionDataResult.Ready -> result.runtime
+            is LabyrinthRoleDecisionDataResult.Unavailable -> error(result.reason)
+        }
+        val commonIds = listOf("1351", "1287", "1236", "1071")
+        val common = commonIds.map(runtime.profiles::getValue)
+        val scorer = LabyrinthTeamScorer(runtime.document.scoring)
+        val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4, targetCount = 1)
+
+        val rinoTeam = scorer.evaluate(common + runtime.profiles.getValue("1011"), context)
+        val nephiraTeam = scorer.evaluate(common + runtime.profiles.getValue("1297"), context)
+
+        assertTrue(nephiraTeam.score > rinoTeam.score)
+        assertTrue(runtime.profiles.getValue("1297").effectiveUserScore.orZeroForTest() >
+            runtime.profiles.getValue("1011").effectiveUserScore.orZeroForTest())
+    }
+
+    @Test
+    fun `role decision data rejects duplicate profile ids`() {
+        val duplicate = role("same", "重复一")
+        val raw = Json.encodeToString(document(listOf(duplicate, duplicate.copy(displayName = "重复二"))))
+
+        val result = LabyrinthRoleDecisionDataParser.parse(raw) as LabyrinthRoleDecisionDataResult.Unavailable
+
+        assertTrue(result.reason.contains("重复ID"))
+    }
+
+    @Test
+    fun `schema one role choice weights remain readable with deployment semantics`() {
+        val legacyDocument = document(
+            acquiredProfiles() + listOf(
+                role("left", "候选一"),
+                role("center", "候选二"),
+                role("right", "候选三"),
+            ),
+        ).copy(
+            schemaVersion = 1,
+            roleChoice = LabyrinthRoleChoiceConfig(
+                forcedCandidateTeamWeight = 0.40,
+                secondTeamPotentialWeight = 0.25,
+            ),
+        )
+
+        val parsed = LabyrinthRoleDecisionDataParser.parse(Json.encodeToString(legacyDocument))
+            as LabyrinthRoleDecisionDataResult.Ready
+
+        assertEquals(listOf(1.0, 0.40, 0.25), parsed.runtime.document.roleChoice.effectiveCandidateTeamWeights())
+    }
+
+    private fun document(characters: List<LabyrinthRoleProfile>) = LabyrinthRoleDecisionDocument(
+        source = LabyrinthRoleDecisionSource(
+            ratingWorkbook = "公主连结角色黎明界强度表有图片.xlsx",
+            ratingWorkbookHash = "test-rating-hash",
+            skillDatabaseVersion = "test-cn-version",
+            skillDatabaseHash = "test-db-hash",
+            attributeBonusSource = "current-game-config",
+        ),
+        scoring = scoring(),
+        roleChoice = LabyrinthRoleChoiceConfig(),
+        teamPlan = LabyrinthTeamPlanSearchConfig(
+            oneTeamKillScore = 90.0,
+            mainTeamScore = 70.0,
+            cleanupTeamScore = 40.0,
+            mainPlusCleanupCombinedScore = 120.0,
+            stableTeamScore = 60.0,
+            fallbackTeamScore = 35.0,
+            threeTeamCombinedScore = 120.0,
+        ),
+        characters = characters,
+    )
+
+    private fun scoring() = LabyrinthTeamScoringConfig(
+        attributeDamageBonus = mapOf(1 to 0.0, 2 to 0.08, 3 to 0.16, 4 to 0.25, 5 to 0.75),
+    )
+
+    private fun acquiredProfiles() = listOf(
+        role(
+            "front",
+            "一号位",
+            position = 1,
+            damage = 55.0,
+            vanguard = 100.0,
+            defenseDown = 80.0,
+            roleClass = "掩护者",
+        ),
+        role("owned2", "已有二", damage = 65.0, aoe = 80.0),
+        role("owned3", "已有三", damage = 65.0, single = 80.0),
+        role("owned4", "已有四", damage = 60.0),
+    )
+
+    private fun recognizedCandidates() = listOf(
+        match("role_reward_left", "left", "高价值候选", 0.91),
+        match("role_reward_center", "center", "普通候选", 0.90),
+        match("role_reward_right", "right", "较弱候选", 0.92),
+    )
+
+    private fun match(slot: String, id: String, name: String, confidence: Double) = LabyrinthCharacterMatch(
+        slotId = slot,
+        characterId = id,
+        displayName = name,
+        confidence = confidence,
+        screenRect = EntryPixelRect(0, 0, 100, 100),
+    )
+
+    private fun trustedMatch(
+        slot: String,
+        id: String,
+        name: String,
+        confidence: Double,
+        margin: Double,
+    ) = LabyrinthCharacterMatch(
+        slotId = slot,
+        characterId = id,
+        displayName = name,
+        confidence = confidence,
+        screenRect = EntryPixelRect(0, 0, 100, 100),
+        trusted = true,
+        rivalMargin = margin,
+    )
+
+    private fun role(
+        id: String,
+        name: String,
+        position: Int = 5,
+        damage: Double = 50.0,
+        vanguard: Double = 0.0,
+        defenseDown: Double = 0.0,
+        aoe: Double = 0.0,
+        single: Double = 0.0,
+        roleClass: String = "fighter",
+    ) = LabyrinthRoleProfile(
+        characterId = id,
+        displayName = name,
+        roleClass = roleClass,
+        attribute = LabyrinthCharacterAttribute.LIGHT,
+        damageType = LabyrinthRoleDamageType.PHYSICAL,
+        position = position,
+        baseQuality = damage,
+        physicalDamagePotential = damage,
+        magicDamagePotential = 0.0,
+        functions = LabyrinthRoleFunctions(
+            reliableVanguard = vanguard,
+            physicalDefenseDown = defenseDown,
+            aoeDamage = aoe,
+            singleTargetDamage = single,
+        ),
+    )
+
+    private fun Double?.orZeroForTest(): Double = this ?: 0.0
+}

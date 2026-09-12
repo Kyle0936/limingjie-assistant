@@ -1,0 +1,9 @@
+{
+  "code": 0,
+  "gt": "fixture-gt",
+  "challenge": "fixture-challenge",
+  "gt_user_id": "fixture-provider-user",
+  "captcha_type": "1",
+  "gs": 1,
+  "requestId": "fixture-request-id"
+}

@@ -1,0 +1,11 @@
+{
+  "data_headers": {
+    "result_code": 1
+  },
+  "data": {
+    "required_manifest_ver": "209901010000",
+    "res_ver": "10000000",
+    "maintenance_message": null,
+    "server_error": null
+  }
+}

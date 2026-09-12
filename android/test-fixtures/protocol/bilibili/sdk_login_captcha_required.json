@@ -1,0 +1,6 @@
+{
+  "code": 200000,
+  "need_captch": true,
+  "message": "secondary verification required",
+  "requestId": "fixture-request-id"
+}

@@ -1,0 +1,15 @@
+{
+  "data_headers": {
+    "result_code": 1,
+    "viewer_id": "900000001",
+    "request_id": "fixture-request-id-2"
+  },
+  "data": {
+    "user_info": {
+      "viewer_id": 900000001,
+      "user_name": "FixturePlayer",
+      "team_level": 100
+    },
+    "server_error": null
+  }
+}
