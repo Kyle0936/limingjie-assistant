@@ -52,6 +52,8 @@ object LabyrinthShopItemText {
         .replace('隨', '随')
         .replace("選擇", "选择")
         .replace('記', '记')
+        .replace('紀', '记')
+        .replace('纪', '记')
 
     /**
      * Coarse semantic gate: enough to prove this good is a role-imprint and therefore not a relic,
@@ -59,17 +61,21 @@ object LabyrinthShopItemText {
      */
     fun looksLikeRoleImprint(text: String?): Boolean {
         val value = normalized(text)
-        if (!value.contains("印记")) return false
-        return value.contains("职能") || value.contains("随机职能") || value.contains("全体选择印记")
+        if (value.contains("全体选择印记")) return true
+        if (!value.contains("职能")) return false
+        // Shop OCR occasionally drops/misreads the last "印记" glyph while preserving the much
+        // more distinctive "职能...随机/选择" title. That evidence is sufficient to reject the
+        // relic hypothesis; ordinary relic titles do not contain "职能".
+        return value.contains("印记") || value.contains("随机") || value.contains("选择")
     }
 
     fun roleImprintLabel(text: String?): String? {
         val normalized = normalized(text)
-        if (!normalized.contains("印记")) return null
+        if (!looksLikeRoleImprint(normalized)) return null
         val role = roleLabels.firstOrNull { label ->
             normalized.contains("${label}型职能") || normalized.contains("${label}职能")
         }
-        if (role != null && (normalized.contains("选择印记") || normalized.contains("随机印记"))) {
+        if (role != null && (normalized.contains("选择") || normalized.contains("随机"))) {
             return "${role}型职能印记"
         }
         if (normalized.contains("全体选择印记")) return "全体选择印记"

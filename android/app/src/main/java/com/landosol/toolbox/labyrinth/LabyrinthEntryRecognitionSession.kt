@@ -1493,6 +1493,18 @@ class LabyrinthEntryRecognitionSession(
         timestampMillis: Long,
         dryRun: Boolean,
     ): Boolean {
+        if (
+            labyrinthShopTransitionSuppressesSessionBlock(
+                pageState = result.observation.state,
+                previousPageState = lastObservedPageState,
+                activeNodeType = activeNodeType,
+                lastActionAt = lastPostEntryActionAt,
+                now = timestampMillis,
+            )
+        ) {
+            resetSessionRecoveryTracking()
+            return false
+        }
         val block = labyrinthSessionBlockObservation(result, sessionBlockClassifier)
         if (!block.blocksNormalActions) {
             resetSessionRecoveryTracking()
@@ -2024,13 +2036,6 @@ class LabyrinthEntryRecognitionSession(
         if (previous == pageState) return
         lastObservedPageState = pageState
 
-        if (
-            pageState == LabyrinthEntryPageState.SHOP &&
-            labyrinthPageUiOwner(previous ?: LabyrinthEntryPageState.UNKNOWN) != LabyrinthPageUiOwner.SHOP
-        ) {
-            // Fresh shop node. Returning from purchase/confirmation dialogs keeps the same cycle.
-            shopRelicPurchasesThisCycle = 0
-        }
         if (
             pageState == LabyrinthEntryPageState.SHOP_PURCHASE_COMPLETE &&
             plannedShopPurchaseRelicId != null &&
@@ -5083,6 +5088,12 @@ class LabyrinthEntryRecognitionSession(
                         ?.area
                         ?: _state.value.routeProgress?.currentArea
                     eventActionAttempts = 0
+                    if (action.blockType == LabyrinthNodeTypes.SHOP) {
+                        // Reset only on an actual new shop-node entry. Purchase animations can
+                        // transiently classify as UNKNOWN before returning to the same SHOP page;
+                        // page-state churn must not erase the current three-relic cycle count.
+                        shopRelicPurchasesThisCycle = 0
+                    }
                     if (action.blockType == LabyrinthNodeTypes.BOSS) {
                         bossTeamMode = configuredBossTeamMode
                         pendingSingleBossFallbackToMulti = false

@@ -13,6 +13,7 @@ import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageObservation
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageState
 import com.landosol.toolbox.labyrinth.vision.EntryAnchorId
 import com.landosol.toolbox.labyrinth.vision.EntryAnchorMatch
+import com.landosol.toolbox.labyrinth.node.LabyrinthNodeTypes
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -129,6 +130,39 @@ class LabyrinthPageRuntimePolicyTest {
                 attempts = 0,
                 frameWidth = 1920,
                 frameHeight = 1080,
+            ),
+        )
+    }
+
+    @Test
+    fun `recent shop animation unknown frame cannot masquerade as session failure`() {
+        assertTrue(
+            labyrinthShopTransitionSuppressesSessionBlock(
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                previousPageState = LabyrinthEntryPageState.SHOP_PURCHASE_COMPLETE,
+                activeNodeType = LabyrinthNodeTypes.SHOP,
+                lastActionAt = 1_000L,
+                now = 2_500L,
+            ),
+        )
+        assertEquals(
+            false,
+            labyrinthShopTransitionSuppressesSessionBlock(
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                previousPageState = LabyrinthEntryPageState.SHOP,
+                activeNodeType = LabyrinthNodeTypes.SHOP,
+                lastActionAt = 1_000L,
+                now = 4_500L,
+            ),
+        )
+        assertEquals(
+            false,
+            labyrinthShopTransitionSuppressesSessionBlock(
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                previousPageState = LabyrinthEntryPageState.SHOP,
+                activeNodeType = LabyrinthNodeTypes.EVENT,
+                lastActionAt = 1_000L,
+                now = 2_000L,
             ),
         )
     }

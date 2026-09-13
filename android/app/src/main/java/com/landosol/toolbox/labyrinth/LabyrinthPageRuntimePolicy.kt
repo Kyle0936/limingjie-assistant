@@ -10,6 +10,7 @@ import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryFrameResult
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageState
 import com.landosol.toolbox.labyrinth.vision.ReferenceFitMapper
 import com.landosol.toolbox.labyrinth.vision.labyrinthRoleRewardOwnsInitialSelection
+import com.landosol.toolbox.labyrinth.node.LabyrinthNodeTypes
 
 /** Exactly one page owns page-local actions, plans and overlay boxes for each recognized frame. */
 internal enum class LabyrinthPageUiOwner {
@@ -183,6 +184,28 @@ internal fun labyrinthKeepsPlannedShopPurchaseAcrossPage(
     if (pageState != LabyrinthEntryPageState.UNKNOWN) return false
     if (plannedRelicId.isNullOrBlank() || startedAt == Long.MIN_VALUE) return false
     return (now - startedAt).coerceAtLeast(0L) <= timeoutMillis
+}
+
+/**
+ * Purchase/refresh animation frames can resemble the broad reconnect-title template while the
+ * shop itself is temporarily classified UNKNOWN. Suppress only that short, semantically owned
+ * transition; a genuine session error remains actionable again as soon as the guard expires.
+ */
+internal fun labyrinthShopTransitionSuppressesSessionBlock(
+    pageState: LabyrinthEntryPageState,
+    previousPageState: LabyrinthEntryPageState?,
+    activeNodeType: Int?,
+    lastActionAt: Long,
+    now: Long,
+    guardMillis: Long = 3_000L,
+): Boolean {
+    if (pageState != LabyrinthEntryPageState.UNKNOWN) return false
+    if (activeNodeType != LabyrinthNodeTypes.SHOP) return false
+    if (labyrinthPageUiOwner(previousPageState ?: LabyrinthEntryPageState.UNKNOWN) != LabyrinthPageUiOwner.SHOP) {
+        return false
+    }
+    if (lastActionAt == Long.MIN_VALUE) return false
+    return (now - lastActionAt).coerceAtLeast(0L) <= guardMillis
 }
 
 /**

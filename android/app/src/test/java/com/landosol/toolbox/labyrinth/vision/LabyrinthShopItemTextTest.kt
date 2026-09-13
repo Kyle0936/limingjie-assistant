@@ -21,6 +21,18 @@ class LabyrinthShopItemTextTest {
             "增益型职能印记",
             LabyrinthShopItemText.roleImprintLabel("增益型 职能的 随机印记"),
         )
+        assertEquals(
+            "治疗型职能印记",
+            LabyrinthShopItemText.roleImprintLabel("治疗型职能的随机印记"),
+        )
+        assertEquals(
+            "治疗型职能印记",
+            LabyrinthShopItemText.roleImprintLabel("治疗型职能的随机印紀"),
+        )
+        assertEquals(
+            "治疗型职能印记",
+            LabyrinthShopItemText.roleImprintLabel("治疗型职能的随机"),
+        )
     }
 
     @Test
@@ -35,6 +47,7 @@ class LabyrinthShopItemTextTest {
     fun `coarse imprint gate can reject relic hypothesis without guessing exact role`() {
         assertTrue(LabyrinthShopItemText.looksLikeRoleImprint("干扰型职能的随机印记"))
         assertTrue(LabyrinthShopItemText.looksLikeRoleImprint("职能的随机印記"))
+        assertTrue(LabyrinthShopItemText.looksLikeRoleImprint("治疗型职能的随机"))
         assertNull(LabyrinthShopItemText.roleImprintLabel("职能的随机印記"))
     }
 }

@@ -64,11 +64,12 @@ class AndroidLabyrinthShopItemResolver(
 
     private companion object {
         val STANDARD_REFERENCE = EntryReferenceSize(1920, 1080)
-        // Narrow title rows; exclude the right-side info button and the icon/effect text below.
+        // Keep only the title glyphs. The old 72px-tall crop included the blue decorative curl
+        // and underline, which made the first (治疗) imprint substantially less stable for OCR.
         val TITLE_RECTS = mapOf(
-            "shop_item_1" to EntryReferenceRect(115, 225, 430, 72),
-            "shop_item_2" to EntryReferenceRect(693, 225, 430, 72),
-            "shop_item_3" to EntryReferenceRect(1268, 225, 430, 72),
+            "shop_item_1" to EntryReferenceRect(125, 230, 390, 55),
+            "shop_item_2" to EntryReferenceRect(703, 230, 390, 55),
+            "shop_item_3" to EntryReferenceRect(1278, 230, 390, 55),
         )
     }
 }
