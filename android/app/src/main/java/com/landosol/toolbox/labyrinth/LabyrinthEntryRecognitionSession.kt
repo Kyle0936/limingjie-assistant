@@ -4085,7 +4085,30 @@ class LabyrinthEntryRecognitionSession(
         }
 
         if (preparationStep == null && observation.bossTeamIndex != null && bossEditorBlocked) {
-            _state.value = _state.value.copy(message = "Boss切队记录不完整，请从队伍1重新启动自动编组；禁止复用其他队建议")
+            // A missed/ambiguous tab transition must never reuse another team's recommendation,
+            // but stopping here permanently makes the automation unrecoverable. Re-enter the
+            // existing Boss editor preparation flow instead: it clears all three tabs and returns
+            // to team 1 before any new recommendation is allowed to execute.
+            bossEditorPreparationStage = LabyrinthBossEditorPreparationStage.TEAM_1
+            bossEditorTeamIndex = observation.bossTeamIndex
+            bossEditorBlocked = false
+            pendingBossTeamAdvance = null
+            preparedBossFirstTeamIds = emptyList()
+            bossMultiTeamTargetCount = null
+            synchronized(committedBattleCharacterIds) { committedBattleCharacterIds.clear() }
+            synchronized(currentBattleTeamSignatures) { currentBattleTeamSignatures.clear() }
+            combatContext = (combatContext ?: LabyrinthCombatContext(LabyrinthCombatKind.BOSS))
+                .copy(kind = LabyrinthCombatKind.BOSS, teamIndex = observation.bossTeamIndex)
+            lastBattleTeamRecommendationKey = null
+            lastBattleTeamSelectionPlanLog = null
+            resetBattleTeamExecutionTracking()
+            _state.value = _state.value.copy(
+                combatContext = combatContext,
+                battleTeamRecommendation = null,
+                battleTeamSelectionPlan = null,
+                battleTeamRecommendationUnavailableReason = null,
+                message = "Boss切队记录不完整；已自动进入重同步，将清空三队并返回队伍1重新编组",
+            )
             return
         }
         val step = (preparationStep ?: if (

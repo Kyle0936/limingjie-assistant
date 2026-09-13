@@ -57,4 +57,14 @@ class LabyrinthBossEditorProgressTest {
         assertEquals(true, field(manual, "bossEditorBlocked").get(manual))
         assertTrue((field(manual, "committedBattleCharacterIds").get(manual) as Set<*>).isEmpty())
     }
+
+    @Test fun `blocked boss editor state is reserved for safe automatic resync rather than team reuse`() {
+        val session = session()
+        observe(session, 1)
+        observe(session, 3)
+        assertEquals(true, field(session, "bossEditorBlocked").get(session))
+        assertNull(field(session, "pendingBossTeamAdvance").get(session))
+        assertTrue((field(session, "committedBattleCharacterIds").get(session) as Set<*>).isEmpty())
+        assertEquals(3, session.state.value.combatContext?.teamIndex)
+    }
 }
