@@ -205,6 +205,35 @@ internal fun labyrinthKeepsPlannedShopPurchaseAcrossPage(
     return (now - startedAt).coerceAtLeast(0L) <= timeoutMillis
 }
 
+internal fun labyrinthShopRefreshConfirmationOwnsFrame(
+    activeNodeType: Int?,
+    refreshStartedAt: Long,
+    refreshConfirmedAt: Long,
+    now: Long,
+    hasGenericConfirmation: Boolean,
+    timeoutMillis: Long,
+): Boolean {
+    if (activeNodeType != LabyrinthNodeTypes.SHOP) return false
+    if (!hasGenericConfirmation || refreshStartedAt == Long.MIN_VALUE) return false
+    if (refreshConfirmedAt != Long.MIN_VALUE) return false
+    return (now - refreshStartedAt).coerceAtLeast(0L) <= timeoutMillis
+}
+
+internal fun labyrinthShopRefreshCanCommit(
+    pageState: LabyrinthEntryPageState,
+    refreshStartedAt: Long,
+    refreshConfirmedAt: Long,
+    now: Long,
+    settleMillis: Long,
+    timeoutMillis: Long,
+): Boolean {
+    if (pageState != LabyrinthEntryPageState.SHOP) return false
+    if (refreshStartedAt == Long.MIN_VALUE || refreshConfirmedAt == Long.MIN_VALUE) return false
+    val sinceStart = (now - refreshStartedAt).coerceAtLeast(0L)
+    val sinceConfirm = (now - refreshConfirmedAt).coerceAtLeast(0L)
+    return sinceStart <= timeoutMillis && sinceConfirm >= settleMillis
+}
+
 /**
  * Purchase/refresh animation frames can resemble the broad reconnect-title template while the
  * shop itself is temporarily classified UNKNOWN. Suppress only that short, semantically owned

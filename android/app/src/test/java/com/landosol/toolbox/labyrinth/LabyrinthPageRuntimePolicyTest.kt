@@ -529,6 +529,78 @@ class LabyrinthPageRuntimePolicyTest {
     }
 
     @Test
+    fun `shop refresh owns generic confirmation only while its transaction is pending`() {
+        assertTrue(
+            labyrinthShopRefreshConfirmationOwnsFrame(
+                activeNodeType = LabyrinthNodeTypes.SHOP,
+                refreshStartedAt = 1_000L,
+                refreshConfirmedAt = Long.MIN_VALUE,
+                now = 2_000L,
+                hasGenericConfirmation = true,
+                timeoutMillis = 8_000L,
+            ),
+        )
+        assertEquals(
+            false,
+            labyrinthShopRefreshConfirmationOwnsFrame(
+                activeNodeType = LabyrinthNodeTypes.SHOP,
+                refreshStartedAt = 1_000L,
+                refreshConfirmedAt = 1_500L,
+                now = 2_000L,
+                hasGenericConfirmation = true,
+                timeoutMillis = 8_000L,
+            ),
+        )
+        assertEquals(
+            false,
+            labyrinthShopRefreshConfirmationOwnsFrame(
+                activeNodeType = LabyrinthNodeTypes.EX_BATTLE,
+                refreshStartedAt = 1_000L,
+                refreshConfirmedAt = Long.MIN_VALUE,
+                now = 2_000L,
+                hasGenericConfirmation = true,
+                timeoutMillis = 8_000L,
+            ),
+        )
+    }
+
+    @Test
+    fun `shop refresh commits only after confirm disappears and shop settles`() {
+        assertTrue(
+            labyrinthShopRefreshCanCommit(
+                pageState = LabyrinthEntryPageState.SHOP,
+                refreshStartedAt = 1_000L,
+                refreshConfirmedAt = 2_000L,
+                now = 2_600L,
+                settleMillis = 500L,
+                timeoutMillis = 8_000L,
+            ),
+        )
+        assertEquals(
+            false,
+            labyrinthShopRefreshCanCommit(
+                pageState = LabyrinthEntryPageState.SHOP,
+                refreshStartedAt = 1_000L,
+                refreshConfirmedAt = 2_000L,
+                now = 2_200L,
+                settleMillis = 500L,
+                timeoutMillis = 8_000L,
+            ),
+        )
+        assertEquals(
+            false,
+            labyrinthShopRefreshCanCommit(
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                refreshStartedAt = 1_000L,
+                refreshConfirmedAt = 2_000L,
+                now = 2_600L,
+                settleMillis = 500L,
+                timeoutMillis = 8_000L,
+            ),
+        )
+    }
+
+    @Test
     fun `character joined contributes any trusted full-icon identity`() {
         val matches = labyrinthRosterReconciliationMatches(
             result(

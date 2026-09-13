@@ -702,6 +702,10 @@ class LabyrinthEntryRecognitionSession(
     @Volatile
     private var plannedShopPurchaseCounted = false
     @Volatile
+    private var plannedShopRefreshStartedAt = Long.MIN_VALUE
+    @Volatile
+    private var plannedShopRefreshConfirmedAt = Long.MIN_VALUE
+    @Volatile
     private var shopRelicPurchasesThisCycle = 0
     @Volatile
     private var pendingRelicSelection: LabyrinthRelicMatch? = null
@@ -980,6 +984,8 @@ class LabyrinthEntryRecognitionSession(
         plannedShopRoleImprintLabel = null
         plannedShopPurchaseStartedAt = Long.MIN_VALUE
         plannedShopPurchaseCounted = false
+        plannedShopRefreshStartedAt = Long.MIN_VALUE
+        plannedShopRefreshConfirmedAt = Long.MIN_VALUE
         shopRelicPurchasesThisCycle = 0
         plannedShopPurchaseCounted = false
         shopRelicPurchasesThisCycle = 0
@@ -1105,6 +1111,8 @@ class LabyrinthEntryRecognitionSession(
         plannedShopPurchaseRelicId = null
         plannedShopRoleImprintLabel = null
         plannedShopPurchaseStartedAt = Long.MIN_VALUE
+        plannedShopRefreshStartedAt = Long.MIN_VALUE
+        plannedShopRefreshConfirmedAt = Long.MIN_VALUE
         lastShopDialogState = LabyrinthShopDialogState.NONE
         relicStackLedger.clearPending()
         resetNodeExecutionState()
@@ -1388,6 +1396,14 @@ class LabyrinthEntryRecognitionSession(
             overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
             return
         }
+        if (!current.dryRun && handleShopRefreshConfirmationFrame(
+                sessionId = sessionId,
+                result = result,
+                timestampMillis = timestampMillis,
+            )
+        ) {
+            return
+        }
         if (!current.dryRun && result.nodeMoveConfirmation != null && pendingNodeTransition == null) {
             val recoverableTarget = nodeSession?.uniqueReachableRouteTarget()
             if (
@@ -1632,6 +1648,11 @@ class LabyrinthEntryRecognitionSession(
         plannedShopRoleImprintLabel = null
         plannedShopPurchaseStartedAt = Long.MIN_VALUE
         plannedShopPurchaseCounted = false
+    }
+
+    private fun clearPlannedShopRefresh() {
+        plannedShopRefreshStartedAt = Long.MIN_VALUE
+        plannedShopRefreshConfirmedAt = Long.MIN_VALUE
     }
 
     /** Restart login/entry navigation while retaining any already-loaded route progress. */
@@ -4517,12 +4538,19 @@ class LabyrinthEntryRecognitionSession(
                         }
                         "关闭购买完成" -> clearPlannedShopPurchase()
                         "最终区域刷新商店" -> {
-                            // Refresh does not leave SHOP, so explicitly require fresh stable
-                            // frames before another purchase/refresh decision.
+                            // The refresh button opens a second confirmation dialog.  Keep the
+                            // completed-cycle count until that dialog is confirmed and fresh shop
+                            // stock is visible again.
+                            plannedShopRefreshStartedAt = clock()
+                            plannedShopRefreshConfirmedAt = Long.MIN_VALUE
                             postEntryStableFrames = 0
                             postEntryAttempts = 0
-                            shopRelicPurchasesThisCycle = 0
                             clearPlannedShopPurchase()
+                        }
+                        "确认刷新商店" -> {
+                            plannedShopRefreshConfirmedAt = clock()
+                            postEntryStableFrames = 0
+                            postEntryAttempts = 0
                         }
                         "关闭角色加入结果" -> if (!roleRewardBatchActive) {
                             clearCharacterAcquisitionContext()
@@ -5188,6 +5216,7 @@ class LabyrinthEntryRecognitionSession(
             // Reset only when entering a new shop node; purchase-animation page churn must not
             // erase this counter, but a recovered movement dialog represents a real new node.
             shopRelicPurchasesThisCycle = 0
+            clearPlannedShopRefresh()
         }
         if (blockType == LabyrinthNodeTypes.BOSS) {
             bossTeamMode = configuredBossTeamMode
@@ -5207,6 +5236,90 @@ class LabyrinthEntryRecognitionSession(
         preparedBossFirstTeamIds = emptyList()
         bossMultiTeamTargetCount = null
         combatContext = combatContextFor(blockType)
+    }
+
+    private fun handleShopRefreshConfirmationFrame(
+        sessionId: AutomationSessionId,
+        result: LabyrinthEntryFrameResult,
+        timestampMillis: Long,
+    ): Boolean {
+        val startedAt = plannedShopRefreshStartedAt
+        if (startedAt == Long.MIN_VALUE) return false
+
+        val elapsed = (timestampMillis - startedAt).coerceAtLeast(0L)
+        if (elapsed > SHOP_REFRESH_TRANSITION_TIMEOUT_MILLIS) {
+            clearPlannedShopRefresh()
+            if (activeSessionId == sessionId) {
+                _state.value = _state.value.copy(
+                    message = "商店刷新确认超时；未重置本轮遗物计数，等待重新识别商店",
+                )
+                overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
+            }
+            return false
+        }
+
+        val confirmation = result.nodeMoveConfirmation
+        if (
+            labyrinthShopRefreshConfirmationOwnsFrame(
+                activeNodeType = activeNodeType,
+                refreshStartedAt = startedAt,
+                refreshConfirmedAt = plannedShopRefreshConfirmedAt,
+                now = timestampMillis,
+                hasGenericConfirmation = confirmation != null,
+                timeoutMillis = SHOP_REFRESH_TRANSITION_TIMEOUT_MILLIS,
+            ) && confirmation != null
+        ) {
+            if (
+                lastPostEntryActionAt == Long.MIN_VALUE ||
+                timestampMillis - lastPostEntryActionAt >= POST_ENTRY_ACTION_INTERVAL_MILLIS
+            ) {
+                dispatchPostEntryTap(
+                    sessionId = sessionId,
+                    label = "确认刷新商店",
+                    rect = confirmation.confirmButtonRect,
+                    timestampMillis = timestampMillis,
+                )
+            } else if (activeSessionId == sessionId) {
+                _state.value = _state.value.copy(message = "已识别更新确认，等待安全点击间隔")
+                overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
+            }
+            return true
+        }
+
+        if (plannedShopRefreshConfirmedAt != Long.MIN_VALUE) {
+            if (
+                confirmation == null &&
+                labyrinthShopRefreshCanCommit(
+                    pageState = result.observation.state,
+                    refreshStartedAt = startedAt,
+                    refreshConfirmedAt = plannedShopRefreshConfirmedAt,
+                    now = timestampMillis,
+                    settleMillis = SHOP_REFRESH_SETTLE_MILLIS,
+                    timeoutMillis = SHOP_REFRESH_TRANSITION_TIMEOUT_MILLIS,
+                )
+            ) {
+                shopRelicPurchasesThisCycle = 0
+                clearPlannedShopRefresh()
+                postEntryStableFrames = 0
+                postEntryAttempts = 0
+                if (activeSessionId == sessionId) {
+                    _state.value = _state.value.copy(message = "商店已刷新，等待新商品列表稳定")
+                    overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
+                }
+                return true
+            }
+            if (activeSessionId == sessionId) {
+                _state.value = _state.value.copy(message = "已确认刷新商店，等待新商品列表返回")
+                overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
+            }
+            return true
+        }
+
+        if (activeSessionId == sessionId) {
+            _state.value = _state.value.copy(message = "已点击用300更新，等待更新确认弹窗")
+            overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
+        }
+        return true
     }
 
     private fun handleNodeMoveConfirmationFrame(
@@ -6552,6 +6665,8 @@ class LabyrinthEntryRecognitionSession(
         const val ROLE_REWARD_SELECTION_STABLE_FRAMES = 3
         const val POST_ENTRY_ACTION_INTERVAL_MILLIS = 1_500L
         const val SHOP_PURCHASE_TRANSITION_TIMEOUT_MILLIS = 8_000L
+        const val SHOP_REFRESH_TRANSITION_TIMEOUT_MILLIS = 8_000L
+        const val SHOP_REFRESH_SETTLE_MILLIS = 500L
         const val CHARACTER_ACQUISITION_ACTION_INTERVAL_MILLIS = 650L
         const val NODE_MAP_SETTLE_AFTER_POST_ACTION_MILLIS = 2_000L
         const val MAX_POST_ENTRY_ATTEMPTS = 6
