@@ -227,7 +227,9 @@ class AndroidLabyrinthExEncounterResolver(
         // decorative blue curl to the left (OCR'd as a stable leading "C" on 爆炸・遗物), the
         // underline and the top edge of the stats panel. A tighter static crop also gives the OCR
         // scheduler a stable fingerprint so its required second independent read can complete.
-        val DETAIL_NAME_RECT = EntryReferenceRect(585, 140, 795, 70)
+        // Monster names are left-aligned. Keep the OCR strip narrow enough to exclude separate
+        // right-side labels such as "弱点" while still covering the longest known encounter name.
+        val DETAIL_NAME_RECT = EntryReferenceRect(585, 140, 500, 70)
         val DETAIL_CLOSE_RECT = EntryReferenceRect(750, 915, 420, 115)
         val DETAIL_HEADER_SAMPLE = EntryReferenceRect(500, 45, 900, 90)
         val DETAIL_NAME_SAMPLE = EntryReferenceRect(540, 140, 820, 90)
