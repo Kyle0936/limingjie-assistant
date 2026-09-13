@@ -71,7 +71,19 @@ class AndroidLabyrinthCnDatabaseRepository(
             if (!candidate.isFile || candidate.length() < SQLITE_HEADER.size) {
                 return LabyrinthCnDatabaseValidation.Invalid("文件不存在或为空")
             }
-            val header = candidate.inputStream().use { it.readNBytes(SQLITE_HEADER.size) }
+            val header = ByteArray(SQLITE_HEADER.size)
+            val headerBytesRead = candidate.inputStream().use { input ->
+                var offset = 0
+                while (offset < header.size) {
+                    val count = input.read(header, offset, header.size - offset)
+                    if (count < 0) break
+                    offset += count
+                }
+                offset
+            }
+            if (headerBytesRead != SQLITE_HEADER.size) {
+                return LabyrinthCnDatabaseValidation.Invalid("文件头不完整")
+            }
             if (!header.contentEquals(SQLITE_HEADER)) {
                 return LabyrinthCnDatabaseValidation.Invalid("文件头不是SQLite format 3")
             }

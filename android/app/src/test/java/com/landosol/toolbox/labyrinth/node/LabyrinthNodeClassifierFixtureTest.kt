@@ -5,6 +5,7 @@ import com.landosol.toolbox.labyrinth.vision.EntryPixelRect
 import com.landosol.toolbox.labyrinth.vision.GradientTemplateMatcher
 import com.landosol.toolbox.protocol.labyrinth.LabyrinthMapNode
 import java.io.File
+import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -275,10 +276,12 @@ class LabyrinthNodeClassifierFixtureTest {
     fun `initial map fixture maps the two active battles to logical column two`() {
         val root = locateProjectRoot()
         val visionRoot = File(root, "android/app/src/main/assets/resource-packs/cn-bilibili/vision")
+        val localMap = File(root, "素材/ui/黎明界进入/当前版本_节点选择.png")
+        assumeTrue("local diagnostic fixture is unavailable: ${localMap.absolutePath}", localMap.isFile)
         val templates = NodeTemplateSet(
             NODE_TEMPLATE_FILES.mapValues { (_, fileName) -> readImage(File(visionRoot, fileName)) },
         )
-        val frame = readImage(File(root, "素材/ui/黎明界进入/当前版本_节点选择.png"))
+        val frame = readImage(localMap)
 
         val detections = LabyrinthNodeClassifier().classifyMapNodes(frame, templates)
         val activeBattles = detections.filter(NodeClassification::isClickable)
@@ -371,7 +374,7 @@ class LabyrinthNodeClassifierFixtureTest {
         val workingDirectory = requireNotNull(System.getProperty("user.dir"))
         var current = File(workingDirectory).absoluteFile
         repeat(8) {
-            if (File(current, "素材/ui/黎明界进入/当前版本_节点选择.png").isFile) return current
+            if (File(current, "android/app/build.gradle.kts").isFile) return current
             current = current.parentFile ?: return@repeat
         }
         error("Cannot locate project root from ${System.getProperty("user.dir")}")

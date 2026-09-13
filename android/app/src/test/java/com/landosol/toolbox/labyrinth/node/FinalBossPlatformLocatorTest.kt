@@ -3,6 +3,7 @@ package com.landosol.toolbox.labyrinth.node
 import com.landosol.toolbox.clanbattle.recognition.PixelImage
 import com.landosol.toolbox.labyrinth.vision.EntryPixelRect
 import java.io.File
+import org.junit.Assume.assumeTrue
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -135,7 +136,9 @@ class FinalBossPlatformLocatorTest {
     }
 
     @Test fun `real ordinary map cannot masquerade as boss nameplate`() {
-        val frame = readImage(File("../../素材/ui/黎明界进入/当前版本_节点选择.png"))
+        val file = File("../../素材/ui/黎明界进入/当前版本_节点选择.png")
+        assumeTrue("local diagnostic fixture is unavailable: ${file.absolutePath}", file.isFile)
+        val frame = readImage(file)
         assertTrue(FinalBossPlatformLocator(platform).locate(frame).isEmpty())
     }
 
@@ -143,7 +146,9 @@ class FinalBossPlatformLocatorTest {
         val locator = FinalBossPlatformLocator(platform)
         for (name in listOf("MuMu-20260822-150505-982.png", "MuMu-20260822-153701-157.png",
             "MuMu-20260821-144152-092.png")) {
-            val frame = readImage(File("../../Test_Screenshots/$name"))
+            val file = File("../../Test_Screenshots/$name")
+            assumeTrue("local diagnostic fixture is unavailable: ${file.absolutePath}", file.isFile)
+            val frame = readImage(file)
             assertTrue("$name: ${locator.lastCandidates}", locator.locate(frame).isEmpty())
         }
     }

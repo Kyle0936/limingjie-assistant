@@ -2,6 +2,7 @@ package com.landosol.toolbox.labyrinth.node
 
 import com.landosol.toolbox.clanbattle.recognition.PixelImage
 import java.io.File
+import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -46,6 +47,7 @@ class LabyrinthNodeScreenshotBatchDiagnosticTest {
     fun `classify every Test Screenshots frame`() {
         val root = locateProjectRoot()
         val screenshotRoot = File(root, "Test_Screenshots")
+        assumeTrue("local Test_Screenshots directory is unavailable", screenshotRoot.isDirectory)
         val screenshots = screenshotRoot.listFiles()
             .orEmpty()
             .filter { it.isFile && it.extension.lowercase() in setOf("png", "jpg", "jpeg") }
@@ -157,7 +159,7 @@ class LabyrinthNodeScreenshotBatchDiagnosticTest {
     private fun locateProjectRoot(): File {
         var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
         repeat(8) {
-            if (File(current, "Test_Screenshots").isDirectory) return current
+            if (File(current, "android/app/build.gradle.kts").isFile) return current
             current = current.parentFile ?: return@repeat
         }
         error("Cannot locate project root")

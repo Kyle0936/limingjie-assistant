@@ -2,6 +2,7 @@ package com.landosol.toolbox.labyrinth.vision
 
 import com.landosol.toolbox.clanbattle.recognition.PixelImage
 import java.io.File
+import org.junit.Assume.assumeTrue
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -28,7 +29,9 @@ class LabyrinthNodeMoveConfirmationDetectorTest {
     @Test
     fun `real initial map fixture is not a movement confirmation`() {
         val root = locateProjectRoot()
-        val frame = readImage(File(root, "素材/ui/黎明界进入/当前版本_节点选择.png"))
+        val file = File(root, "素材/ui/黎明界进入/当前版本_节点选择.png")
+        assumeTrue("local diagnostic fixture is unavailable: ${file.absolutePath}", file.isFile)
+        val frame = readImage(file)
 
         assertNull(LabyrinthNodeMoveConfirmationDetector().detect(frame))
     }
@@ -75,7 +78,7 @@ class LabyrinthNodeMoveConfirmationDetectorTest {
     private fun locateProjectRoot(): File {
         var current = File(requireNotNull(System.getProperty("user.dir"))).absoluteFile
         repeat(8) {
-            if (File(current, "素材/ui/黎明界进入/当前版本_节点选择.png").isFile) return current
+            if (File(current, "android/app/build.gradle.kts").isFile) return current
             current = current.parentFile ?: return@repeat
         }
         error("Cannot locate project root from ${System.getProperty("user.dir")}")

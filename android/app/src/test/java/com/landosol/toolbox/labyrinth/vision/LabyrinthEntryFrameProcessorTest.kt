@@ -1001,7 +1001,7 @@ class LabyrinthEntryFrameProcessorTest {
     @Test
     fun `session error popup anchors score high on the raw popup screenshot`() {
         val raw = File(uiRoot, "错误提示/原始截图/错误代码6002 连接中断 回到标题界.png")
-        assertTrue("missing popup screenshot: $raw", raw.isFile)
+        assumeTrue("missing local popup screenshot: $raw", raw.isFile)
 
         val result = processor.process(readImage(raw))
 
@@ -1332,7 +1332,7 @@ class LabyrinthEntryFrameProcessorTest {
     private fun locateProjectRoot(): File {
         val candidates = generateSequence(File(".").canonicalFile, File::getParentFile).take(5)
         return candidates
-            .firstOrNull { File(it, "素材/ui/黎明界进入/ENTRY_FLOW.md").isFile }
+            .firstOrNull { File(it, "android/app/build.gradle.kts").isFile }
             ?: error("Cannot locate project root from ${File(".").canonicalPath}")
     }
 }
