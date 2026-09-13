@@ -29,6 +29,25 @@ internal enum class LabyrinthPageUiOwner {
 }
 
 /**
+ * A movement modal may already be open even though the session lost/never created its pending
+ * tap record (for example a manual tap while automation is searching).  Recovery must not turn
+ * the generic two-button detector into a broad auto-confirm rule, so require both a very strong
+ * modal observation and a route graph with exactly one reachable saved-route successor.
+ */
+internal fun labyrinthCanRecoverOrphanNodeMoveConfirmation(
+    pageState: LabyrinthEntryPageState,
+    confirmationConfidence: Double,
+    hasUniqueReachableRouteTarget: Boolean,
+): Boolean {
+    if (!hasUniqueReachableRouteTarget || confirmationConfidence < 0.85) return false
+    return pageState in setOf(
+        LabyrinthEntryPageState.NODE_SELECTION,
+        LabyrinthEntryPageState.NODE_MAP_VIEW,
+        LabyrinthEntryPageState.UNKNOWN,
+    )
+}
+
+/**
  * A one-choice event has no strategic ambiguity.  Two independent current-frame anchors are
  * required before exposing its sole button so this cannot turn an unrelated UNKNOWN/map frame
  * into a blind click.

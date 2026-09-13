@@ -13,6 +13,7 @@ class LabyrinthNodeSessionTest {
         row: Int,
         blockId: Long,
         blockType: Int = LabyrinthNodeTypes.NORMAL_BATTLE,
+        nextBlockIds: List<Long> = emptyList(),
         isAreaLastPoint: Boolean = false,
     ) = LabyrinthMapNode(
         area = area,
@@ -21,7 +22,7 @@ class LabyrinthNodeSessionTest {
         blockId = blockId,
         blockType = blockType,
         questId = null,
-        nextBlockIds = emptyList(),
+        nextBlockIds = nextBlockIds,
         isAreaLastPoint = isAreaLastPoint,
     )
 
@@ -170,5 +171,62 @@ class LabyrinthNodeSessionTest {
 
         assertEquals(102L, result.nextNode?.blockId)
         assertEquals(LabyrinthNodeTypes.START, result.currentNodeType)
+    }
+
+    @Test
+    fun `movement confirmation can recover only a unique reachable saved-route successor`() {
+        val current = node(
+            area = 4,
+            column = 5,
+            row = 1,
+            blockId = 40501,
+            nextBlockIds = listOf(40601),
+        )
+        val target = node(
+            area = 4,
+            column = 6,
+            row = 1,
+            blockId = 40601,
+            blockType = LabyrinthNodeTypes.EX_BATTLE,
+        )
+        val session = sessionWith(
+            allNodes = listOf(current, target),
+            route = listOf(current, target),
+            currentNodeId = current.blockId,
+        )
+
+        assertEquals(target, session.uniqueReachableRouteTarget())
+    }
+
+    @Test
+    fun `movement confirmation recovery refuses ambiguous reachable branches`() {
+        val current = node(
+            area = 4,
+            column = 5,
+            row = 1,
+            blockId = 40501,
+            nextBlockIds = listOf(40601, 40602),
+        )
+        val target = node(
+            area = 4,
+            column = 6,
+            row = 1,
+            blockId = 40601,
+            blockType = LabyrinthNodeTypes.EX_BATTLE,
+        )
+        val alternate = node(
+            area = 4,
+            column = 6,
+            row = 2,
+            blockId = 40602,
+            blockType = LabyrinthNodeTypes.EVENT,
+        )
+        val session = sessionWith(
+            allNodes = listOf(current, target, alternate),
+            route = listOf(current, target),
+            currentNodeId = current.blockId,
+        )
+
+        assertEquals(null, session.uniqueReachableRouteTarget())
     }
 }

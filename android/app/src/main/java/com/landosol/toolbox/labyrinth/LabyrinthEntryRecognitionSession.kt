@@ -340,6 +340,7 @@ internal fun labyrinthBlindMapScanPlan(
             LabyrinthMapScanDirection.BACKWARD -> LabyrinthMapScanDirection.FORWARD
         }
     }
+
     return LabyrinthNodeScanPlan(
         direction = direction,
         reason = "blind-empty-classifications currentColumn=$currentLogicalColumn " +
@@ -1386,6 +1387,26 @@ class LabyrinthEntryRecognitionSession(
             } else "正在确认系列详情弹窗，暂不执行点击")
             overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
             return
+        }
+        if (!current.dryRun && result.nodeMoveConfirmation != null && pendingNodeTransition == null) {
+            val recoverableTarget = nodeSession?.uniqueReachableRouteTarget()
+            if (
+                labyrinthCanRecoverOrphanNodeMoveConfirmation(
+                    pageState = pageState,
+                    confirmationConfidence = result.nodeMoveConfirmation.confidence,
+                    hasUniqueReachableRouteTarget = recoverableTarget != null,
+                ) && recoverableTarget != null
+            ) {
+                recoverPendingNodeTransitionFromMoveConfirmation(
+                    sessionId = sessionId,
+                    session = requireNotNull(nodeSession),
+                    blockId = recoverableTarget.blockId,
+                    blockType = recoverableTarget.blockType,
+                    area = recoverableTarget.area,
+                    timestampMillis = timestampMillis,
+                    confidence = result.nodeMoveConfirmation.confidence,
+                )
+            }
         }
         if (!current.dryRun && labyrinthNodeMoveConfirmationOwnsFrame(
                 pageState = pageState,
@@ -5079,39 +5100,12 @@ class LabyrinthEntryRecognitionSession(
             when (result) {
                 is AutomationActionResult.Executed -> {
                     nodeTapAttempts++
-                    resetNodeMoveConfirmationTracking()
-                    eventFreeRoleSelectedCharacterId = null
-                    activeNodeType = action.blockType
-                    activeNodeArea = session.getLastMatchResult()
+                    val targetArea = session.getLastMatchResult()
                         ?.nextNode
                         ?.takeIf { it.blockId == action.blockId }
                         ?.area
                         ?: _state.value.routeProgress?.currentArea
-                    eventActionAttempts = 0
-                    if (action.blockType == LabyrinthNodeTypes.SHOP) {
-                        // Reset only on an actual new shop-node entry. Purchase animations can
-                        // transiently classify as UNKNOWN before returning to the same SHOP page;
-                        // page-state churn must not erase the current three-relic cycle count.
-                        shopRelicPurchasesThisCycle = 0
-                    }
-                    if (action.blockType == LabyrinthNodeTypes.BOSS) {
-                        bossTeamMode = configuredBossTeamMode
-                        pendingSingleBossFallbackToMulti = false
-                    }
-                    synchronized(committedBattleCharacterIds) { committedBattleCharacterIds.clear() }
-                    resetBattleRetryTracking()
-                    resetExEncounterTracking()
-                    bossEditorTeamIndex = null
-                    pendingBossTeamAdvance = null
-                    bossEditorBlocked = false
-                    bossEditorPreparationStage = if (action.blockType == LabyrinthNodeTypes.BOSS) {
-                        LabyrinthBossEditorPreparationStage.TEAM_1
-                    } else {
-                        LabyrinthBossEditorPreparationStage.INACTIVE
-                    }
-                    preparedBossFirstTeamIds = emptyList()
-                    bossMultiTeamTargetCount = null
-                    combatContext = combatContextFor(action.blockType)
+                    prepareNodeTransitionContext(action.blockType, targetArea)
                     pendingNodeTransition = PendingNodeTransition(
                         blockId = action.blockId,
                         blockType = action.blockType,
@@ -5146,6 +5140,73 @@ class LabyrinthEntryRecognitionSession(
             }
             actionInFlight.set(false)
         }
+    }
+
+    private fun recoverPendingNodeTransitionFromMoveConfirmation(
+        sessionId: AutomationSessionId,
+        session: LabyrinthNodeSession,
+        blockId: Long,
+        blockType: Int,
+        area: Int,
+        timestampMillis: Long,
+        confidence: Double,
+    ) {
+        val label = "${LabyrinthNodeTypes.labelOf(blockType)}#$blockId"
+        prepareNodeTransitionContext(blockType, area)
+        pendingNodeTransition = PendingNodeTransition(
+            blockId = blockId,
+            blockType = blockType,
+            label = label,
+            dispatchedAtMillis = timestampMillis,
+        )
+        nodeTapAttempts = 0
+        resetPendingNodeClickStability()
+        resetNodeScrollSearchGate()
+        nodeScrollAttempts = 0
+        lastNodeScrollSourceSignature = null
+        nodeLog(
+            "node-move-confirm-recover target=$label confidence=${"%.3f".format(confidence)} " +
+                "reason=unique-reachable-route-target",
+        )
+        if (activeSessionId == sessionId) {
+            _state.value = _state.value.copy(
+                combatContext = combatContext,
+                message = "检测到移动确认弹窗，已按唯一可达路线恢复：$label",
+            )
+            publishRouteProgress(sessionId, session, nextLabel = label, nextRect = null)
+            overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
+        }
+    }
+
+    private fun prepareNodeTransitionContext(blockType: Int, area: Int?) {
+        resetNodeMoveConfirmationTracking()
+        eventFreeRoleSelectedCharacterId = null
+        activeNodeType = blockType
+        activeNodeArea = area
+        eventActionAttempts = 0
+        if (blockType == LabyrinthNodeTypes.SHOP) {
+            // Reset only when entering a new shop node; purchase-animation page churn must not
+            // erase this counter, but a recovered movement dialog represents a real new node.
+            shopRelicPurchasesThisCycle = 0
+        }
+        if (blockType == LabyrinthNodeTypes.BOSS) {
+            bossTeamMode = configuredBossTeamMode
+            pendingSingleBossFallbackToMulti = false
+        }
+        synchronized(committedBattleCharacterIds) { committedBattleCharacterIds.clear() }
+        resetBattleRetryTracking()
+        resetExEncounterTracking()
+        bossEditorTeamIndex = null
+        pendingBossTeamAdvance = null
+        bossEditorBlocked = false
+        bossEditorPreparationStage = if (blockType == LabyrinthNodeTypes.BOSS) {
+            LabyrinthBossEditorPreparationStage.TEAM_1
+        } else {
+            LabyrinthBossEditorPreparationStage.INACTIVE
+        }
+        preparedBossFirstTeamIds = emptyList()
+        bossMultiTeamTargetCount = null
+        combatContext = combatContextFor(blockType)
     }
 
     private fun handleNodeMoveConfirmationFrame(

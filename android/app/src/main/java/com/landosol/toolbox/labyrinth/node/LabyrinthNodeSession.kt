@@ -368,6 +368,28 @@ class LabyrinthNodeSession(
         return next
     }
 
+    /**
+     * Recovers the semantic route target for an already-open movement-confirmation dialog.
+     *
+     * This is intentionally stricter than the normal route planner: recovery is allowed only
+     * when the protocol graph says the current node has exactly one reachable successor and that
+     * successor is also the next node on the saved route.  In that situation an orphaned/manual
+     * movement dialog cannot refer to a different selectable branch, so the session may safely
+     * rebuild the lost pending transition without using stale screen coordinates.
+     */
+    fun uniqueReachableRouteTarget(): LabyrinthMapNode? {
+        val currentId = state.currentNodeId ?: return null
+        val current = allMapNodes.firstOrNull { it.blockId == currentId } ?: return null
+        if (current.area != state.currentArea) return null
+        val routeIndex = routeNodes.indexOfFirst { it.blockId == currentId }
+        if (routeIndex < 0) return null
+        val next = routeNodes.getOrNull(routeIndex + 1) ?: return null
+        if (next.area != state.currentArea) return null
+        val reachable = current.nextBlockIds.distinct()
+        if (reachable.size != 1 || reachable.single() != next.blockId) return null
+        return next
+    }
+
     /** Last raw-to-route mapping pass, retained only for diagnostics/overlay rendering. */
     fun getLastMatchResult(): NodeMatchResult? = lastMatchResult
 

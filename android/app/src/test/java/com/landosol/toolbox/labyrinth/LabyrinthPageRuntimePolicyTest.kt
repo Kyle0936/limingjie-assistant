@@ -40,6 +40,41 @@ class LabyrinthPageRuntimePolicyTest {
     }
 
     @Test
+    fun `orphan movement modal can recover only from strong unique route evidence`() {
+        assertTrue(
+            labyrinthCanRecoverOrphanNodeMoveConfirmation(
+                pageState = LabyrinthEntryPageState.NODE_SELECTION,
+                confirmationConfidence = 0.91,
+                hasUniqueReachableRouteTarget = true,
+            ),
+        )
+        assertEquals(
+            false,
+            labyrinthCanRecoverOrphanNodeMoveConfirmation(
+                pageState = LabyrinthEntryPageState.NODE_SELECTION,
+                confirmationConfidence = 0.84,
+                hasUniqueReachableRouteTarget = true,
+            ),
+        )
+        assertEquals(
+            false,
+            labyrinthCanRecoverOrphanNodeMoveConfirmation(
+                pageState = LabyrinthEntryPageState.NODE_SELECTION,
+                confirmationConfidence = 0.95,
+                hasUniqueReachableRouteTarget = false,
+            ),
+        )
+        assertEquals(
+            false,
+            labyrinthCanRecoverOrphanNodeMoveConfirmation(
+                pageState = LabyrinthEntryPageState.SHOP_EXIT_CONFIRMATION,
+                confirmationConfidence = 0.95,
+                hasUniqueReachableRouteTarget = true,
+            ),
+        )
+    }
+
+    @Test
     fun `single-choice event needs both trigger and select anchors`() {
         val rect = EntryPixelRect(820, 805, 295, 145)
         val trusted = result(
