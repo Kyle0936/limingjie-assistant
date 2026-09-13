@@ -10,14 +10,8 @@ REVIEW_DATA = HERE / "data.js"
 ANDROID_DATA = ROOT / "android/app/src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"
 READABLE_SKILL_DB = ROOT / "pick/autopcr-android/app/src/main/python/cache/db/202604021043.db"
 
-DOT_TERMS = (
-    "持续伤害",
-    "毒咒状态",
-    "毒状态",
-    "中毒状态",
-    "烧伤状态",
-    "灼烧状态",
-    "诅咒状态",
+DOT_APPLICATION_RE = re.compile(
+    r"(?:使|赋予)[^。；，\n]{0,48}(?:中毒|猛毒|毒咒|诅咒|烧伤|灼烧|绝怠灵度)"
 )
 SHIELD_TERMS = ("屏障", "伤害无效化", "攻击无效化", "吸收物理", "吸收魔法")
 PUSH_TERMS = ("击飞", "吹飞")
@@ -36,7 +30,11 @@ def positive_capabilities(skill_summary: list[str]) -> dict[str, float]:
     descriptions = [str(value) for value in skill_summary if str(value).strip()]
     text = "\n".join(descriptions)
     result: dict[str, float] = {}
-    if any(term in text for term in DOT_TERMS):
+    if any(
+        DOT_APPLICATION_RE.search(description) and
+        any(target in description for target in ("敌", "目标", "对象", "其"))
+        for description in descriptions
+    ):
         result["dot"] = 82.0
     if "挑衅" in text:
         result["taunt"] = 82.0
@@ -178,14 +176,17 @@ def main() -> None:
         source = review_by_id.get(str(character["characterId"]))
         if not source:
             continue
-        positives = positive_capabilities(source.get("skillSummary") or [])
-        current_skill_text = "\n".join(str(value) for value in (source.get("skillSummary") or []))
+        skill_summary = source.get("skillSummary") or []
+        positives = positive_capabilities(skill_summary)
         tactical_facts = tactical.get(str(character["characterId"]), {})
         positives.update(tactical_facts)
-        if not positives:
-            continue
         functions = character.setdefault("functions", {})
         changed = False
+        # DOT extraction is authoritative when skill text exists: remove stale false positives as
+        # well as adding newly recognized wording such as 猛毒/赋予诅咒/绝怠灵度.
+        if skill_summary and "dot" not in positives and "dot" in functions:
+            functions.pop("dot", None)
+            changed = True
         # Tactical extraction is authoritative for direction when MOVE rows are present.  Remove
         # stale sign-only classifications produced by older generators before applying the new facts.
         if "enemyPull" in tactical_facts or "enemyPush" in tactical_facts:
@@ -198,7 +199,7 @@ def main() -> None:
             # Geometry/movement facts come directly from the skill master and intentionally replace
             # older derived values. Other encounter facts remain fill-only.
             authoritative = key in {
-                "enemyPush", "enemyPull", "wideAoeCoverage", "backlineAoeCoverage"
+                "dot", "enemyPush", "enemyPull", "wideAoeCoverage", "backlineAoeCoverage"
             }
             if authoritative or functions.get(key) is None:
                 if functions.get(key) != value:

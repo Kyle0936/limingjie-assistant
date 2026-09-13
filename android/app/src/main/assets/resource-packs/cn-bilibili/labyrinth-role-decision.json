@@ -92,7 +92,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1001",
@@ -147,6 +148,16 @@
         "burstDamage": 82.0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.0,
+        "magicDurability": 61.5,
+        "panelHp": 72313,
+        "panelPhysicalDefense": 958,
+        "panelMagicDefense": 812,
+        "panelDodge": 20,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 20
       }
     },
     {
@@ -200,6 +211,16 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 67.6,
+        "magicDurability": 79.0,
+        "panelHp": 92403,
+        "panelPhysicalDefense": 2043,
+        "panelMagicDefense": 2243,
+        "panelDodge": 6,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 201
       }
     },
     {
@@ -253,6 +274,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 60.0,
+        "magicDurability": 63.0,
+        "panelHp": 83533,
+        "panelPhysicalDefense": 862,
+        "panelMagicDefense": 752,
+        "panelDodge": 7,
+        "panelLifeSteal": 19,
+        "panelHpRecoveryRate": 40
       }
     },
     {
@@ -306,6 +337,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 74.7,
+        "magicDurability": 71.7,
+        "panelHp": 95759,
+        "panelPhysicalDefense": 1920,
+        "panelMagicDefense": 1673,
+        "panelDodge": 62,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 57
       }
     },
     {
@@ -359,6 +400,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 90.0,
+        "magicDurability": 93.1,
+        "panelHp": 143884,
+        "panelPhysicalDefense": 2398,
+        "panelMagicDefense": 2375,
+        "panelDodge": 30,
+        "panelLifeSteal": 20,
+        "panelHpRecoveryRate": 39
       }
     },
     {
@@ -411,6 +462,16 @@
         "bossMechanismValue": 82,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 63.8,
+        "magicDurability": 70.5,
+        "panelHp": 89709,
+        "panelPhysicalDefense": 1499,
+        "panelMagicDefense": 1777,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 153
       }
     },
     {
@@ -464,6 +525,17 @@
         "pureTank": 72,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 95.9,
+        "magicDurability": 89.0,
+        "panelHp": 150699,
+        "panelPhysicalDefense": 2663,
+        "panelMagicDefense": 2196,
+        "panelDodge": 118,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 44,
+        "invulnerability": 82.0
       }
     },
     {
@@ -517,6 +589,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 56.3,
+        "magicDurability": 64.6,
+        "panelHp": 71787,
+        "panelPhysicalDefense": 1005,
+        "panelMagicDefense": 1172,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 151
       }
     },
     {
@@ -571,6 +653,16 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 35.6,
+        "magicDurability": 53.2,
+        "panelHp": 57011,
+        "panelPhysicalDefense": 523,
+        "panelMagicDefense": 638,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -623,6 +715,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 63.3,
+        "magicDurability": 70.0,
+        "panelHp": 84142,
+        "panelPhysicalDefense": 1617,
+        "panelMagicDefense": 1730,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 195
       }
     },
     {
@@ -676,6 +778,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 48.2,
+        "magicDurability": 51.8,
+        "panelHp": 52554,
+        "panelPhysicalDefense": 664,
+        "panelMagicDefense": 761,
+        "panelDodge": 24,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 55
       }
     },
     {
@@ -729,6 +841,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 45.6,
+        "magicDurability": 54.0,
+        "panelHp": 55943,
+        "panelPhysicalDefense": 682,
+        "panelMagicDefense": 735,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 49
       }
     },
     {
@@ -782,6 +904,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 40.4,
+        "magicDurability": 54.6,
+        "panelHp": 55082,
+        "panelPhysicalDefense": 621,
+        "panelMagicDefense": 792,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 49
       }
     },
     {
@@ -835,6 +967,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.9,
+        "magicDurability": 68.4,
+        "panelHp": 81853,
+        "panelPhysicalDefense": 1631,
+        "panelMagicDefense": 1816,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 153
       }
     },
     {
@@ -887,6 +1029,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 72
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.9,
+        "magicDurability": 68.4,
+        "panelHp": 81040,
+        "panelPhysicalDefense": 1523,
+        "panelMagicDefense": 1701,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 165
       }
     },
     {
@@ -940,6 +1092,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 43.5,
+        "magicDurability": 54.9,
+        "panelHp": 55616,
+        "panelPhysicalDefense": 637,
+        "panelMagicDefense": 767,
+        "panelDodge": 3,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -993,6 +1155,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 53.6,
+        "magicDurability": 49.5,
+        "panelHp": 62422,
+        "panelPhysicalDefense": 783,
+        "panelMagicDefense": 549,
+        "panelDodge": 18,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -1046,6 +1218,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 60.1,
+        "magicDurability": 65.5,
+        "panelHp": 72890,
+        "panelPhysicalDefense": 1275,
+        "panelMagicDefense": 1458,
+        "panelDodge": 3,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 54
       }
     },
     {
@@ -1100,6 +1282,16 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 65.4,
+        "magicDurability": 64.6,
+        "panelHp": 82365,
+        "panelPhysicalDefense": 944,
+        "panelMagicDefense": 862,
+        "panelDodge": 28,
+        "panelLifeSteal": 10,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -1153,6 +1345,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 83.0,
+        "magicDurability": 83.0,
+        "panelHp": 112111,
+        "panelPhysicalDefense": 2359,
+        "panelMagicDefense": 2274,
+        "panelDodge": 36,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 59
       }
     },
     {
@@ -1206,6 +1408,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 36.8,
+        "magicDurability": 55.2,
+        "panelHp": 64471,
+        "panelPhysicalDefense": 500,
+        "panelMagicDefense": 626,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 60
       }
     },
     {
@@ -1261,6 +1473,16 @@
         "burstDamage": 82.0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.2,
+        "magicDurability": 65.0,
+        "panelHp": 82334,
+        "panelPhysicalDefense": 1021,
+        "panelMagicDefense": 948,
+        "panelDodge": 9,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -1314,6 +1536,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 53.8,
+        "magicDurability": 63.1,
+        "panelHp": 69930,
+        "panelPhysicalDefense": 889,
+        "panelMagicDefense": 1105,
+        "panelDodge": 0,
+        "panelLifeSteal": 2,
+        "panelHpRecoveryRate": 133
       }
     },
     {
@@ -1366,6 +1598,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 72
+      },
+      "vanguardProfile": {
+        "physicalDurability": 91.2,
+        "magicDurability": 93.1,
+        "panelHp": 130697,
+        "panelPhysicalDefense": 2375,
+        "panelMagicDefense": 2371,
+        "panelDodge": 43,
+        "panelLifeSteal": 7,
+        "panelHpRecoveryRate": 124
       }
     },
     {
@@ -1420,6 +1662,16 @@
         "pureHealer": 0,
         "dot": 82.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 44.8,
+        "magicDurability": 51.8,
+        "panelHp": 70787,
+        "panelPhysicalDefense": 603,
+        "panelMagicDefense": 537,
+        "panelDodge": 2,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -1473,6 +1725,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 64.0,
+        "magicDurability": 67.7,
+        "panelHp": 94548,
+        "panelPhysicalDefense": 866,
+        "panelMagicDefense": 880,
+        "panelDodge": 17,
+        "panelLifeSteal": 13,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -1527,6 +1789,16 @@
         "pureHealer": 0,
         "taunt": 82.0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 91.9,
+        "magicDurability": 92.8,
+        "panelHp": 149074,
+        "panelPhysicalDefense": 2426,
+        "panelMagicDefense": 2321,
+        "panelDodge": 31,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 49
       }
     },
     {
@@ -1581,6 +1853,16 @@
         "pureHealer": 0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 51.6,
+        "magicDurability": 55.5,
+        "panelHp": 67032,
+        "panelPhysicalDefense": 701,
+        "panelMagicDefense": 588,
+        "panelDodge": 5,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 38
       }
     },
     {
@@ -1634,6 +1916,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.3,
+        "magicDurability": 61.8,
+        "panelHp": 78461,
+        "panelPhysicalDefense": 901,
+        "panelMagicDefense": 756,
+        "panelDodge": 19,
+        "panelLifeSteal": 20,
+        "panelHpRecoveryRate": 62
       }
     },
     {
@@ -1689,6 +1981,16 @@
         "taunt": 82.0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 66.3,
+        "magicDurability": 68.6,
+        "panelHp": 95756,
+        "panelPhysicalDefense": 1104,
+        "panelMagicDefense": 992,
+        "panelDodge": 17,
+        "panelLifeSteal": 16,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -1744,6 +2046,16 @@
         "burstDamage": 82.0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 66.9,
+        "magicDurability": 68.3,
+        "panelHp": 88621,
+        "panelPhysicalDefense": 1302,
+        "panelMagicDefense": 1129,
+        "panelDodge": 18,
+        "panelLifeSteal": 5,
+        "panelHpRecoveryRate": 35
       }
     },
     {
@@ -1797,6 +2109,16 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 82.4,
+        "magicDurability": 93.1,
+        "panelHp": 141091,
+        "panelPhysicalDefense": 2217,
+        "panelMagicDefense": 2365,
+        "panelDodge": 13,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 99
       }
     },
     {
@@ -1850,6 +2172,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 34.9,
+        "magicDurability": 51.9,
+        "panelHp": 57593,
+        "panelPhysicalDefense": 498,
+        "panelMagicDefense": 589,
+        "panelDodge": 0,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 60
       }
     },
     {
@@ -1904,6 +2236,16 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 48.7,
+        "magicDurability": 52.4,
+        "panelHp": 69612,
+        "panelPhysicalDefense": 633,
+        "panelMagicDefense": 542,
+        "panelDodge": 10,
+        "panelLifeSteal": 14,
+        "panelHpRecoveryRate": 36
       }
     },
     {
@@ -1957,6 +2299,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 46.9,
+        "magicDurability": 54.0,
+        "panelHp": 52029,
+        "panelPhysicalDefense": 684,
+        "panelMagicDefense": 876,
+        "panelDodge": 12,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 35
       }
     },
     {
@@ -2012,6 +2364,16 @@
         "dot": 82.0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.1,
+        "magicDurability": 59.3,
+        "panelHp": 60378,
+        "panelPhysicalDefense": 1181,
+        "panelMagicDefense": 1193,
+        "panelDodge": 34,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 55
       }
     },
     {
@@ -2064,6 +2426,16 @@
         "bossMechanismValue": 64,
         "pureTank": 0,
         "pureHealer": 72
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.9,
+        "magicDurability": 68.4,
+        "panelHp": 79845,
+        "panelPhysicalDefense": 1516,
+        "panelMagicDefense": 1748,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 192
       }
     },
     {
@@ -2117,6 +2489,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 47.7,
+        "magicDurability": 48.2,
+        "panelHp": 67507,
+        "panelPhysicalDefense": 666,
+        "panelMagicDefense": 522,
+        "panelDodge": 2,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 43
       }
     },
     {
@@ -2170,6 +2552,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 34.9,
+        "magicDurability": 53.2,
+        "panelHp": 56481,
+        "panelPhysicalDefense": 498,
+        "panelMagicDefense": 613,
+        "panelDodge": 0,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 60
       }
     },
     {
@@ -2223,6 +2615,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "taunt": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 88.1,
+        "magicDurability": 96.4,
+        "panelHp": 153069,
+        "panelPhysicalDefense": 2309,
+        "panelMagicDefense": 2596,
+        "panelDodge": 22,
+        "panelLifeSteal": 3,
+        "panelHpRecoveryRate": 92
       }
     },
     {
@@ -2276,6 +2678,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 57.5,
+        "magicDurability": 58.0,
+        "panelHp": 66998,
+        "panelPhysicalDefense": 679,
+        "panelMagicDefense": 773,
+        "panelDodge": 52,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -2329,6 +2741,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 97.0,
+        "magicDurability": 97.4,
+        "panelHp": 166205,
+        "panelPhysicalDefense": 2694,
+        "panelMagicDefense": 2357,
+        "panelDodge": 26,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 69
       }
     },
     {
@@ -2383,6 +2805,16 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 69.2,
+        "magicDurability": 67.5,
+        "panelHp": 78728,
+        "panelPhysicalDefense": 1849,
+        "panelMagicDefense": 1633,
+        "panelDodge": 32,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 62
       }
     },
     {
@@ -2437,6 +2869,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 93.9,
+        "magicDurability": 93.4,
+        "panelHp": 157022,
+        "panelPhysicalDefense": 2592,
+        "panelMagicDefense": 2284,
+        "panelDodge": 30,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 97
       }
     },
     {
@@ -2491,6 +2933,16 @@
         "pureHealer": 0,
         "dot": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 31.7,
+        "magicDurability": 49.6,
+        "panelHp": 53431,
+        "panelPhysicalDefense": 483,
+        "panelMagicDefense": 598,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -2545,6 +2997,16 @@
         "pureHealer": 0,
         "dot": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.0,
+        "magicDurability": 67.0,
+        "panelHp": 83933,
+        "panelPhysicalDefense": 981,
+        "panelMagicDefense": 950,
+        "panelDodge": 3,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -2600,6 +3062,16 @@
         "shield": 75.0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 93.2,
+        "magicDurability": 98.6,
+        "panelHp": 164659,
+        "panelPhysicalDefense": 2927,
+        "panelMagicDefense": 2486,
+        "panelDodge": 12,
+        "panelLifeSteal": 10,
+        "panelHpRecoveryRate": 24
       }
     },
     {
@@ -2653,6 +3125,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 67.8,
+        "magicDurability": 70.3,
+        "panelHp": 94547,
+        "panelPhysicalDefense": 1457,
+        "panelMagicDefense": 1427,
+        "panelDodge": 17,
+        "panelLifeSteal": 14,
+        "panelHpRecoveryRate": 22
       }
     },
     {
@@ -2708,6 +3190,16 @@
         "enemyPull": 82.0,
         "wideAoeCoverage": 85.0,
         "backlineAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 72.0,
+        "magicDurability": 71.3,
+        "panelHp": 101134,
+        "panelPhysicalDefense": 1686,
+        "panelMagicDefense": 1528,
+        "panelDodge": 26,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 32
       }
     },
     {
@@ -2761,6 +3253,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 85.9,
+        "magicDurability": 86.0,
+        "panelHp": 114447,
+        "panelPhysicalDefense": 2406,
+        "panelMagicDefense": 2295,
+        "panelDodge": 41,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 64
       }
     },
     {
@@ -2816,6 +3318,17 @@
         "taunt": 82.0,
         "burstDamage": 82.0,
         "enemyPush": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 95.4,
+        "magicDurability": 97.1,
+        "panelHp": 161885,
+        "panelPhysicalDefense": 2541,
+        "panelMagicDefense": 2460,
+        "panelDodge": 42,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 61,
+        "invulnerability": 78.0
       }
     },
     {
@@ -2869,6 +3382,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 50.0,
+        "magicDurability": 54.0,
+        "panelHp": 79257,
+        "panelPhysicalDefense": 619,
+        "panelMagicDefense": 533,
+        "panelDodge": 5,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -2922,6 +3445,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 93.1,
+        "magicDurability": 96.2,
+        "panelHp": 161730,
+        "panelPhysicalDefense": 2599,
+        "panelMagicDefense": 2387,
+        "panelDodge": 21,
+        "panelLifeSteal": 5,
+        "panelHpRecoveryRate": 72
       }
     },
     {
@@ -2974,6 +3507,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 72
+      },
+      "vanguardProfile": {
+        "physicalDurability": 80.7,
+        "magicDurability": 78.1,
+        "panelHp": 93416,
+        "panelPhysicalDefense": 2343,
+        "panelMagicDefense": 2218,
+        "panelDodge": 48,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 107
       }
     },
     {
@@ -3027,6 +3570,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 32.5,
+        "magicDurability": 50.5,
+        "panelHp": 53521,
+        "panelPhysicalDefense": 498,
+        "panelMagicDefense": 616,
+        "panelDodge": 0,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -3082,6 +3635,16 @@
         "burstDamage": 82.0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 53.3,
+        "magicDurability": 57.7,
+        "panelHp": 74072,
+        "panelPhysicalDefense": 655,
+        "panelMagicDefense": 584,
+        "panelDodge": 17,
+        "panelLifeSteal": 13,
+        "panelHpRecoveryRate": 25
       }
     },
     {
@@ -3135,6 +3698,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 41.2,
+        "magicDurability": 52.5,
+        "panelHp": 51312,
+        "panelPhysicalDefense": 584,
+        "panelMagicDefense": 795,
+        "panelDodge": 15,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 40
       }
     },
     {
@@ -3188,6 +3761,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 47.9,
+        "magicDurability": 49.9,
+        "panelHp": 73916,
+        "panelPhysicalDefense": 601,
+        "panelMagicDefense": 502,
+        "panelDodge": 5,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -3241,6 +3824,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 53.4,
+        "magicDurability": 52.5,
+        "panelHp": 63777,
+        "panelPhysicalDefense": 719,
+        "panelMagicDefense": 574,
+        "panelDodge": 18,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -3296,6 +3889,16 @@
         "dot": 82.0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 63.5,
+        "magicDurability": 66.8,
+        "panelHp": 82938,
+        "panelPhysicalDefense": 1263,
+        "panelMagicDefense": 1129,
+        "panelDodge": 11,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -3350,6 +3953,16 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 9.9,
+        "magicDurability": 27.8,
+        "panelHp": 35090,
+        "panelPhysicalDefense": 447,
+        "panelMagicDefense": 627,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 64
       }
     },
     {
@@ -3403,6 +4016,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 50.3,
+        "magicDurability": 53.2,
+        "panelHp": 56711,
+        "panelPhysicalDefense": 751,
+        "panelMagicDefense": 659,
+        "panelDodge": 7,
+        "panelLifeSteal": 17,
+        "panelHpRecoveryRate": 40
       }
     },
     {
@@ -3456,6 +4079,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 50.3,
+        "magicDurability": 53.2,
+        "panelHp": 56711,
+        "panelPhysicalDefense": 751,
+        "panelMagicDefense": 659,
+        "panelDodge": 7,
+        "panelLifeSteal": 17,
+        "panelHpRecoveryRate": 40
       }
     },
     {
@@ -3508,6 +4141,16 @@
         "bossMechanismValue": 42,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 11.0,
+        "panelHp": 30870,
+        "panelPhysicalDefense": 319,
+        "panelMagicDefense": 445,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -3560,6 +4203,17 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 51.7,
+        "magicDurability": 47.5,
+        "panelHp": 77442,
+        "panelPhysicalDefense": 674,
+        "panelMagicDefense": 459,
+        "panelDodge": 3,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 30,
+        "physicalEvasion": 92.0
       }
     },
     {
@@ -3612,7 +4266,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1073",
@@ -3664,7 +4319,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1075",
@@ -3719,6 +4375,16 @@
         "burstDamage": 82.0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 58.9,
+        "magicDurability": 57.1,
+        "panelHp": 87994,
+        "panelPhysicalDefense": 763,
+        "panelMagicDefense": 540,
+        "panelDodge": 5,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -3771,6 +4437,16 @@
         "bossMechanismValue": 42,
         "pureTank": 0,
         "pureHealer": 72
+      },
+      "vanguardProfile": {
+        "physicalDurability": 80.6,
+        "magicDurability": 80.5,
+        "panelHp": 101244,
+        "panelPhysicalDefense": 2306,
+        "panelMagicDefense": 2231,
+        "panelDodge": 47,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 107
       }
     },
     {
@@ -3824,6 +4500,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 54.3,
+        "magicDurability": 60.1,
+        "panelHp": 56694,
+        "panelPhysicalDefense": 1351,
+        "panelMagicDefense": 1596,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 152
       }
     },
     {
@@ -3877,6 +4563,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 36.8,
+        "magicDurability": 53.2,
+        "panelHp": 58784,
+        "panelPhysicalDefense": 537,
+        "panelMagicDefense": 612,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -3929,6 +4625,16 @@
         "bossMechanismValue": 82,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 29.6,
+        "magicDurability": 32.2,
+        "panelHp": 40293,
+        "panelPhysicalDefense": 530,
+        "panelMagicDefense": 550,
+        "panelDodge": 52,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -3982,6 +4688,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 32.8,
+        "magicDurability": 24.0,
+        "panelHp": 38180,
+        "panelPhysicalDefense": 683,
+        "panelMagicDefense": 529,
+        "panelDodge": 22,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -4035,6 +4751,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 24.1,
+        "magicDurability": 13.4,
+        "panelHp": 38040,
+        "panelPhysicalDefense": 562,
+        "panelMagicDefense": 394,
+        "panelDodge": 15,
+        "panelLifeSteal": 15,
+        "panelHpRecoveryRate": 67
       }
     },
     {
@@ -4089,6 +4815,16 @@
         "pureHealer": 0,
         "dot": 82.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 46.1,
+        "magicDurability": 44.1,
+        "panelHp": 44125,
+        "panelPhysicalDefense": 685,
+        "panelMagicDefense": 633,
+        "panelDodge": 42,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -4142,7 +4878,18 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0,
-        "wideAoeCoverage": 100.0
+        "wideAoeCoverage": 100.0,
+        "dot": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 47.4,
+        "magicDurability": 52.4,
+        "panelHp": 47532,
+        "panelPhysicalDefense": 1077,
+        "panelMagicDefense": 1241,
+        "panelDodge": 3,
+        "panelLifeSteal": 7,
+        "panelHpRecoveryRate": 54
       }
     },
     {
@@ -4195,6 +4942,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 52.9,
+        "magicDurability": 58.5,
+        "panelHp": 54501,
+        "panelPhysicalDefense": 1354,
+        "panelMagicDefense": 1580,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 147
       }
     },
     {
@@ -4248,6 +5005,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 84.3,
+        "magicDurability": 81.4,
+        "panelHp": 113222,
+        "panelPhysicalDefense": 2411,
+        "panelMagicDefense": 2202,
+        "panelDodge": 38,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 59
       }
     },
     {
@@ -4302,6 +5069,16 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "enemyPush": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 28.9,
+        "magicDurability": 20.9,
+        "panelHp": 40841,
+        "panelPhysicalDefense": 552,
+        "panelMagicDefense": 401,
+        "panelDodge": 13,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -4355,6 +5132,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 56.4,
+        "magicDurability": 55.2,
+        "panelHp": 64797,
+        "panelPhysicalDefense": 918,
+        "panelMagicDefense": 660,
+        "panelDodge": 18,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -4408,6 +5195,16 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 63.3,
+        "magicDurability": 70.0,
+        "panelHp": 85283,
+        "panelPhysicalDefense": 1572,
+        "panelMagicDefense": 1794,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 158
       }
     },
     {
@@ -4463,6 +5260,16 @@
         "taunt": 82.0,
         "shield": 75.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 94.9,
+        "magicDurability": 99.0,
+        "panelHp": 162558,
+        "panelPhysicalDefense": 2418,
+        "panelMagicDefense": 2718,
+        "panelDodge": 41,
+        "panelLifeSteal": 7,
+        "panelHpRecoveryRate": 62
       }
     },
     {
@@ -4516,6 +5323,17 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 24.9,
+        "magicDurability": 22.8,
+        "panelHp": 45394,
+        "panelPhysicalDefense": 430,
+        "panelMagicDefense": 335,
+        "panelDodge": 2,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30,
+        "invulnerability": 82.0
       }
     },
     {
@@ -4568,6 +5386,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 72
+      },
+      "vanguardProfile": {
+        "physicalDurability": 58.9,
+        "magicDurability": 62.5,
+        "panelHp": 73877,
+        "panelPhysicalDefense": 932,
+        "panelMagicDefense": 821,
+        "panelDodge": 9,
+        "panelLifeSteal": 17,
+        "panelHpRecoveryRate": 53
       }
     },
     {
@@ -4621,6 +5449,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.9,
+        "magicDurability": 11.0,
+        "panelHp": 31655,
+        "panelPhysicalDefense": 343,
+        "panelMagicDefense": 445,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -4673,6 +5511,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 8.2,
+        "panelHp": 28211,
+        "panelPhysicalDefense": 299,
+        "panelMagicDefense": 409,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -4726,6 +5574,17 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.9,
+        "magicDurability": 9.9,
+        "panelHp": 29581,
+        "panelPhysicalDefense": 342,
+        "panelMagicDefense": 440,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 50,
+        "invulnerability": 82.0
       }
     },
     {
@@ -4778,6 +5637,16 @@
         "bossMechanismValue": 0,
         "pureTank": 72,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 76.7,
+        "magicDurability": 86.5,
+        "panelHp": 115276,
+        "panelPhysicalDefense": 2198,
+        "panelMagicDefense": 2315,
+        "panelDodge": 12,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 139
       }
     },
     {
@@ -4831,6 +5700,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 18.4,
+        "magicDurability": 12.8,
+        "panelHp": 38661,
+        "panelPhysicalDefense": 410,
+        "panelMagicDefense": 356,
+        "panelDodge": 42,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 40
       }
     },
     {
@@ -4885,7 +5764,8 @@
         "pureHealer": 0,
         "wideAoeCoverage": 100.0,
         "backlineAoeCoverage": 100.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1098",
@@ -4940,7 +5820,8 @@
         "burstDamage": 82.0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 100.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1099",
@@ -4993,7 +5874,8 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1100",
@@ -5046,6 +5928,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 10.1,
+        "magicDurability": 25.1,
+        "panelHp": 28891,
+        "panelPhysicalDefense": 470,
+        "panelMagicDefense": 626,
+        "panelDodge": 5,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -5099,6 +5991,16 @@
         "pureTank": 0,
         "pureHealer": 72,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 55.6,
+        "magicDurability": 61.5,
+        "panelHp": 62639,
+        "panelPhysicalDefense": 1560,
+        "panelMagicDefense": 1790,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 172
       }
     },
     {
@@ -5151,7 +6053,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1103",
@@ -5203,6 +6106,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 67.7,
+        "magicDurability": 65.8,
+        "panelHp": 70950,
+        "panelPhysicalDefense": 1830,
+        "panelMagicDefense": 1758,
+        "panelDodge": 40,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 59
       }
     },
     {
@@ -5256,6 +6169,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 14.4,
+        "magicDurability": 11.2,
+        "panelHp": 39940,
+        "panelPhysicalDefense": 429,
+        "panelMagicDefense": 333,
+        "panelDodge": 2,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 43
       }
     },
     {
@@ -5310,6 +6233,16 @@
         "pureHealer": 0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 17.7,
+        "magicDurability": 7.1,
+        "panelHp": 33590,
+        "panelPhysicalDefense": 542,
+        "panelMagicDefense": 383,
+        "panelDodge": 20,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -5362,6 +6295,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 9.5,
+        "panelHp": 28211,
+        "panelPhysicalDefense": 285,
+        "panelMagicDefense": 423,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -5415,6 +6358,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "dot": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 10.9,
+        "magicDurability": 25.1,
+        "panelHp": 30945,
+        "panelPhysicalDefense": 484,
+        "panelMagicDefense": 637,
+        "panelDodge": 5,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -5468,6 +6421,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 30.0,
+        "magicDurability": 19.9,
+        "panelHp": 40510,
+        "panelPhysicalDefense": 528,
+        "panelMagicDefense": 413,
+        "panelDodge": 48,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -5520,6 +6483,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 31.1,
+        "magicDurability": 24.2,
+        "panelHp": 35942,
+        "panelPhysicalDefense": 708,
+        "panelMagicDefense": 549,
+        "panelDodge": 24,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 20
       }
     },
     {
@@ -5573,6 +6546,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 55.7,
+        "magicDurability": 61.6,
+        "panelHp": 62999,
+        "panelPhysicalDefense": 1379,
+        "panelMagicDefense": 1632,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 152
       }
     },
     {
@@ -5625,6 +6608,16 @@
         "bossMechanismValue": 64,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 27.8,
+        "magicDurability": 42.5,
+        "panelHp": 41521,
+        "panelPhysicalDefense": 588,
+        "panelMagicDefense": 809,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 146
       }
     },
     {
@@ -5678,6 +6671,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 20.9,
+        "magicDurability": 13.6,
+        "panelHp": 36052,
+        "panelPhysicalDefense": 536,
+        "panelMagicDefense": 440,
+        "panelDodge": 23,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -5731,6 +6734,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 44.8,
+        "magicDurability": 46.5,
+        "panelHp": 48961,
+        "panelPhysicalDefense": 653,
+        "panelMagicDefense": 593,
+        "panelDodge": 23,
+        "panelLifeSteal": 10,
+        "panelHpRecoveryRate": 55
       }
     },
     {
@@ -5783,6 +6796,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 9.5,
+        "panelHp": 27782,
+        "panelPhysicalDefense": 305,
+        "panelMagicDefense": 439,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 60
       }
     },
     {
@@ -5836,6 +6859,17 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 23.0,
+        "magicDurability": 23.5,
+        "panelHp": 48930,
+        "panelPhysicalDefense": 403,
+        "panelMagicDefense": 332,
+        "panelDodge": 3,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30,
+        "physicalEvasion": 92.0
       }
     },
     {
@@ -5891,6 +6925,16 @@
         "shield": 75.0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 69.1,
+        "magicDurability": 68.7,
+        "panelHp": 77846,
+        "panelPhysicalDefense": 2029,
+        "panelMagicDefense": 1951,
+        "panelDodge": 28,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 59
       }
     },
     {
@@ -5945,6 +6989,17 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.8,
+        "magicDurability": 12.3,
+        "panelHp": 32697,
+        "panelPhysicalDefense": 341,
+        "panelMagicDefense": 446,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 60,
+        "invulnerability": 82.0
       }
     },
     {
@@ -5997,6 +7052,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 63.4,
+        "magicDurability": 65.8,
+        "panelHp": 71049,
+        "panelPhysicalDefense": 1823,
+        "panelMagicDefense": 1820,
+        "panelDodge": 17,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 24
       }
     },
     {
@@ -6051,6 +7116,16 @@
         "pureHealer": 0,
         "taunt": 82.0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 81.8,
+        "magicDurability": 78.8,
+        "panelHp": 102443,
+        "panelPhysicalDefense": 2341,
+        "panelMagicDefense": 2197,
+        "panelDodge": 48,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 64
       }
     },
     {
@@ -6105,6 +7180,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 8.2,
+        "panelHp": 27526,
+        "panelPhysicalDefense": 319,
+        "panelMagicDefense": 409,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -6160,6 +7245,16 @@
         "shield": 75.0,
         "enemyPush": 82.0,
         "backlineAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 54.3,
+        "magicDurability": 60.1,
+        "panelHp": 55924,
+        "panelPhysicalDefense": 1272,
+        "panelMagicDefense": 1560,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 182
       }
     },
     {
@@ -6214,6 +7309,16 @@
         "pureHealer": 0,
         "wideAoeCoverage": 100.0,
         "backlineAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 53.3,
+        "magicDurability": 59.0,
+        "panelHp": 55035,
+        "panelPhysicalDefense": 1350,
+        "panelMagicDefense": 1559,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 153
       }
     },
     {
@@ -6269,6 +7374,16 @@
         "shield": 75.0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 9.2,
+        "magicDurability": 25.1,
+        "panelHp": 29371,
+        "panelPhysicalDefense": 457,
+        "panelMagicDefense": 638,
+        "panelDodge": 3,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -6322,7 +7437,8 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1125",
@@ -6376,7 +7492,8 @@
         "pureHealer": 0,
         "taunt": 82.0,
         "wideAoeCoverage": 55.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1126",
@@ -6429,7 +7546,8 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1127",
@@ -6483,6 +7601,16 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 44.0,
+        "magicDurability": 43.0,
+        "panelHp": 42445,
+        "panelPhysicalDefense": 905,
+        "panelMagicDefense": 705,
+        "panelDodge": 15,
+        "panelLifeSteal": 7,
+        "panelHpRecoveryRate": 20
       }
     },
     {
@@ -6537,6 +7665,16 @@
         "pureHealer": 0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 30.1,
+        "magicDurability": 26.1,
+        "panelHp": 35754,
+        "panelPhysicalDefense": 802,
+        "panelMagicDefense": 572,
+        "panelDodge": 13,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -6589,6 +7727,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 8.6,
+        "magicDurability": 25.1,
+        "panelHp": 29416,
+        "panelPhysicalDefense": 442,
+        "panelMagicDefense": 635,
+        "panelDodge": 5,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -6641,6 +7789,16 @@
         "bossMechanismValue": 42,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 67.4,
+        "magicDurability": 64.9,
+        "panelHp": 65480,
+        "panelPhysicalDefense": 2150,
+        "panelMagicDefense": 2011,
+        "panelDodge": 49,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 64
       }
     },
     {
@@ -6694,6 +7852,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 11.0,
+        "magicDurability": 5.9,
+        "panelHp": 37056,
+        "panelPhysicalDefense": 424,
+        "panelMagicDefense": 321,
+        "panelDodge": 5,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 48
       }
     },
     {
@@ -6747,6 +7915,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.3,
+        "magicDurability": 12.1,
+        "panelHp": 32542,
+        "panelPhysicalDefense": 341,
+        "panelMagicDefense": 452,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -6800,6 +7978,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 22.0,
+        "magicDurability": 40.3,
+        "panelHp": 41055,
+        "panelPhysicalDefense": 493,
+        "panelMagicDefense": 751,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 146
       }
     },
     {
@@ -6853,6 +8041,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 9.2,
+        "magicDurability": 26.2,
+        "panelHp": 34655,
+        "panelPhysicalDefense": 479,
+        "panelMagicDefense": 642,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 49
       }
     },
     {
@@ -6906,6 +8104,16 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 52.9,
+        "magicDurability": 58.5,
+        "panelHp": 54555,
+        "panelPhysicalDefense": 1294,
+        "panelMagicDefense": 1599,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 157
       }
     },
     {
@@ -6960,6 +8168,16 @@
         "pureHealer": 0,
         "dot": 82.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 60.1,
+        "magicDurability": 66.6,
+        "panelHp": 90073,
+        "panelPhysicalDefense": 918,
+        "panelMagicDefense": 902,
+        "panelDodge": 3,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -7013,6 +8231,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.3,
+        "magicDurability": 12.1,
+        "panelHp": 31655,
+        "panelPhysicalDefense": 341,
+        "panelMagicDefense": 452,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -7066,6 +8294,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "taunt": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 59.2,
+        "magicDurability": 64.0,
+        "panelHp": 65265,
+        "panelPhysicalDefense": 1767,
+        "panelMagicDefense": 1958,
+        "panelDodge": 6,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 158
       }
     },
     {
@@ -7119,6 +8357,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "taunt": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 83.7,
+        "magicDurability": 80.7,
+        "panelHp": 119616,
+        "panelPhysicalDefense": 2190,
+        "panelMagicDefense": 2024,
+        "panelDodge": 72,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 44
       }
     },
     {
@@ -7172,6 +8420,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 22.9,
+        "magicDurability": 22.7,
+        "panelHp": 48806,
+        "panelPhysicalDefense": 370,
+        "panelMagicDefense": 319,
+        "panelDodge": 3,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -7224,6 +8482,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 20.6,
+        "magicDurability": 16.3,
+        "panelHp": 34813,
+        "panelPhysicalDefense": 566,
+        "panelMagicDefense": 486,
+        "panelDodge": 20,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -7276,6 +8544,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 46.9,
+        "magicDurability": 48.7,
+        "panelHp": 49445,
+        "panelPhysicalDefense": 745,
+        "panelMagicDefense": 740,
+        "panelDodge": 14,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 72
       }
     },
     {
@@ -7329,6 +8607,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 15.6,
+        "magicDurability": 15.0,
+        "panelHp": 39592,
+        "panelPhysicalDefense": 425,
+        "panelMagicDefense": 357,
+        "panelDodge": 10,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 36
       }
     },
     {
@@ -7381,6 +8669,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 25.6,
+        "magicDurability": 25.7,
+        "panelHp": 50868,
+        "panelPhysicalDefense": 416,
+        "panelMagicDefense": 341,
+        "panelDodge": 3,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -7433,6 +8731,16 @@
         "bossMechanismValue": 0,
         "pureTank": 72,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 80.0,
+        "magicDurability": 79.8,
+        "panelHp": 118290,
+        "panelPhysicalDefense": 2169,
+        "panelMagicDefense": 2004,
+        "panelDodge": 26,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 74
       }
     },
     {
@@ -7485,6 +8793,16 @@
         "bossMechanismValue": 64,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 68.2,
+        "magicDurability": 66.7,
+        "panelHp": 71195,
+        "panelPhysicalDefense": 1845,
+        "panelMagicDefense": 1842,
+        "panelDodge": 40,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 59
       }
     },
     {
@@ -7539,6 +8857,17 @@
         "pureHealer": 0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 43.4,
+        "magicDurability": 41.3,
+        "panelHp": 47518,
+        "panelPhysicalDefense": 618,
+        "panelMagicDefense": 542,
+        "panelDodge": 45,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 40,
+        "invulnerability": 82.0
       }
     },
     {
@@ -7591,6 +8920,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 27.4,
+        "magicDurability": 42.4,
+        "panelHp": 41247,
+        "panelPhysicalDefense": 592,
+        "panelMagicDefense": 828,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 161
       }
     },
     {
@@ -7643,6 +8982,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 26.9,
+        "magicDurability": 21.8,
+        "panelHp": 41631,
+        "panelPhysicalDefense": 448,
+        "panelMagicDefense": 394,
+        "panelDodge": 20,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 25
       }
     },
     {
@@ -7695,6 +9044,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 72
+      },
+      "vanguardProfile": {
+        "physicalDurability": 54.8,
+        "magicDurability": 60.6,
+        "panelHp": 60115,
+        "panelPhysicalDefense": 1347,
+        "panelMagicDefense": 1559,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 173
       }
     },
     {
@@ -7747,6 +9106,16 @@
         "bossMechanismValue": 95,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 9.7,
+        "magicDurability": 27.1,
+        "panelHp": 34706,
+        "panelPhysicalDefense": 479,
+        "panelMagicDefense": 693,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 146
       }
     },
     {
@@ -7800,6 +9169,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 32.0,
+        "magicDurability": 31.6,
+        "panelHp": 51097,
+        "panelPhysicalDefense": 497,
+        "panelMagicDefense": 404,
+        "panelDodge": 3,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -7853,6 +9232,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 16.6,
+        "magicDurability": 13.8,
+        "panelHp": 40160,
+        "panelPhysicalDefense": 444,
+        "panelMagicDefense": 343,
+        "panelDodge": 2,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 43
       }
     },
     {
@@ -7905,6 +9294,16 @@
         "bossMechanismValue": 64,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 27.8,
+        "magicDurability": 42.9,
+        "panelHp": 41521,
+        "panelPhysicalDefense": 588,
+        "panelMagicDefense": 845,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 146
       }
     },
     {
@@ -7957,6 +9356,16 @@
         "bossMechanismValue": 82,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 31.7,
+        "magicDurability": 21.7,
+        "panelHp": 40551,
+        "panelPhysicalDefense": 547,
+        "panelMagicDefense": 439,
+        "panelDodge": 45,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 40
       }
     },
     {
@@ -8009,6 +9418,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 21.9,
+        "magicDurability": 9.8,
+        "panelHp": 35140,
+        "panelPhysicalDefense": 581,
+        "panelMagicDefense": 401,
+        "panelDodge": 20,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -8061,6 +9480,16 @@
         "bossMechanismValue": 42,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 55.7,
+        "magicDurability": 61.6,
+        "panelHp": 63734,
+        "panelPhysicalDefense": 1394,
+        "panelMagicDefense": 1647,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 152
       }
     },
     {
@@ -8113,6 +9542,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 39.1,
+        "magicDurability": 40.9,
+        "panelHp": 52010,
+        "panelPhysicalDefense": 622,
+        "panelMagicDefense": 516,
+        "panelDodge": 2,
+        "panelLifeSteal": 7,
+        "panelHpRecoveryRate": 14
       }
     },
     {
@@ -8166,6 +9605,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 25.8,
+        "magicDurability": 22.3,
+        "panelHp": 39042,
+        "panelPhysicalDefense": 561,
+        "panelMagicDefense": 474,
+        "panelDodge": 18,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -8220,6 +9669,16 @@
         "pureHealer": 0,
         "dot": 82.0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 54.8,
+        "magicDurability": 52.8,
+        "panelHp": 48576,
+        "panelPhysicalDefense": 1295,
+        "panelMagicDefense": 1390,
+        "panelDodge": 30,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 32
       }
     },
     {
@@ -8272,6 +9731,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 25.2,
+        "magicDurability": 30.1,
+        "panelHp": 44338,
+        "panelPhysicalDefense": 408,
+        "panelMagicDefense": 445,
+        "panelDodge": 20,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 25
       }
     },
     {
@@ -8325,6 +9794,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 44.8,
+        "magicDurability": 44.5,
+        "panelHp": 42366,
+        "panelPhysicalDefense": 1068,
+        "panelMagicDefense": 864,
+        "panelDodge": 13,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 35
       }
     },
     {
@@ -8379,6 +9858,16 @@
         "pureHealer": 0,
         "dot": 82.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 23.4,
+        "magicDurability": 18.0,
+        "panelHp": 41035,
+        "panelPhysicalDefense": 483,
+        "panelMagicDefense": 343,
+        "panelDodge": 4,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -8432,6 +9921,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 85.9,
+        "magicDurability": 83.8,
+        "panelHp": 125575,
+        "panelPhysicalDefense": 2316,
+        "panelMagicDefense": 2031,
+        "panelDodge": 21,
+        "panelLifeSteal": 5,
+        "panelHpRecoveryRate": 64
       }
     },
     {
@@ -8485,6 +9984,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 32.3,
+        "magicDurability": 31.9,
+        "panelHp": 52800,
+        "panelPhysicalDefense": 465,
+        "panelMagicDefense": 392,
+        "panelDodge": 3,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -8538,6 +10047,16 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 54.8,
+        "magicDurability": 60.6,
+        "panelHp": 62280,
+        "panelPhysicalDefense": 1352,
+        "panelMagicDefense": 1622,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 147
       }
     },
     {
@@ -8592,6 +10111,16 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "enemyPull": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 66.5,
+        "magicDurability": 63.4,
+        "panelHp": 64769,
+        "panelPhysicalDefense": 1960,
+        "panelMagicDefense": 1904,
+        "panelDodge": 58,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 24
       }
     },
     {
@@ -8646,6 +10175,16 @@
         "pureHealer": 0,
         "dot": 82.0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 47.0,
+        "magicDurability": 53.6,
+        "panelHp": 57245,
+        "panelPhysicalDefense": 687,
+        "panelMagicDefense": 671,
+        "panelDodge": 3,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -8698,6 +10237,16 @@
         "bossMechanismValue": 42,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 41.5,
+        "magicDurability": 49.9,
+        "panelHp": 45016,
+        "panelPhysicalDefense": 795,
+        "panelMagicDefense": 1012,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 151
       }
     },
     {
@@ -8750,6 +10299,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 18.7,
+        "magicDurability": 14.6,
+        "panelHp": 36330,
+        "panelPhysicalDefense": 512,
+        "panelMagicDefense": 444,
+        "panelDodge": 20,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -8803,6 +10362,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 25.1,
+        "magicDurability": 22.6,
+        "panelHp": 41331,
+        "panelPhysicalDefense": 498,
+        "panelMagicDefense": 402,
+        "panelDodge": 5,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 38
       }
     },
     {
@@ -8855,6 +10424,16 @@
         "bossMechanismValue": 42,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 9.2,
+        "magicDurability": 25.1,
+        "panelHp": 28686,
+        "panelPhysicalDefense": 475,
+        "panelMagicDefense": 629,
+        "panelDodge": 3,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -8909,6 +10488,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 11.7,
+        "magicDurability": 20.1,
+        "panelHp": 34225,
+        "panelPhysicalDefense": 442,
+        "panelMagicDefense": 535,
+        "panelDodge": 17,
+        "panelLifeSteal": 10,
+        "panelHpRecoveryRate": 35
       }
     },
     {
@@ -8963,6 +10552,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 10.8,
+        "magicDurability": 27.1,
+        "panelHp": 34734,
+        "panelPhysicalDefense": 504,
+        "panelMagicDefense": 703,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 49
       }
     },
     {
@@ -9016,6 +10615,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 15.6,
+        "panelHp": 28341,
+        "panelPhysicalDefense": 340,
+        "panelMagicDefense": 491,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -9071,6 +10680,16 @@
         "shield": 75.0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 54.3,
+        "magicDurability": 60.1,
+        "panelHp": 57146,
+        "panelPhysicalDefense": 1329,
+        "panelMagicDefense": 1555,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 163
       }
     },
     {
@@ -9123,6 +10742,19 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 53.3,
+        "magicDurability": 58.1,
+        "panelHp": 55101,
+        "panelPhysicalDefense": 1304,
+        "panelMagicDefense": 1514,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 156,
+        "invulnerability": 82.0,
+        "physicalEvasion": 92.0,
+        "magicEvasion": 92.0
       }
     },
     {
@@ -9176,6 +10808,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 53.4,
+        "magicDurability": 58.6,
+        "panelHp": 55245,
+        "panelPhysicalDefense": 1165,
+        "panelMagicDefense": 1400,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 158
       }
     },
     {
@@ -9229,6 +10871,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 74.2,
+        "magicDurability": 84.7,
+        "panelHp": 115240,
+        "panelPhysicalDefense": 2154,
+        "panelMagicDefense": 2269,
+        "panelDodge": 12,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 86
       }
     },
     {
@@ -9283,6 +10935,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "enemyPush": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 51.2,
+        "magicDurability": 48.9,
+        "panelHp": 46528,
+        "panelPhysicalDefense": 1025,
+        "panelMagicDefense": 810,
+        "panelDodge": 21,
+        "panelLifeSteal": 5,
+        "panelHpRecoveryRate": 64
       }
     },
     {
@@ -9336,6 +10998,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 10.7,
+        "magicDurability": 16.9,
+        "panelHp": 29366,
+        "panelPhysicalDefense": 441,
+        "panelMagicDefense": 525,
+        "panelDodge": 17,
+        "panelLifeSteal": 10,
+        "panelHpRecoveryRate": 35
       }
     },
     {
@@ -9389,6 +11061,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 30.0,
+        "magicDurability": 29.0,
+        "panelHp": 36481,
+        "panelPhysicalDefense": 690,
+        "panelMagicDefense": 598,
+        "panelDodge": 20,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 20
       }
     },
     {
@@ -9443,6 +11125,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 80.3,
+        "magicDurability": 78.8,
+        "panelHp": 113362,
+        "panelPhysicalDefense": 2242,
+        "panelMagicDefense": 2050,
+        "panelDodge": 30,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 84
       }
     },
     {
@@ -9496,6 +11188,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 24.0,
+        "magicDurability": 22.3,
+        "panelHp": 48795,
+        "panelPhysicalDefense": 406,
+        "panelMagicDefense": 321,
+        "panelDodge": 5,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -9549,6 +11251,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 14.6,
+        "magicDurability": 11.6,
+        "panelHp": 38906,
+        "panelPhysicalDefense": 444,
+        "panelMagicDefense": 343,
+        "panelDodge": 2,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 43
       }
     },
     {
@@ -9602,6 +11314,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.9,
+        "magicDurability": 13.9,
+        "panelHp": 29166,
+        "panelPhysicalDefense": 348,
+        "panelMagicDefense": 468,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 60
       }
     },
     {
@@ -9655,6 +11377,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 54.3,
+        "magicDurability": 53.0,
+        "panelHp": 55267,
+        "panelPhysicalDefense": 963,
+        "panelMagicDefense": 725,
+        "panelDodge": 15,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -9708,6 +11440,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 2.8,
+        "magicDurability": 15.5,
+        "panelHp": 34805,
+        "panelPhysicalDefense": 355,
+        "panelMagicDefense": 474,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -9761,6 +11503,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 37.9,
+        "magicDurability": 41.1,
+        "panelHp": 54283,
+        "panelPhysicalDefense": 551,
+        "panelMagicDefense": 487,
+        "panelDodge": 5,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 25
       }
     },
     {
@@ -9814,6 +11566,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 71.8,
+        "magicDurability": 70.9,
+        "panelHp": 85671,
+        "panelPhysicalDefense": 2086,
+        "panelMagicDefense": 1966,
+        "panelDodge": 36,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 59
       }
     },
     {
@@ -9867,6 +11629,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 32.2,
+        "magicDurability": 47.7,
+        "panelHp": 44897,
+        "panelPhysicalDefense": 602,
+        "panelMagicDefense": 831,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 146
       }
     },
     {
@@ -9922,6 +11694,16 @@
         "burstDamage": 82.0,
         "wideAoeCoverage": 55.0,
         "backlineAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 36.6,
+        "magicDurability": 31.0,
+        "panelHp": 39431,
+        "panelPhysicalDefense": 732,
+        "panelMagicDefense": 552,
+        "panelDodge": 22,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -9974,6 +11756,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 18.6,
+        "magicDurability": 15.8,
+        "panelHp": 42041,
+        "panelPhysicalDefense": 353,
+        "panelMagicDefense": 299,
+        "panelDodge": 11,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 40
       }
     },
     {
@@ -10027,6 +11819,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 5.3,
+        "magicDurability": 19.0,
+        "panelHp": 34661,
+        "panelPhysicalDefense": 425,
+        "panelMagicDefense": 531,
+        "panelDodge": 0,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -10079,6 +11881,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 13.0,
+        "magicDurability": 10.9,
+        "panelHp": 38833,
+        "panelPhysicalDefense": 419,
+        "panelMagicDefense": 339,
+        "panelDodge": 4,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -10132,6 +11944,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 27.6,
+        "magicDurability": 29.8,
+        "panelHp": 32515,
+        "panelPhysicalDefense": 863,
+        "panelMagicDefense": 994,
+        "panelDodge": 12,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 37
       }
     },
     {
@@ -10185,6 +12007,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 28.3,
+        "magicDurability": 35.4,
+        "panelHp": 54026,
+        "panelPhysicalDefense": 407,
+        "panelMagicDefense": 423,
+        "panelDodge": 5,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -10238,6 +12070,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 35.3,
+        "magicDurability": 53.7,
+        "panelHp": 61270,
+        "panelPhysicalDefense": 498,
+        "panelMagicDefense": 659,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -10290,6 +12132,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 40.3,
+        "magicDurability": 40.0,
+        "panelHp": 42026,
+        "panelPhysicalDefense": 704,
+        "panelMagicDefense": 608,
+        "panelDodge": 20,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 20
       }
     },
     {
@@ -10343,6 +12195,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 28.4,
+        "magicDurability": 28.7,
+        "panelHp": 51086,
+        "panelPhysicalDefense": 439,
+        "panelMagicDefense": 356,
+        "panelDodge": 3,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -10396,6 +12258,16 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.8,
+        "magicDurability": 70.0,
+        "panelHp": 69719,
+        "panelPhysicalDefense": 1931,
+        "panelMagicDefense": 2081,
+        "panelDodge": 6,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 158
       }
     },
     {
@@ -10448,6 +12320,16 @@
         "bossMechanismValue": 42,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 9.5,
+        "panelHp": 28121,
+        "panelPhysicalDefense": 312,
+        "panelMagicDefense": 439,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 60
       }
     },
     {
@@ -10503,6 +12385,16 @@
         "backlineAoeCoverage": 100.0,
         "enemyPull": 82.0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.2,
+        "magicDurability": 59.6,
+        "panelHp": 58934,
+        "panelPhysicalDefense": 1663,
+        "panelMagicDefense": 1536,
+        "panelDodge": 31,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 27
       }
     },
     {
@@ -10556,6 +12448,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 33.4,
+        "magicDurability": 30.9,
+        "panelHp": 51790,
+        "panelPhysicalDefense": 458,
+        "panelMagicDefense": 386,
+        "panelDodge": 9,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -10609,6 +12511,16 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 58.5,
+        "magicDurability": 65.5,
+        "panelHp": 62931,
+        "panelPhysicalDefense": 1846,
+        "panelMagicDefense": 2052,
+        "panelDodge": 6,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 158
       }
     },
     {
@@ -10662,6 +12574,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 9.5,
+        "panelHp": 29141,
+        "panelPhysicalDefense": 321,
+        "panelMagicDefense": 431,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -10716,6 +12638,16 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 32.0,
+        "magicDurability": 34.9,
+        "panelHp": 42417,
+        "panelPhysicalDefense": 614,
+        "panelMagicDefense": 531,
+        "panelDodge": 4,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -10770,6 +12702,17 @@
         "pureHealer": 0,
         "taunt": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.1,
+        "magicDurability": 59.8,
+        "panelHp": 62795,
+        "panelPhysicalDefense": 1404,
+        "panelMagicDefense": 1326,
+        "panelDodge": 26,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 32,
+        "invulnerability": 82.0
       }
     },
     {
@@ -10822,7 +12765,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1235",
@@ -10875,6 +12819,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 47.4,
+        "magicDurability": 47.1,
+        "panelHp": 46358,
+        "panelPhysicalDefense": 883,
+        "panelMagicDefense": 742,
+        "panelDodge": 15,
+        "panelLifeSteal": 7,
+        "panelHpRecoveryRate": 20
       }
     },
     {
@@ -10927,6 +12881,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 24.7,
+        "magicDurability": 22.9,
+        "panelHp": 43540,
+        "panelPhysicalDefense": 427,
+        "panelMagicDefense": 348,
+        "panelDodge": 10,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 36
       }
     },
     {
@@ -10981,6 +12945,16 @@
         "pureHealer": 0,
         "dot": 82.0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 12.1,
+        "panelHp": 31317,
+        "panelPhysicalDefense": 336,
+        "panelMagicDefense": 451,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -11035,6 +13009,17 @@
         "pureHealer": 0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 31.8,
+        "magicDurability": 30.1,
+        "panelHp": 37919,
+        "panelPhysicalDefense": 703,
+        "panelMagicDefense": 597,
+        "panelDodge": 20,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 20,
+        "physicalEvasion": 92.0
       }
     },
     {
@@ -11088,6 +13073,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 79.9,
+        "magicDurability": 77.2,
+        "panelHp": 113441,
+        "panelPhysicalDefense": 2189,
+        "panelMagicDefense": 1990,
+        "panelDodge": 42,
+        "panelLifeSteal": 1,
+        "panelHpRecoveryRate": 49
       }
     },
     {
@@ -11141,6 +13136,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.3,
+        "magicDurability": 12.1,
+        "panelHp": 32268,
+        "panelPhysicalDefense": 341,
+        "panelMagicDefense": 452,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -11193,6 +13198,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 56.8,
+        "magicDurability": 61.4,
+        "panelHp": 60510,
+        "panelPhysicalDefense": 1666,
+        "panelMagicDefense": 1857,
+        "panelDodge": 6,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 158
       }
     },
     {
@@ -11246,6 +13261,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 84.0,
+        "magicDurability": 83.8,
+        "panelHp": 120640,
+        "panelPhysicalDefense": 2288,
+        "panelMagicDefense": 2079,
+        "panelDodge": 26,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 39
       }
     },
     {
@@ -11299,6 +13324,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 7.5,
+        "magicDurability": 25.1,
+        "panelHp": 30726,
+        "panelPhysicalDefense": 448,
+        "panelMagicDefense": 635,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 64
       }
     },
     {
@@ -11352,6 +13387,16 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 54.3,
+        "magicDurability": 59.2,
+        "panelHp": 55974,
+        "panelPhysicalDefense": 1323,
+        "panelMagicDefense": 1525,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 157
       }
     },
     {
@@ -11405,6 +13450,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 41.2,
+        "magicDurability": 50.0,
+        "panelHp": 51565,
+        "panelPhysicalDefense": 629,
+        "panelMagicDefense": 623,
+        "panelDodge": 5,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -11457,6 +13512,16 @@
         "bossMechanismValue": 42,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 33.8,
+        "magicDurability": 36.4,
+        "panelHp": 52717,
+        "panelPhysicalDefense": 503,
+        "panelMagicDefense": 445,
+        "panelDodge": 3,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -11511,6 +13576,16 @@
         "pureHealer": 0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 27.8,
+        "magicDurability": 24.1,
+        "panelHp": 40401,
+        "panelPhysicalDefense": 559,
+        "panelMagicDefense": 464,
+        "panelDodge": 18,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -11564,6 +13639,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 20.4,
+        "magicDurability": 19.6,
+        "panelHp": 41630,
+        "panelPhysicalDefense": 410,
+        "panelMagicDefense": 353,
+        "panelDodge": 13,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -11617,6 +13702,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 30.2,
+        "magicDurability": 28.2,
+        "panelHp": 40901,
+        "panelPhysicalDefense": 463,
+        "panelMagicDefense": 473,
+        "panelDodge": 52,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -11670,6 +13765,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 40.9,
+        "magicDurability": 46.9,
+        "panelHp": 51905,
+        "panelPhysicalDefense": 570,
+        "panelMagicDefense": 552,
+        "panelDodge": 16,
+        "panelLifeSteal": 10,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -11723,6 +13828,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 56.8,
+        "magicDurability": 53.9,
+        "panelHp": 49259,
+        "panelPhysicalDefense": 1657,
+        "panelMagicDefense": 1502,
+        "panelDodge": 38,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 29
       }
     },
     {
@@ -11776,6 +13891,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 11.1,
+        "magicDurability": 25.1,
+        "panelHp": 28891,
+        "panelPhysicalDefense": 448,
+        "panelMagicDefense": 640,
+        "panelDodge": 12,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 35
       }
     },
     {
@@ -11829,6 +13954,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 1.1,
+        "magicDurability": 14.0,
+        "panelHp": 33054,
+        "panelPhysicalDefense": 321,
+        "panelMagicDefense": 460,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -11881,6 +14016,17 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 15.5,
+        "magicDurability": 13.4,
+        "panelHp": 38658,
+        "panelPhysicalDefense": 451,
+        "panelMagicDefense": 400,
+        "panelDodge": 4,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30,
+        "invulnerability": 82.0
       }
     },
     {
@@ -11933,6 +14079,16 @@
         "bossMechanismValue": 82,
         "pureTank": 0,
         "pureHealer": 72
+      },
+      "vanguardProfile": {
+        "physicalDurability": 47.5,
+        "magicDurability": 53.5,
+        "panelHp": 50008,
+        "panelPhysicalDefense": 989,
+        "panelMagicDefense": 1228,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 157
       }
     },
     {
@@ -11985,6 +14141,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 12.7,
+        "magicDurability": 14.0,
+        "panelHp": 38866,
+        "panelPhysicalDefense": 411,
+        "panelMagicDefense": 374,
+        "panelDodge": 4,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -12037,6 +14203,16 @@
         "bossMechanismValue": 0,
         "pureTank": 72,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 52.0,
+        "magicDurability": 57.4,
+        "panelHp": 63935,
+        "panelPhysicalDefense": 687,
+        "panelMagicDefense": 780,
+        "panelDodge": 17,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -12090,6 +14266,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 2.2,
+        "magicDurability": 16.6,
+        "panelHp": 34055,
+        "panelPhysicalDefense": 380,
+        "panelMagicDefense": 501,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -12142,6 +14328,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 3.0,
+        "magicDurability": 14.9,
+        "panelHp": 35328,
+        "panelPhysicalDefense": 319,
+        "panelMagicDefense": 446,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 60
       }
     },
     {
@@ -12195,6 +14391,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 42.5,
+        "magicDurability": 51.0,
+        "panelHp": 47224,
+        "panelPhysicalDefense": 790,
+        "panelMagicDefense": 1044,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 151
       }
     },
     {
@@ -12248,6 +14454,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 20.7,
+        "magicDurability": 22.9,
+        "panelHp": 34875,
+        "panelPhysicalDefense": 581,
+        "panelMagicDefense": 545,
+        "panelDodge": 18,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -12301,6 +14517,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 1.3,
+        "magicDurability": 9.5,
+        "panelHp": 28896,
+        "panelPhysicalDefense": 372,
+        "panelMagicDefense": 438,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -12354,6 +14580,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 28.7,
+        "magicDurability": 43.9,
+        "panelHp": 42520,
+        "panelPhysicalDefense": 557,
+        "panelMagicDefense": 757,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 166
       }
     },
     {
@@ -12407,6 +14643,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 27.4,
+        "magicDurability": 42.5,
+        "panelHp": 55116,
+        "panelPhysicalDefense": 403,
+        "panelMagicDefense": 509,
+        "panelDodge": 3,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -12461,6 +14707,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 76.9,
+        "magicDurability": 87.4,
+        "panelHp": 120960,
+        "panelPhysicalDefense": 2146,
+        "panelMagicDefense": 2268,
+        "panelDodge": 13,
+        "panelLifeSteal": 14,
+        "panelHpRecoveryRate": 44
       }
     },
     {
@@ -12515,6 +14771,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 12.6,
+        "magicDurability": 30.8,
+        "panelHp": 36709,
+        "panelPhysicalDefense": 457,
+        "panelMagicDefense": 664,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 49
       }
     },
     {
@@ -12568,6 +14834,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 79.1,
+        "magicDurability": 84.9,
+        "panelHp": 115600,
+        "panelPhysicalDefense": 2167,
+        "panelMagicDefense": 2226,
+        "panelDodge": 26,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 44
       }
     },
     {
@@ -12621,6 +14897,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 32.1,
+        "magicDurability": 35.3,
+        "panelHp": 51311,
+        "panelPhysicalDefense": 484,
+        "panelMagicDefense": 445,
+        "panelDodge": 3,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -12674,6 +14960,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 43.2,
+        "magicDurability": 51.5,
+        "panelHp": 45784,
+        "panelPhysicalDefense": 898,
+        "panelMagicDefense": 1097,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 150
       }
     },
     {
@@ -12727,6 +15023,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 9.2,
+        "magicDurability": 25.1,
+        "panelHp": 30991,
+        "panelPhysicalDefense": 458,
+        "panelMagicDefense": 609,
+        "panelDodge": 3,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -12780,6 +15086,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 54.4,
+        "magicDurability": 57.1,
+        "panelHp": 66630,
+        "panelPhysicalDefense": 752,
+        "panelMagicDefense": 765,
+        "panelDodge": 17,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -12833,6 +15149,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "taunt": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 78.3,
+        "magicDurability": 77.7,
+        "panelHp": 111292,
+        "panelPhysicalDefense": 2286,
+        "panelMagicDefense": 2053,
+        "panelDodge": 23,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 51
       }
     },
     {
@@ -12886,6 +15212,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 56.7,
+        "magicDurability": 61.8,
+        "panelHp": 66126,
+        "panelPhysicalDefense": 1322,
+        "panelMagicDefense": 1524,
+        "panelDodge": 3,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 136
       }
     },
     {
@@ -12940,6 +15276,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 9.3,
+        "magicDurability": 26.7,
+        "panelHp": 34734,
+        "panelPhysicalDefense": 457,
+        "panelMagicDefense": 628,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 49
       }
     },
     {
@@ -12994,6 +15340,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 75.3,
+        "magicDurability": 86.8,
+        "panelHp": 114166,
+        "panelPhysicalDefense": 2184,
+        "panelMagicDefense": 2328,
+        "panelDodge": 12,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 86
       }
     },
     {
@@ -13047,6 +15403,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 20.5,
+        "magicDurability": 32.0,
+        "panelHp": 39824,
+        "panelPhysicalDefense": 448,
+        "panelMagicDefense": 560,
+        "panelDodge": 17,
+        "panelLifeSteal": 10,
+        "panelHpRecoveryRate": 35
       }
     },
     {
@@ -13103,6 +15469,16 @@
         "enemyPush": 82.0,
         "wideAoeCoverage": 100.0,
         "enemyPull": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 44.8,
+        "magicDurability": 47.3,
+        "panelHp": 45024,
+        "panelPhysicalDefense": 843,
+        "panelMagicDefense": 783,
+        "panelDodge": 11,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -13156,6 +15532,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.9,
+        "magicDurability": 10.4,
+        "panelHp": 29246,
+        "panelPhysicalDefense": 351,
+        "panelMagicDefense": 441,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -13209,6 +15595,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 8.8,
+        "magicDurability": 26.2,
+        "panelHp": 34384,
+        "panelPhysicalDefense": 469,
+        "panelMagicDefense": 631,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 49
       }
     },
     {
@@ -13262,6 +15658,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 36.2,
+        "magicDurability": 39.9,
+        "panelHp": 42737,
+        "panelPhysicalDefense": 655,
+        "panelMagicDefense": 565,
+        "panelDodge": 7,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -13317,6 +15723,16 @@
         "shield": 75.0,
         "enemyPush": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 43.9,
+        "magicDurability": 48.5,
+        "panelHp": 55012,
+        "panelPhysicalDefense": 648,
+        "panelMagicDefense": 558,
+        "panelDodge": 7,
+        "panelLifeSteal": 14,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -13371,6 +15787,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 12.1,
+        "panelHp": 29509,
+        "panelPhysicalDefense": 305,
+        "panelMagicDefense": 452,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -13424,6 +15850,17 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 52.2,
+        "magicDurability": 58.8,
+        "panelHp": 57184,
+        "panelPhysicalDefense": 1128,
+        "panelMagicDefense": 1258,
+        "panelDodge": 0,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 153,
+        "revive": 78.0
       }
     },
     {
@@ -13476,6 +15913,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 72.1,
+        "magicDurability": 71.3,
+        "panelHp": 84881,
+        "panelPhysicalDefense": 2106,
+        "panelMagicDefense": 2000,
+        "panelDodge": 36,
+        "panelLifeSteal": 8,
+        "panelHpRecoveryRate": 69
       }
     },
     {
@@ -13529,6 +15976,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 33.3,
+        "magicDurability": 27.7,
+        "panelHp": 41261,
+        "panelPhysicalDefense": 543,
+        "panelMagicDefense": 466,
+        "panelDodge": 45,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -13583,6 +16040,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 30.1,
+        "magicDurability": 20.1,
+        "panelHp": 37732,
+        "panelPhysicalDefense": 646,
+        "panelMagicDefense": 477,
+        "panelDodge": 35,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 40
       }
     },
     {
@@ -13635,6 +16102,17 @@
         "bossMechanismValue": 82,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 59.0,
+        "magicDurability": 58.8,
+        "panelHp": 56775,
+        "panelPhysicalDefense": 1221,
+        "panelMagicDefense": 1201,
+        "panelDodge": 22,
+        "panelLifeSteal": 10,
+        "panelHpRecoveryRate": 22,
+        "invulnerability": 78.0
       }
     },
     {
@@ -13688,6 +16166,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 59.0,
+        "magicDurability": 56.6,
+        "panelHp": 52231,
+        "panelPhysicalDefense": 1576,
+        "panelMagicDefense": 1418,
+        "panelDodge": 32,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 62
       }
     },
     {
@@ -13741,6 +16229,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 14.5,
+        "magicDurability": 11.6,
+        "panelHp": 39735,
+        "panelPhysicalDefense": 443,
+        "panelMagicDefense": 338,
+        "panelDodge": 0,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 43
       }
     },
     {
@@ -13794,6 +16292,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 25.1,
+        "magicDurability": 27.1,
+        "panelHp": 43076,
+        "panelPhysicalDefense": 481,
+        "panelMagicDefense": 418,
+        "panelDodge": 2,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -13847,6 +16355,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 70.5,
+        "magicDurability": 71.5,
+        "panelHp": 90900,
+        "panelPhysicalDefense": 2086,
+        "panelMagicDefense": 1859,
+        "panelDodge": 21,
+        "panelLifeSteal": 5,
+        "panelHpRecoveryRate": 49
       }
     },
     {
@@ -13901,6 +16419,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 31.1,
+        "magicDurability": 30.7,
+        "panelHp": 47255,
+        "panelPhysicalDefense": 539,
+        "panelMagicDefense": 425,
+        "panelDodge": 2,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -13956,6 +16484,16 @@
         "shield": 75.0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 35.3,
+        "magicDurability": 27.7,
+        "panelHp": 48171,
+        "panelPhysicalDefense": 451,
+        "panelMagicDefense": 388,
+        "panelDodge": 35,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -14009,6 +16547,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 7.8,
+        "magicDurability": 26.2,
+        "panelHp": 34125,
+        "panelPhysicalDefense": 444,
+        "panelMagicDefense": 618,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 68
       }
     },
     {
@@ -14063,6 +16611,16 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 31.6,
+        "magicDurability": 40.7,
+        "panelHp": 40520,
+        "panelPhysicalDefense": 700,
+        "panelMagicDefense": 868,
+        "panelDodge": 0,
+        "panelLifeSteal": 2,
+        "panelHpRecoveryRate": 121
       }
     },
     {
@@ -14116,6 +16674,17 @@
         "pureTank": 72,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 62.3,
+        "magicDurability": 66.7,
+        "panelHp": 71505,
+        "panelPhysicalDefense": 1760,
+        "panelMagicDefense": 1835,
+        "panelDodge": 8,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 52,
+        "invulnerability": 82.0
       }
     },
     {
@@ -14169,6 +16738,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 24.0,
+        "magicDurability": 29.2,
+        "panelHp": 33215,
+        "panelPhysicalDefense": 716,
+        "panelMagicDefense": 851,
+        "panelDodge": 3,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 92
       }
     },
     {
@@ -14222,6 +16801,16 @@
         "pureTank": 72,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 77.8,
+        "magicDurability": 77.6,
+        "panelHp": 109862,
+        "panelPhysicalDefense": 2198,
+        "panelMagicDefense": 2076,
+        "panelDodge": 33,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 39
       }
     },
     {
@@ -14276,6 +16865,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 6.3,
+        "magicDurability": 25.1,
+        "panelHp": 31201,
+        "panelPhysicalDefense": 443,
+        "panelMagicDefense": 609,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 61
       }
     },
     {
@@ -14330,6 +16929,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 41.1,
+        "magicDurability": 40.7,
+        "panelHp": 46385,
+        "panelPhysicalDefense": 618,
+        "panelMagicDefense": 540,
+        "panelDodge": 23,
+        "panelLifeSteal": 18,
+        "panelHpRecoveryRate": 62
       }
     },
     {
@@ -14384,6 +16993,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 50.6,
+        "magicDurability": 57.0,
+        "panelHp": 54224,
+        "panelPhysicalDefense": 1233,
+        "panelMagicDefense": 1428,
+        "panelDodge": 0,
+        "panelLifeSteal": 2,
+        "panelHpRecoveryRate": 132
       }
     },
     {
@@ -14437,6 +17056,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 8.4,
+        "magicDurability": 26.2,
+        "panelHp": 33015,
+        "panelPhysicalDefense": 447,
+        "panelMagicDefense": 612,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 64
       }
     },
     {
@@ -14490,7 +17119,8 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1320",
@@ -14543,6 +17173,10 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "revive": 78.0,
+        "requiresAllyInFront": true
       }
     },
     {
@@ -14596,7 +17230,8 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1322",
@@ -14649,6 +17284,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 3.6,
+        "magicDurability": 16.4,
+        "panelHp": 29824,
+        "panelPhysicalDefense": 416,
+        "panelMagicDefense": 519,
+        "panelDodge": 0,
+        "panelLifeSteal": 5,
+        "panelHpRecoveryRate": 108
       }
     },
     {
@@ -14702,6 +17347,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 9.5,
+        "panelHp": 28211,
+        "panelPhysicalDefense": 314,
+        "panelMagicDefense": 431,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -14755,6 +17410,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 12.4,
+        "magicDurability": 5.5,
+        "panelHp": 36310,
+        "panelPhysicalDefense": 399,
+        "panelMagicDefense": 328,
+        "panelDodge": 26,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 68
       }
     },
     {
@@ -14808,6 +17473,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 39.6,
+        "magicDurability": 46.2,
+        "panelHp": 42309,
+        "panelPhysicalDefense": 929,
+        "panelMagicDefense": 1062,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 90
       }
     },
     {
@@ -14862,6 +17537,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 9.5,
+        "panelHp": 28211,
+        "panelPhysicalDefense": 314,
+        "panelMagicDefense": 431,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -14916,6 +17601,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 50.2,
+        "magicDurability": 56.6,
+        "panelHp": 53539,
+        "panelPhysicalDefense": 1226,
+        "panelMagicDefense": 1450,
+        "panelDodge": 0,
+        "panelLifeSteal": 2,
+        "panelHpRecoveryRate": 132
       }
     },
     {
@@ -14969,6 +17664,17 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 37.4,
+        "magicDurability": 30.1,
+        "panelHp": 40695,
+        "panelPhysicalDefense": 676,
+        "panelMagicDefense": 529,
+        "panelDodge": 22,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 50,
+        "untargetable": 98.0
       }
     },
     {
@@ -15023,6 +17729,16 @@
         "pureHealer": 0,
         "dot": 82.0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 88.3,
+        "magicDurability": 87.1,
+        "panelHp": 122351,
+        "panelPhysicalDefense": 2344,
+        "panelMagicDefense": 2223,
+        "panelDodge": 42,
+        "panelLifeSteal": 2,
+        "panelHpRecoveryRate": 54
       }
     },
     {
@@ -15076,6 +17792,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 29.8,
+        "magicDurability": 28.2,
+        "panelHp": 44897,
+        "panelPhysicalDefense": 516,
+        "panelMagicDefense": 417,
+        "panelDodge": 5,
+        "panelLifeSteal": 12,
+        "panelHpRecoveryRate": 38
       }
     },
     {
@@ -15129,6 +17855,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 8.6,
+        "panelHp": 27872,
+        "panelPhysicalDefense": 319,
+        "panelMagicDefense": 416,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -15182,7 +17918,18 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0,
-        "wideAoeCoverage": 55.0
+        "wideAoeCoverage": 55.0,
+        "dot": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 20.7,
+        "magicDurability": 17.7,
+        "panelHp": 34875,
+        "panelPhysicalDefense": 578,
+        "panelMagicDefense": 505,
+        "panelDodge": 18,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -15235,6 +17982,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 9.5,
+        "panelHp": 28896,
+        "panelPhysicalDefense": 312,
+        "panelMagicDefense": 439,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -15288,6 +18045,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 70.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 13.7,
+        "magicDurability": 32.0,
+        "panelHp": 38604,
+        "panelPhysicalDefense": 449,
+        "panelMagicDefense": 653,
+        "panelDodge": 0,
+        "panelLifeSteal": 3,
+        "panelHpRecoveryRate": 78
       }
     },
     {
@@ -15342,6 +18109,17 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 37.4,
+        "magicDurability": 30.1,
+        "panelHp": 40695,
+        "panelPhysicalDefense": 676,
+        "panelMagicDefense": 529,
+        "panelDodge": 22,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 50,
+        "physicalEvasion": 92.0
       }
     },
     {
@@ -15395,6 +18173,16 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 58.5,
+        "magicDurability": 66.8,
+        "panelHp": 63616,
+        "panelPhysicalDefense": 1882,
+        "panelMagicDefense": 2081,
+        "panelDodge": 6,
+        "panelLifeSteal": 0,
+        "panelHpRecoveryRate": 158
       }
     },
     {
@@ -15449,6 +18237,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 11.7,
+        "panelHp": 28211,
+        "panelPhysicalDefense": 311,
+        "panelMagicDefense": 446,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -15502,6 +18300,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 23.4,
+        "magicDurability": 33.4,
+        "panelHp": 36664,
+        "panelPhysicalDefense": 671,
+        "panelMagicDefense": 839,
+        "panelDodge": 0,
+        "panelLifeSteal": 2,
+        "panelHpRecoveryRate": 121
       }
     },
     {
@@ -15556,6 +18364,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 14.4,
+        "magicDurability": 25.5,
+        "panelHp": 31919,
+        "panelPhysicalDefense": 598,
+        "panelMagicDefense": 724,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 94
       }
     },
     {
@@ -15610,6 +18428,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 61.6,
+        "magicDurability": 60.3,
+        "panelHp": 63631,
+        "panelPhysicalDefense": 1353,
+        "panelMagicDefense": 1281,
+        "panelDodge": 26,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 32
       }
     },
     {
@@ -15663,6 +18491,16 @@
         "pureTank": 0,
         "pureHealer": 72,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 62.2,
+        "magicDurability": 58.4,
+        "panelHp": 60716,
+        "panelPhysicalDefense": 1141,
+        "panelMagicDefense": 1076,
+        "panelDodge": 55,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 37
       }
     },
     {
@@ -15717,6 +18555,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 58.5,
+        "magicDurability": 58.4,
+        "panelHp": 61515,
+        "panelPhysicalDefense": 1060,
+        "panelMagicDefense": 1014,
+        "panelDodge": 23,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -15769,6 +18617,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 59.3,
+        "magicDurability": 55.2,
+        "panelHp": 53805,
+        "panelPhysicalDefense": 1163,
+        "panelMagicDefense": 1076,
+        "panelDodge": 55,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 37
       }
     },
     {
@@ -15822,6 +18680,17 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 23.4,
+        "magicDurability": 33.4,
+        "panelHp": 36664,
+        "panelPhysicalDefense": 671,
+        "panelMagicDefense": 839,
+        "panelDodge": 0,
+        "panelLifeSteal": 2,
+        "panelHpRecoveryRate": 121,
+        "revive": 78.0
       }
     },
     {
@@ -15876,6 +18745,16 @@
         "pureHealer": 0,
         "taunt": 82.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 86.5,
+        "magicDurability": 86.9,
+        "panelHp": 126225,
+        "panelPhysicalDefense": 2309,
+        "panelMagicDefense": 2162,
+        "panelDodge": 23,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 24
       }
     },
     {
@@ -15930,6 +18809,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 12.2,
+        "magicDurability": 26.6,
+        "panelHp": 33415,
+        "panelPhysicalDefense": 537,
+        "panelMagicDefense": 673,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 69
       }
     },
     {
@@ -15984,6 +18873,16 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 22.1,
+        "magicDurability": 33.4,
+        "panelHp": 38815,
+        "panelPhysicalDefense": 535,
+        "panelMagicDefense": 693,
+        "panelDodge": 13,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 40
       }
     },
     {
@@ -16037,6 +18936,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 25.4,
+        "magicDurability": 35.6,
+        "panelHp": 38730,
+        "panelPhysicalDefense": 659,
+        "panelMagicDefense": 805,
+        "panelDodge": 0,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 105
       }
     },
     {
@@ -16089,7 +18998,8 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1356",
@@ -16142,6 +19052,9 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "requiresAllyInFront": true
       }
     },
     {
@@ -16194,9 +19107,9 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0,
-        "dot": 82.0,
         "burstDamage": 82.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1358",
@@ -16249,7 +19162,8 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1359",
@@ -16302,7 +19216,8 @@
         "pureTank": 0,
         "pureHealer": 0,
         "dot": 82.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1360",
@@ -16355,7 +19270,8 @@
         "pureTank": 0,
         "pureHealer": 0,
         "shield": 75.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1361",
@@ -16407,6 +19323,9 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "revive": 78.0
       }
     },
     {
@@ -16462,7 +19381,8 @@
         "taunt": 82.0,
         "shield": 75.0,
         "burstDamage": 82.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1363",
@@ -16515,7 +19435,8 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1364",
@@ -16570,7 +19491,8 @@
         "taunt": 82.0,
         "shield": 75.0,
         "burstDamage": 82.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1365",
@@ -16625,7 +19547,8 @@
         "taunt": 82.0,
         "shield": 75.0,
         "burstDamage": 82.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1369",
@@ -16677,7 +19600,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1371",
@@ -16730,6 +19654,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 1.1,
+        "magicDurability": 13.6,
+        "panelHp": 34019,
+        "panelPhysicalDefense": 325,
+        "panelMagicDefense": 453,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -16784,7 +19718,8 @@
         "pureHealer": 0,
         "shield": 75.0,
         "burstDamage": 82.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1376",
@@ -16836,7 +19771,8 @@
         "bossMechanismValue": 42,
         "pureTank": 0,
         "pureHealer": 0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1379",
@@ -16888,7 +19824,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1380",
@@ -16940,7 +19877,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1381",
@@ -16992,7 +19930,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1382",
@@ -17044,7 +19983,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1383",
@@ -17096,7 +20036,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1387",
@@ -17148,7 +20089,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1388",
@@ -17200,7 +20142,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1389",
@@ -17252,7 +20195,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1390",
@@ -17304,7 +20248,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1391",
@@ -17356,7 +20301,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1392",
@@ -17408,7 +20354,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1393",
@@ -17460,7 +20407,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1394",
@@ -17512,7 +20460,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1395",
@@ -17564,7 +20513,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1396",
@@ -17616,7 +20566,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1397",
@@ -17668,7 +20619,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1398",
@@ -17720,7 +20672,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1399",
@@ -17772,7 +20725,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1400",
@@ -17824,7 +20778,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1401",
@@ -17876,7 +20831,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1402",
@@ -17928,7 +20884,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1701",
@@ -17982,7 +20939,8 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 70.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1702",
@@ -18035,7 +20993,8 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1801",
@@ -18088,6 +21047,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 12.0,
+        "magicDurability": 8.2,
+        "panelHp": 35040,
+        "panelPhysicalDefense": 476,
+        "panelMagicDefense": 391,
+        "panelDodge": 5,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -18141,6 +21110,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 12.1,
+        "panelHp": 30092,
+        "panelPhysicalDefense": 319,
+        "panelMagicDefense": 452,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -18194,6 +21173,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 85.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 32.7,
+        "magicDurability": 33.1,
+        "panelHp": 54259,
+        "panelPhysicalDefense": 469,
+        "panelMagicDefense": 401,
+        "panelDodge": 3,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -18248,6 +21237,16 @@
         "pureHealer": 0,
         "burstDamage": 82.0,
         "wideAoeCoverage": 55.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 83.1,
+        "magicDurability": 83.7,
+        "panelHp": 125422,
+        "panelPhysicalDefense": 2223,
+        "panelMagicDefense": 2045,
+        "panelDodge": 21,
+        "panelLifeSteal": 5,
+        "panelHpRecoveryRate": 49
       }
     },
     {
@@ -18300,6 +21299,16 @@
         "bossMechanismValue": 42,
         "pureTank": 0,
         "pureHealer": 72
+      },
+      "vanguardProfile": {
+        "physicalDurability": 63.8,
+        "magicDurability": 61.0,
+        "panelHp": 60606,
+        "panelPhysicalDefense": 1970,
+        "panelMagicDefense": 1803,
+        "panelDodge": 40,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 144
       }
     },
     {
@@ -18352,6 +21361,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 14.7,
+        "panelHp": 29695,
+        "panelPhysicalDefense": 328,
+        "panelMagicDefense": 481,
+        "panelDodge": 0,
+        "panelLifeSteal": 3,
+        "panelHpRecoveryRate": 123
       }
     },
     {
@@ -18405,6 +21424,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "wideAoeCoverage": 100.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 12.4,
+        "magicDurability": 26.6,
+        "panelHp": 32905,
+        "panelPhysicalDefense": 454,
+        "panelMagicDefense": 687,
+        "panelDodge": 12,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 35
       }
     },
     {
@@ -18458,6 +21487,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 24.0,
+        "magicDurability": 20.9,
+        "panelHp": 42535,
+        "panelPhysicalDefense": 419,
+        "panelMagicDefense": 342,
+        "panelDodge": 14,
+        "panelLifeSteal": 5,
+        "panelHpRecoveryRate": 40
       }
     },
     {
@@ -18511,6 +21550,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 43.3,
+        "magicDurability": 50.0,
+        "panelHp": 51465,
+        "panelPhysicalDefense": 629,
+        "panelMagicDefense": 636,
+        "panelDodge": 17,
+        "panelLifeSteal": 11,
+        "panelHpRecoveryRate": 50
       }
     },
     {
@@ -18563,6 +21612,16 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 0.1,
+        "magicDurability": 9.5,
+        "panelHp": 32052,
+        "panelPhysicalDefense": 321,
+        "panelMagicDefense": 438,
+        "panelDodge": 0,
+        "panelLifeSteal": 6,
+        "panelHpRecoveryRate": 45
       }
     },
     {
@@ -18615,6 +21674,16 @@
         "bossMechanismValue": 42,
         "pureTank": 72,
         "pureHealer": 0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 70.1,
+        "magicDurability": 73.1,
+        "panelHp": 100260,
+        "panelPhysicalDefense": 1971,
+        "panelMagicDefense": 1825,
+        "panelDodge": 14,
+        "panelLifeSteal": 4,
+        "panelHpRecoveryRate": 39
       }
     },
     {
@@ -18668,6 +21737,16 @@
         "pureTank": 0,
         "pureHealer": 0,
         "burstDamage": 82.0
+      },
+      "vanguardProfile": {
+        "physicalDurability": 26.5,
+        "magicDurability": 27.0,
+        "panelHp": 50571,
+        "panelPhysicalDefense": 415,
+        "panelMagicDefense": 345,
+        "panelDodge": 5,
+        "panelLifeSteal": 9,
+        "panelHpRecoveryRate": 30
       }
     },
     {
@@ -18720,7 +21799,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1909",
@@ -18772,7 +21852,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1910",
@@ -18824,7 +21905,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1911",
@@ -18876,7 +21958,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1913",
@@ -18928,7 +22011,8 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1914",
@@ -18980,7 +22064,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1916",
@@ -19032,7 +22117,8 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1917",
@@ -19084,7 +22170,8 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "1919",
@@ -19136,7 +22223,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "4031",
@@ -19188,7 +22276,8 @@
         "bossMechanismValue": null,
         "pureTank": null,
         "pureHealer": null
-      }
+      },
+      "vanguardProfile": null
     },
     {
       "characterId": "9000",
@@ -19240,7 +22329,8 @@
         "bossMechanismValue": 0,
         "pureTank": 0,
         "pureHealer": 0
-      }
+      },
+      "vanguardProfile": null
     }
   ]
 }

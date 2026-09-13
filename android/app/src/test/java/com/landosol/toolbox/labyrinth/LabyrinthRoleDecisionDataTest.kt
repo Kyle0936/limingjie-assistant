@@ -25,6 +25,11 @@ class LabyrinthRoleDecisionDataTest {
         val violet = parsed.runtime.profiles.getValue("1331")
         val nephira = parsed.runtime.profiles.getValue("1297")
         val summerSheffy = parsed.runtime.profiles.getValue("1351")
+        val christmasSaren = parsed.runtime.profiles.getValue("1145")
+        val grace = parsed.runtime.profiles.getValue("1330")
+        val halloweenMisaki = parsed.runtime.profiles.getValue("1083")
+        val medusa = parsed.runtime.profiles.getValue("1336")
+        val salarariaHiyori = parsed.runtime.profiles.getValue("1357")
 
         assertEquals(2, parsed.runtime.document.schemaVersion)
         assertEquals(100.0, violet.userScore ?: error("missing Violet score"), 0.0001)
@@ -38,10 +43,57 @@ class LabyrinthRoleDecisionDataTest {
         assertEquals("掩护者", violet.roleClass)
         assertEquals(LabyrinthRoleDamageType.PHYSICAL, violet.damageType)
         assertEquals(154, violet.position)
+        assertTrue((christmasSaren.vanguardProfile?.physicalDurability ?: 0.0) > 60.0)
+        assertTrue((christmasSaren.vanguardProfile?.panelHp ?: 0) > 100_000)
+        assertEquals(98.0, grace.vanguardProfile?.untargetable ?: 0.0, 0.0001)
+        assertFalse(grace.isEligibleBattleVanguard(LabyrinthRoleDecisionContext(defenseMarkStacks = 0)))
+        assertTrue((halloweenMisaki.functions.dot ?: 0.0) > 0.0)
+        assertTrue((medusa.functions.dot ?: 0.0) > 0.0)
+        assertEquals(0.0, salarariaHiyori.functions.dot ?: 0.0, 0.0001)
         listOf("1183", "1184", "1204", "1205", "1206", "1217", "1218", "1243", "1244", "1281", "1282")
             .forEach { memberId -> assertFalse(parsed.runtime.profiles.containsKey(memberId)) }
         listOf("1807", "1808", "1809", "1810", "1811")
             .forEach { canonicalId -> assertTrue(parsed.runtime.profiles.containsKey(canonicalId)) }
+    }
+
+    @Test
+    fun `production boss multi team degrades to two safe teams when only two vanguards are owned`() {
+        val asset = listOf(
+            File("app/src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+            File("src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+        ).first { it.isFile }
+        val parsed = when (val result = LabyrinthRoleDecisionDataParser.parse(asset.readText())) {
+            is LabyrinthRoleDecisionDataResult.Ready -> result
+            is LabyrinthRoleDecisionDataResult.Unavailable -> error(result.reason)
+        }
+        // User-reported Boss roster: only 空花 and 圣诞咲恋 pass the vanguard gate; Grace does not.
+        val acquired = listOf(
+            "1213", "1077", "1145", "1257", "1071", "1323", "1017", "1324", "1330",
+            "1141", "1045", "1167", "1111", "1168", "1302", "1165", "1272", "1066",
+            "1122", "1328", "1278", "1112", "1237",
+        )
+        val planner = parsed.runtime.battleTeamRecommendationPlanner
+        val baseContext = LabyrinthRoleDecisionContext(defenseMarkStacks = 0, targetCount = 1)
+
+        val first = planner.initialRecommendation(
+            acquiredCharacterIds = acquired,
+            context = baseContext.copy(preferStrongestVanguard = true),
+            requestedBossTeamCount = 3,
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        val firstIds = first.recommendation.members.map { it.characterId }.toSet()
+        assertEquals(2, first.recommendation.plannedBossTeamCount)
+        assertTrue(first.recommendation.vanguard.characterId in setOf("1045", "1145"))
+        assertTrue(first.recommendation.reasons.any { it.contains("安全容量2队") && it.contains("总评分") })
+
+        val second = planner.initialRecommendation(
+            acquiredCharacterIds = acquired.filterNot(firstIds::contains),
+            context = baseContext,
+            requestedBossTeamCount = 1,
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertEquals(1, second.recommendation.plannedBossTeamCount)
+        assertTrue(second.recommendation.vanguard.characterId in setOf("1045", "1145"))
+        assertTrue(second.recommendation.vanguard.characterId != first.recommendation.vanguard.characterId)
+        assertFalse(second.recommendation.vanguard.characterId == "1330")
     }
 
     @Test

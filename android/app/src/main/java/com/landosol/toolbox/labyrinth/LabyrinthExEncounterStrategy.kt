@@ -67,6 +67,7 @@ data class LabyrinthEncounterRequirement(
     val anyOf: Set<LabyrinthEncounterCapability>,
     val minimumCount: Int = 1,
     val minimumScore: Double = 50.0,
+    /** Original guide metadata. Both hard and optional entries are runtime scoring preferences. */
     val hard: Boolean = true,
     val label: String,
 ) {
@@ -358,8 +359,6 @@ internal data class LabyrinthEncounterRequirementStatus(
     val unknownCount: Int,
 ) {
     val satisfied: Boolean get() = matchedCount >= requirement.minimumCount
-    val dataCompleteEnoughToReject: Boolean
-        get() = matchedCount + unknownCount < requirement.minimumCount || unknownCount == 0
 }
 
 internal fun LabyrinthRoleProfile.encounterCapabilityScore(
@@ -415,30 +414,27 @@ internal fun evaluateEncounterRequirement(
     return LabyrinthEncounterRequirementStatus(requirement, matched, unknown)
 }
 
-internal fun teamMeetsEncounterHardRequirements(
+/** Partial, confirmed coverage earns credit; unknown capability data never becomes a match. */
+internal fun encounterRequirementContribution(
     members: Collection<LabyrinthRoleProfile>,
     strategy: LabyrinthExEncounterStrategy?,
-): Boolean = strategy?.requirements
-    ?.filter(LabyrinthEncounterRequirement::hard)
-    ?.all { evaluateEncounterRequirement(members, it).satisfied }
-    ?: true
+): Double = strategy?.requirements?.sumOf { requirement ->
+    val status = evaluateEncounterRequirement(members, requirement)
+    minOf(status.matchedCount, requirement.minimumCount).toDouble() / requirement.minimumCount
+} ?: 0.0
 
-internal fun encounterRequirementFailureReason(
+internal fun encounterRequirementShortfallReason(
     roster: Collection<LabyrinthRoleProfile>,
     strategy: LabyrinthExEncounterStrategy?,
 ): String? {
     strategy ?: return null
     val failures = strategy.requirements
-        .filter(LabyrinthEncounterRequirement::hard)
         .map { evaluateEncounterRequirement(roster, it) }
         .filterNot(LabyrinthEncounterRequirementStatus::satisfied)
     if (failures.isEmpty()) return null
     return failures.joinToString("；") { status ->
-        if (status.unknownCount > 0 && !status.dataCompleteEnoughToReject) {
-            "${strategy.identityName}攻略要求“${status.requirement.label}”，当前仅确认${status.matchedCount}/${status.requirement.minimumCount}，" +
-                "另有${status.unknownCount}名角色能力数据缺失，不能安全判定"
-        } else {
-            "${strategy.identityName}攻略要求“${status.requirement.label}”，当前仅满足${status.matchedCount}/${status.requirement.minimumCount}"
-        }
+        "${strategy.identityName}攻略偏好“${status.requirement.label}”：本队确认${status.matchedCount}/${status.requirement.minimumCount}" +
+            if (status.unknownCount > 0) "，${status.unknownCount}名成员能力数据缺失；按现有角色继续编组"
+            else "；按现有角色继续编组"
     }
 }

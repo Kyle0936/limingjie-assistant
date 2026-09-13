@@ -575,6 +575,26 @@ def contains_any(text: str, values: list[str]) -> bool:
     return any(value in text for value in values)
 
 
+DOT_APPLICATION_RE = re.compile(
+    r"(?:使|赋予)[^。；，\n]{0,48}(?:中毒|猛毒|毒咒|诅咒|烧伤|灼烧|绝怠灵度)"
+)
+
+
+def applies_enemy_dot(descriptions: list[str]) -> bool:
+    """True only when a skill actively applies a DOT status to an enemy.
+
+    Conditional text such as “当目标陷入持续伤害状态时” must not classify the role as a DOT
+    applier.  This also covers client wording such as 猛毒, “赋予诅咒和束缚”, and the special
+    绝怠灵度 status.
+    """
+    for description in descriptions:
+        if DOT_APPLICATION_RE.search(description) and contains_any(
+            description, ["敌", "目标", "对象", "其"]
+        ):
+            return True
+    return False
+
+
 def target_clauses(descriptions: list[str], target_words: list[str]) -> str:
     clauses = []
     for description in descriptions:
@@ -637,9 +657,7 @@ def derive_skill_metrics(
     # Encounter mechanics use explicit skill-text facts instead of job/class guesses. Keep the
     # patterns deliberately narrow: a false positive can satisfy an EX hard requirement, while a
     # missed role merely remains a lower-priority/unknown candidate until the extractor improves.
-    dot = 82 if contains_any(text, [
-        "持续伤害", "毒咒状态", "毒状态", "中毒状态", "烧伤状态", "灼烧状态", "诅咒状态",
-    ]) else 0
+    dot = 82 if applies_enemy_dot(descriptions) else 0
     taunt = 82 if "挑衅" in text else 0
 
     physical_down = reduction_magnitude(enemy_text, "物理防御力")
@@ -764,6 +782,76 @@ def database_facts(catalog_ids: list[str], database_path: Path) -> dict[str, dic
         connection.close()
 
 
+
+def _percentile_score(value: float, population: list[float]) -> float:
+    """0..100 empirical percentile; deterministic and robust to raw-stat scale differences."""
+    if not population:
+        return 0.0
+    ordered = sorted(float(item) for item in population)
+    if len(ordered) == 1:
+        return 100.0
+    below = sum(1 for item in ordered if item < value)
+    equal = sum(1 for item in ordered if item == value)
+    rank = below + max(0.0, (equal - 1) / 2.0)
+    return round(rank * 100.0 / (len(ordered) - 1), 1)
+
+
+def enrich_vanguard_profiles(characters: list[dict]) -> None:
+    """Add battle-vanguard facts without conflating role class with actual frontline survival.
+
+    Base durability is normalized from the Dawn Realm NPC panel.  Skill mechanisms stay in
+    separate channels so an untargetable glass cannon (Grace) is not mislabeled as a high-DEF tank.
+    """
+    modeled_front = [
+        item for item in characters
+        if item.get("position") is not None
+        and int(item["position"]) <= 350
+        and (item.get("combatModel") or {}).get("panel")
+    ]
+    stat_population = {
+        key: [float(item["combatModel"]["panel"].get(key) or 0.0) for item in modeled_front]
+        for key in ("hp", "def", "magic_def", "dodge")
+    }
+    for item in characters:
+        panel = (item.get("combatModel") or {}).get("panel") or {}
+        descriptions = item.get("skillSummary") or []
+        text = "\n".join(str(value) for value in descriptions)
+        profile: dict[str, object] = {}
+        if panel and stat_population["hp"]:
+            hp = _percentile_score(float(panel.get("hp") or 0.0), stat_population["hp"])
+            pdef = _percentile_score(float(panel.get("def") or 0.0), stat_population["def"])
+            mdef = _percentile_score(float(panel.get("magic_def") or 0.0), stat_population["magic_def"])
+            dodge = _percentile_score(float(panel.get("dodge") or 0.0), stat_population["dodge"])
+            profile["physicalDurability"] = round(hp * 0.50 + pdef * 0.40 + dodge * 0.10, 1)
+            profile["magicDurability"] = round(hp * 0.55 + mdef * 0.45, 1)
+            profile["panelHp"] = int(panel.get("hp") or 0)
+            profile["panelPhysicalDefense"] = int(panel.get("def") or 0)
+            profile["panelMagicDefense"] = int(panel.get("magic_def") or 0)
+            profile["panelDodge"] = int(panel.get("dodge") or 0)
+            profile["panelLifeSteal"] = int(panel.get("life_steal") or 0)
+            profile["panelHpRecoveryRate"] = int(panel.get("hp_recovery_rate") or 0)
+
+        if "无法被敌方选为攻击目标" in text:
+            profile["untargetable"] = 98.0
+        if "无敌状态" in text:
+            profile["invulnerability"] = 82.0
+        if (
+            ("每受到一次伤害" in text and "使伤害无效化" in text)
+            or "受到的1次伤害无效化" in text
+            or "受到的一次伤害无效化" in text
+        ):
+            profile["invulnerability"] = max(float(profile.get("invulnerability") or 0.0), 78.0)
+        if "回避所有物理攻击" in text:
+            profile["physicalEvasion"] = 92.0
+        if "回避所有魔法攻击" in text:
+            profile["magicEvasion"] = 92.0
+        if "生命值降为0时" in text and ("不会倒下" in text or "不会死亡" in text):
+            profile["revive"] = 78.0
+        if "前方没有我方成员时" in text and ("解除" in text or "消失" in text):
+            profile["requiresAllyInFront"] = True
+
+        item["vanguardProfile"] = profile or None
+
 def build_android_decision_payload(
     characters: list[dict],
     database_path: Path,
@@ -811,6 +899,7 @@ def build_android_decision_payload(
                 if model_status.startswith("database-v") else None
             ),
             "modelStatus": model_status,
+            "vanguardProfile": character.get("vanguardProfile"),
             "dataConfidence": {
                 "attribute": confidence.get("attribute"),
                 "roleClass": confidence.get("roleClass"),
@@ -1082,6 +1171,8 @@ def main() -> None:
             },
             "reviewNote": "",
         })
+
+    enrich_vanguard_profiles(characters)
 
     opening_guilds = [
         {"id": 1, "name": "美食殿堂", "roleIds": ["1075", "1351", "1059"]},

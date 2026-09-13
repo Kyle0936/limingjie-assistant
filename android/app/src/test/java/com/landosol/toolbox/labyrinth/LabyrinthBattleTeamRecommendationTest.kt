@@ -6,6 +6,62 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LabyrinthBattleTeamRecommendationTest {
+    private val dotGuide = LabyrinthExEncounterStrategy(
+        id = "best_effort_dot", identityName = "好朋友X", targetCount = 1,
+        requirements = listOf(LabyrinthEncounterRequirement(
+            anyOf = setOf(LabyrinthEncounterCapability.DOT), minimumCount = 2,
+            label = "至少2名持续伤害角色",
+        )),
+    )
+
+    @Test fun `missing or insufficient guide capabilities still produce initial and retry teams`() {
+        for (missingScore in listOf(null, 0.0)) {
+            val profiles = (1..7).map { i ->
+                val role = role("r$i", "角色$i", i, 80.0, 70.0,
+                    reliableVanguard = if (i == 1) 100.0 else 0.0)
+                role.copy(functions = role.functions.copy(dot = if (i == 2) 80.0 else missingScore))
+            }.associateBy { it.characterId }
+            val planner = recommendationPlanner(profiles)
+            val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4, encounterStrategy = dotGuide)
+            val first = planner.initialRecommendation(profiles.keys, context) as LabyrinthBattleTeamRecommendationResult.Ready
+            assertEquals(5, first.recommendation.members.size)
+            assertTrue(first.recommendation.members.any { it.characterId == "r2" })
+            assertTrue(first.recommendation.reasons.any { it.contains("本队确认1/2") && it.contains("继续编组") })
+            val failed = labyrinthBattleTeamSignature(first.recommendation.members.map { it.characterId })
+            val retry = planner.retryRecommendation(profiles.keys, context, setOf(failed)) as LabyrinthBattleTeamRecommendationResult.Ready
+            assertEquals(5, retry.recommendation.members.size)
+            assertFalse(failed == labyrinthBattleTeamSignature(retry.recommendation.members.map { it.characterId }))
+            assertTrue(retry.recommendation.reasons.any { it.contains("继续编组") })
+            assertEquals(missingScore, profiles.getValue("r3").functions.dot)
+        }
+    }
+
+    @Test fun `second EX failure can add healer despite unmet guide requirements`() {
+        val profiles = (1..6).map { i ->
+            role("r$i", "角色$i", i, 80.0, 70.0,
+                reliableVanguard = if (i == 1) 100.0 else 0.0,
+                healing = if (i == 6) 100.0 else 0.0)
+        }.associateBy { it.characterId }
+        val failed = labyrinthBattleTeamSignature((1..5).map { "r$it" })
+        val result = recommendationPlanner(profiles).retryRecommendation(profiles.keys,
+            LabyrinthRoleDecisionContext(defenseMarkStacks = 4, encounterStrategy = dotGuide),
+            setOf(failed), retryNumber = 2, lastFailedTeamSignature = failed) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertTrue(result.recommendation.members.any { it.characterId == "r6" })
+        assertTrue(result.recommendation.reasons.any { it.contains("本队确认0/2") })
+    }
+
+    @Test fun `guide capability coverage remains preferred when enough characters exist`() {
+        val profiles = (1..7).map { i ->
+            val role = role("r$i", "角色$i", i, 80.0, 70.0,
+                reliableVanguard = if (i == 1) 100.0 else 0.0)
+            role.copy(functions = role.functions.copy(dot = if (i >= 6) 80.0 else 0.0))
+        }.associateBy { it.characterId }
+        val result = recommendationPlanner(profiles).initialRecommendation(profiles.keys,
+            LabyrinthRoleDecisionContext(defenseMarkStacks = 4, encounterStrategy = dotGuide)) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertTrue(result.recommendation.members.map { it.characterId }.containsAll(listOf("r6", "r7")))
+        assertFalse(result.recommendation.reasons.any { it.contains("继续编组") })
+    }
+
     private val scoringConfig = LabyrinthTeamScoringConfig(
         attributeDamageBonus = mapOf(
             1 to 0.0,
@@ -29,7 +85,7 @@ class LabyrinthBattleTeamRecommendationTest {
         val unknownPosition = profiles + ("rear" to rear.copy(position = null))
         val blocked = recommendationPlanner(unknownPosition).initialRecommendation(unknownPosition.keys,
             LabyrinthRoleDecisionContext(defenseMarkStacks = 4)) as LabyrinthBattleTeamRecommendationResult.Unavailable
-        assertTrue(blocked.reason.contains("T"))
+        assertTrue(blocked.reason.contains("一号位"))
         assertTrue(blocked.reason.contains("站位"))
     }
 
@@ -160,7 +216,7 @@ class LabyrinthBattleTeamRecommendationTest {
         assertEquals("tank", result.recommendation.vanguard.characterId)
         assertTrue(result.recommendation.members.any { it.characterId == "tank" })
         assertFalse(result.recommendation.members.any { it.characterId == "frontDps" })
-        assertTrue(result.recommendation.reasons.any { it.contains("一号位必须为T") })
+        assertTrue(result.recommendation.reasons.any { it.contains("一号位生存资格") })
     }
 
     @Test
@@ -174,8 +230,90 @@ class LabyrinthBattleTeamRecommendationTest {
             context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
         ) as LabyrinthBattleTeamRecommendationResult.Unavailable
 
-        assertTrue(result.reason.contains("没有T"))
-        assertTrue(result.reason.contains("一号位必须为T"))
+        assertTrue(result.reason.contains("没有满足生存资格的一号位"))
+    }
+
+    @Test
+    fun `setup dependent untargetable alone does not make a glass cannon vanguard`() {
+        val grace = role("grace", "格蕾斯", position = 2, userScore = 95.0, damage = 95.0).copy(
+            roleClass = "增幅者",
+            vanguardProfile = LabyrinthVanguardProfile(
+                physicalDurability = 25.0,
+                magicDurability = 20.0,
+                untargetable = 98.0,
+            ),
+        )
+        val profiles = listOf(
+            role("frontDps", "更靠前输出", position = 1, userScore = 100.0, damage = 100.0),
+            grace,
+            role("dps3", "输出3", position = 3, userScore = 94.0, damage = 94.0),
+            role("dps4", "输出4", position = 4, userScore = 93.0, damage = 93.0),
+            role("dps5", "输出5", position = 5, userScore = 92.0, damage = 92.0),
+            role("dps6", "输出6", position = 6, userScore = 91.0, damage = 91.0),
+        ).associateBy(LabyrinthRoleProfile::characterId)
+
+        val result = recommendationPlanner(profiles).initialRecommendation(
+            acquiredCharacterIds = profiles.keys,
+            context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
+        ) as LabyrinthBattleTeamRecommendationResult.Unavailable
+
+        assertTrue(result.reason.contains("没有满足生存资格的一号位"))
+    }
+
+    @Test
+    fun `temporary invulnerability alone does not turn glass cannon into universal vanguard`() {
+        val glass = role("glass", "短暂无敌输出", position = 1, userScore = 100.0, damage = 100.0).copy(
+            roleClass = "攻击者",
+            vanguardProfile = LabyrinthVanguardProfile(
+                physicalDurability = 20.0,
+                magicDurability = 20.0,
+                invulnerability = 82.0,
+            ),
+        )
+        val profiles = listOf(
+            glass,
+            role("tank", "真正一号位", position = 2, userScore = 50.0, damage = 20.0, reliableVanguard = 100.0),
+            role("dps3", "输出3", position = 3, userScore = 95.0, damage = 95.0),
+            role("dps4", "输出4", position = 4, userScore = 94.0, damage = 94.0),
+            role("dps5", "输出5", position = 5, userScore = 93.0, damage = 93.0),
+            role("dps6", "输出6", position = 6, userScore = 92.0, damage = 92.0),
+        ).associateBy(LabyrinthRoleProfile::characterId)
+
+        val result = recommendationPlanner(profiles).initialRecommendation(
+            acquiredCharacterIds = profiles.keys,
+            context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+
+        assertEquals("tank", result.recommendation.vanguard.characterId)
+        assertFalse(result.recommendation.members.any { it.characterId == "glass" })
+    }
+
+    @Test
+    fun `frontline mechanism requiring ally in front cannot qualify as vanguard`() {
+        val blocked = role("blocked", "前方有人才减伤", position = 1, userScore = 100.0, damage = 100.0).copy(
+            roleClass = "破防者",
+            vanguardProfile = LabyrinthVanguardProfile(
+                physicalDurability = 100.0,
+                magicDurability = 100.0,
+                requiresAllyInFront = true,
+            ),
+        )
+        val profiles = listOf(
+            blocked,
+            role("tank", "真正一号位", position = 2, userScore = 50.0, damage = 20.0, reliableVanguard = 100.0),
+            role("dps3", "输出3", position = 3, userScore = 95.0, damage = 95.0),
+            role("dps4", "输出4", position = 4, userScore = 94.0, damage = 94.0),
+            role("dps5", "输出5", position = 5, userScore = 93.0, damage = 93.0),
+            role("dps6", "输出6", position = 6, userScore = 92.0, damage = 92.0),
+        ).associateBy(LabyrinthRoleProfile::characterId)
+
+        val result = recommendationPlanner(profiles).initialRecommendation(
+            acquiredCharacterIds = profiles.keys,
+            context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+
+        assertEquals("tank", result.recommendation.vanguard.characterId)
+        assertFalse(result.recommendation.members.any { it.characterId == "blocked" })
     }
 
     @Test

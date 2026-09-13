@@ -712,6 +712,127 @@ class LabyrinthRoleDecisionPolicyTest {
     }
 
     @Test
+    fun `boss multi team downgrades to two and maximizes disjoint pair total score`() {
+        val roster = listOf(
+            physical("t1", "坦一", position = 1, reliableVanguard = 100.0, roleClass = "掩护者", damage = 15.0),
+            physical("t2", "坦二", position = 2, reliableVanguard = 90.0, roleClass = "掩护者", damage = 20.0),
+            physical("d1", "输出一", position = 3, damage = 100.0, aoe = 100.0),
+            physical("d2", "输出二", position = 4, damage = 98.0, physicalDefenseDown = 100.0),
+            physical("d3", "输出三", position = 5, damage = 96.0, single = 100.0),
+            physical("d4", "输出四", position = 6, damage = 92.0),
+            physical("d5", "输出五", position = 7, damage = 88.0),
+            physical("d6", "输出六", position = 8, damage = 84.0),
+            physical("d7", "输出七", position = 9, damage = 80.0),
+            physical("d8", "输出八", position = 10, damage = 76.0),
+        )
+        val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4, targetCount = 3)
+        val searcher = LabyrinthTeamPlanSearcher(
+            optimizer,
+            LabyrinthTeamPlanSearchConfig(
+                oneTeamKillScore = 0.0,
+                mainTeamScore = 0.0,
+                cleanupTeamScore = 0.0,
+                mainPlusCleanupCombinedScore = 0.0,
+                stableTeamScore = 0.0,
+                fallbackTeamScore = 0.0,
+                threeTeamCombinedScore = 0.0,
+                multiTeamBeamWidth = 300,
+            ),
+        )
+        val ranked = optimizer.rankedBattleFormations(roster, context).take(300)
+        var expected = Double.NEGATIVE_INFINITY
+        ranked.forEachIndexed { index, first ->
+            val firstIds = first.members.map(LabyrinthRoleProfile::characterId).toSet()
+            ranked.drop(index + 1).forEach { second ->
+                if (second.members.none { it.characterId in firstIds }) {
+                    expected = maxOf(expected, first.score + second.score)
+                }
+            }
+        }
+        val plan = searcher.bossMultiTeamSearch(roster, context, requestedTeams = 3)
+        assertEquals(2, plan.teams.size)
+        val firstIds = plan.teams[0].members.map(LabyrinthRoleProfile::characterId).toSet()
+        assertTrue(plan.teams[1].members.none { it.characterId in firstIds })
+        assertEquals(expected, plan.teams.sumOf(LabyrinthTeamEvaluation::score), 0.000001)
+        assertTrue(plan.reason.contains("安全容量2队"))
+        assertTrue(plan.reason.contains("按2队总评分优化"))
+    }
+
+    @Test
+    fun `boss multi team downgrades to one when only one safe vanguard exists`() {
+        val roster = listOf(
+            physical("t1", "唯一坦", position = 1, reliableVanguard = 100.0, roleClass = "掩护者", damage = 15.0),
+            physical("d1", "输出一", position = 2, damage = 100.0),
+            physical("d2", "输出二", position = 3, damage = 98.0),
+            physical("d3", "输出三", position = 4, damage = 96.0),
+            physical("d4", "输出四", position = 5, damage = 94.0),
+            physical("d5", "输出五", position = 6, damage = 92.0),
+            physical("d6", "输出六", position = 7, damage = 90.0),
+            physical("d7", "输出七", position = 8, damage = 88.0),
+            physical("d8", "输出八", position = 9, damage = 86.0),
+            physical("d9", "输出九", position = 10, damage = 84.0),
+        )
+        val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4)
+        val searcher = LabyrinthTeamPlanSearcher(
+            optimizer,
+            LabyrinthTeamPlanSearchConfig(
+                oneTeamKillScore = 0.0,
+                mainTeamScore = 0.0,
+                cleanupTeamScore = 0.0,
+                mainPlusCleanupCombinedScore = 0.0,
+                stableTeamScore = 0.0,
+                fallbackTeamScore = 0.0,
+                threeTeamCombinedScore = 0.0,
+                multiTeamBeamWidth = 300,
+            ),
+        )
+        val plan = searcher.bossMultiTeamSearch(roster, context, requestedTeams = 3)
+        assertEquals(1, plan.teams.size)
+        assertEquals("t1", plan.teams.single().vanguardCharacterId)
+        assertTrue(plan.reason.contains("仅能安全组成1队"))
+        val bestSingle = requireNotNull(optimizer.bestBattleFormation(roster, context))
+        assertEquals(bestSingle.score, plan.teams.single().score, 0.000001)
+    }
+
+    @Test
+    fun `boss main team ignores setup dependent untargetable glass cannon`() {
+        val protector = physical(
+            "protector", "传统T", position = 1, reliableVanguard = 80.0, roleClass = "掩护者", damage = 15.0,
+        )
+        val special = physical(
+            "special", "机制前排", position = 2, reliableVanguard = 0.0, roleClass = "增幅者", damage = 95.0,
+        ).copy(
+            vanguardProfile = LabyrinthVanguardProfile(
+                physicalDurability = 30.0, magicDurability = 30.0, untargetable = 98.0,
+            ),
+        )
+        assertFalse(special.isEligibleBattleVanguard(LabyrinthRoleDecisionContext(defenseMarkStacks = 4)))
+        val roster = listOf(
+            protector, special,
+            physical("d1", "输出一", position = 3, damage = 95.0),
+            physical("d2", "输出二", position = 4, damage = 94.0),
+            physical("d3", "输出三", position = 5, damage = 93.0),
+            physical("d4", "输出四", position = 6, damage = 92.0),
+        )
+        val searcher = LabyrinthTeamPlanSearcher(
+            optimizer,
+            LabyrinthTeamPlanSearchConfig(
+                oneTeamKillScore = 0.0, mainTeamScore = 0.0, cleanupTeamScore = 0.0,
+                mainPlusCleanupCombinedScore = 0.0, stableTeamScore = 0.0, fallbackTeamScore = 0.0,
+                threeTeamCombinedScore = 0.0,
+            ),
+        )
+
+        val plan = searcher.initialSearch(
+            roster,
+            LabyrinthRoleDecisionContext(defenseMarkStacks = 4, preferStrongestVanguard = true),
+        )
+
+        assertEquals("protector", plan.teams.single().vanguardCharacterId)
+        assertTrue(plan.reason.contains("优先传统掩护者"))
+    }
+
+    @Test
     fun `boss main team fronts strongest viable tank before optimizing damage`() {
         val roster = listOf(
             physical(
@@ -762,7 +883,7 @@ class LabyrinthRoleDecisionPolicyTest {
 
         assertEquals("strong-tank", plan.teams.single().vanguardCharacterId)
         assertFalse(plan.teams.single().members.any { it.characterId == "weak-tank" })
-        assertTrue(plan.reason.contains("最强可用T"))
+        assertTrue(plan.reason.contains("优先传统掩护者"))
     }
 
     @Test
