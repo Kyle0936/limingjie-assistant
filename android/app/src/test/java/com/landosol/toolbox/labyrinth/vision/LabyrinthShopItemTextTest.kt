@@ -7,6 +7,13 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LabyrinthShopItemTextTest {
+    @Test fun `complete known imprint title tolerates one OCR substitution`() {
+        assertEquals("增益型职能印记", LabyrinthShopItemText.roleImprintLabel("增益型识能的随机印记"))
+        assertEquals("治疗型职能印记", LabyrinthShopItemText.roleImprintLabel("治疗型职熊的选择印记"))
+        assertFalse(LabyrinthShopItemText.looksLikeRoleImprint("增益型识熊的随机印记"))
+        assertFalse(LabyrinthShopItemText.looksLikeRoleImprint("未知型识能的随机印记"))
+        assertFalse(LabyrinthShopItemText.looksLikeRoleImprint("增益型识能的随机"))
+    }
     @Test
     fun `shop role imprint titles are separated from relics`() {
         assertEquals(

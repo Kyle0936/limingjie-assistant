@@ -1,0 +1,61 @@
+{
+  "dialogState": "NONE",
+  "availableItemCount": 3,
+  "recognizedButtonCount": 3,
+  "refreshButtonEnabled": true,
+  "refreshButtonEnabledEvidence": 1,
+  "items": [
+    {
+      "slot": "shop_item_1",
+      "purchasable": true,
+      "status": "AVAILABLE",
+      "kind": "ROLE_IMPRINT",
+      "titleText": "攻击型职能的随机印记",
+      "roleImprintLabel": "攻击型职能印记",
+      "titleEvidenceId": 20,
+      "buyButtonScore": 0.9979612283500335,
+      "buyButtonEnabledEvidence": 1,
+      "name": null,
+      "relicId": null,
+      "attribute": null,
+      "relicConfidence": 0,
+      "relicMargin": 0,
+      "relicRecognized": false
+    },
+    {
+      "slot": "shop_item_2",
+      "purchasable": true,
+      "status": "AVAILABLE",
+      "kind": "ROLE_IMPRINT",
+      "titleText": "治疗型职能的随机印记",
+      "roleImprintLabel": "治疗型职能印记",
+      "titleEvidenceId": 21,
+      "buyButtonScore": 0.8839587195261333,
+      "buyButtonEnabledEvidence": 1,
+      "name": null,
+      "relicId": null,
+      "attribute": null,
+      "relicConfidence": 0,
+      "relicMargin": 0,
+      "relicRecognized": false
+    },
+    {
+      "slot": "shop_item_3",
+      "purchasable": true,
+      "status": "AVAILABLE",
+      "kind": "UNKNOWN",
+      "titleText": "增益型识能的随机印记",
+      "roleImprintLabel": null,
+      "titleEvidenceId": 22,
+      "buyButtonScore": 0.7771633021915894,
+      "buyButtonEnabledEvidence": 1,
+      "name": "ラビリンスオーソリティ",
+      "relicId": "40005",
+      "attribute": "弱体",
+      "relicConfidence": 0.7152736004538139,
+      "relicMargin": 0.000338071184252553,
+      "relicRecognized": false
+    }
+  ],
+  "purchaseCandidate": null
+}

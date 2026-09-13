@@ -446,6 +446,8 @@ class LabyrinthDebugDashboardServer(
                                         put("titleText", item.titleText ?: JSONObject.NULL)
                                         put("roleImprintLabel", item.roleImprintLabel ?: JSONObject.NULL)
                                         put("titleEvidenceId", item.titleEvidenceId ?: JSONObject.NULL)
+                                        put("categoryState", item.categoryState.name)
+                                        put("categoryAttempt", item.categoryAttempt)
                                         put("buyButtonScore", item.buyButtonScore)
                                         put("buyButtonEnabledEvidence", item.buyButtonEnabledEvidence)
                                         put("name", relic?.displayName ?: relic?.suspectedDisplayName ?: JSONObject.NULL)

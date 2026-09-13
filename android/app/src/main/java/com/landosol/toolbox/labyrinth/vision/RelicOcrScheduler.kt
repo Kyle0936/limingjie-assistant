@@ -2,7 +2,8 @@ package com.landosol.toolbox.labyrinth.vision
 
 /** Two independent reads per unchanged slot, then reuse. Invalidating a page does not release
  * the physical request: a slow engine must not accumulate abandoned crops across transitions. */
-internal class RelicOcrScheduler(private val clock: () -> Long, private val spacingMillis: Long = 350) {
+internal class RelicOcrScheduler(private val clock: () -> Long, private val spacingMillis: Long = 350,
+    private val maximumAttempts: Int = 2) {
     data class Read(val text: String?, val id: Long)
     data class Ticket(val slot: String, val fingerprint: Long, val epoch: Long, val id: Long)
     private data class Slot(val fingerprint: Long, var attempts: Int = 0, var read: Read? = null)
@@ -24,7 +25,7 @@ internal class RelicOcrScheduler(private val clock: () -> Long, private val spac
     @Synchronized fun request(slot: String, fingerprint: Long): Ticket? {
         cached(slot, fingerprint)
         val state = slots.getValue(slot)
-        if (pending != null || state.attempts >= 2 || clock() < nextStart) return null
+        if (pending != null || state.attempts >= maximumAttempts || clock() < nextStart) return null
         if (state.attempts > 0 && slots.values.any { it.attempts == 0 }) return null
         state.attempts++
         nextStart = clock() + spacingMillis

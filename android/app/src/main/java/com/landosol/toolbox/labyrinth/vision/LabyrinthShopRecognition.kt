@@ -25,6 +25,8 @@ enum class LabyrinthShopItemKind {
     ROLE_IMPRINT,
 }
 
+enum class LabyrinthShopCategoryState { READY, READING, EXHAUSTED }
+
 data class LabyrinthShopItemMatch(
     val slotId: String,
     val screenRect: EntryPixelRect,
@@ -38,6 +40,8 @@ data class LabyrinthShopItemMatch(
     val titleText: String? = null,
     val roleImprintLabel: String? = null,
     val titleEvidenceId: Long? = null,
+    val categoryState: LabyrinthShopCategoryState = LabyrinthShopCategoryState.READY,
+    val categoryAttempt: Int = 0,
 ) {
     val purchasable: Boolean get() = status == LabyrinthShopItemStatus.AVAILABLE
 }
@@ -54,6 +58,15 @@ object LabyrinthShopItemText {
         .replace('記', '记')
         .replace('紀', '记')
         .replace('纪', '记')
+        .let { value ->
+            // A single substitution is allowed only inside a complete, known imprint title.
+            // Do not globally replace OCR characters in ordinary relic names.
+            roleLabels.fold(value) { result, role ->
+                result.replace(Regex("${role}型(?:[职识職取][能]|职.)的?(随机|选择)印记")) { match ->
+                    "${role}型职能的${match.groupValues[1]}印记"
+                }
+            }
+        }
 
     /**
      * Coarse semantic gate: enough to prove this good is a role-imprint and therefore not a relic,

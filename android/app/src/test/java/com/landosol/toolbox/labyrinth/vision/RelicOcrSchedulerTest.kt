@@ -4,6 +4,20 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class RelicOcrSchedulerTest {
+    @Test fun `shop variants each get one read and stale callbacks cannot replace new stock`() {
+        var time = 0L
+        val shop = RelicOcrScheduler({ time }, maximumAttempts = 1)
+        val old = requireNotNull(shop.request("title-0", 1))
+        shop.cached("title-0", 2)
+        shop.complete(old, "旧印记")
+        assertNull(shop.cached("title-0", 2))
+        time = 500
+        val current = requireNotNull(shop.request("title-0", 2))
+        shop.complete(current, "未确认")
+        time = 1_000
+        assertNull(shop.request("title-0", 2))
+        assertNotNull(shop.request("title-1", 2))
+    }
     private var now = 0L
     private val scheduler = RelicOcrScheduler({ now })
     @Test fun `stable pixels have two independent reads then stop scanning`() {
