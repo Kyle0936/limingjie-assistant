@@ -55,6 +55,41 @@ class LabyrinthNodeActionPlanner {
         val activeTargetMappings = targetMappings.filter { mapping ->
             mapping.isClickable && mapping.screenRect != null
         }
+        val inactiveRouteTopologyFallback = matchResult.topologyMappings
+            .asSequence()
+            .filter { topology ->
+                topology.blockId == nextNode.blockId &&
+                    !topology.isClickable &&
+                    topology.expectedBlockType == nextNode.blockType &&
+                    topology.detectedBlockType == nextNode.blockType &&
+                    topology.visualConfidence >= INACTIVE_ROUTE_TARGET_MIN_VISUAL_CONFIDENCE &&
+                    topology.topologyConfidence >= INACTIVE_ROUTE_TARGET_MIN_TOPOLOGY_CONFIDENCE &&
+                    topology.bindingKind != NodeTopologyBindingKind.SINGLE_TARGET
+            }
+            .filter { target ->
+                when (target.bindingKind) {
+                    NodeTopologyBindingKind.FULL_COLUMN ->
+                        target.topologyConfidence >= TOPOLOGY_ORDERED_OVERRIDE_MIN_CONFIDENCE
+
+                    NodeTopologyBindingKind.PARTIAL_COLUMN,
+                    NodeTopologyBindingKind.REACHABLE_SUBSET,
+                    -> matchResult.topologyMappings.any { sibling ->
+                        sibling.blockId != target.blockId &&
+                            sibling.logicalColumn == target.logicalColumn &&
+                            sibling.visualColumn == target.visualColumn &&
+                            sibling.visualRow != target.visualRow &&
+                            sibling.detectedBlockType == sibling.expectedBlockType &&
+                            sibling.visualConfidence >= INACTIVE_ROUTE_SIBLING_MIN_VISUAL_CONFIDENCE &&
+                            sibling.topologyConfidence >= INACTIVE_ROUTE_SIBLING_MIN_TOPOLOGY_CONFIDENCE
+                    }
+
+                    NodeTopologyBindingKind.SINGLE_TARGET -> false
+                }
+            }
+            .maxWithOrNull(
+                compareBy<NodeTopologyMapping> { it.topologyConfidence }
+                    .thenBy { it.visualConfidence },
+            )
         fun hasStrongOrderedTopology(mapping: NodePositionMapping): Boolean {
             if ((mapping.topologyConfidence ?: 0.0) < TOPOLOGY_ORDERED_OVERRIDE_MIN_CONFIDENCE) {
                 return false
@@ -170,11 +205,17 @@ class LabyrinthNodeActionPlanner {
                 )
             }
 
-        // Protocol topology can retain an otherwise useful route-target rectangle for diagnostics,
-        // scrolling and conflict reporting. It cannot manufacture the one fact required to click:
-        // this exact crop must be visually active. If the route target is known positionally but
-        // every bound crop is inactive, wait for a new frame instead of clicking a stable mistake.
-        if (targetMappings.isNotEmpty() && activeTargetMappings.isEmpty()) {
+        // Normally an inactive crop remains diagnostic-only. One bounded exception handles the
+        // post-battle/reward map state seen in production: ordered topology can identify the saved
+        // route target exactly while the cyan activation detector temporarily misses the node.
+        // The fallback requires route ID + semantic type + strong topology + strong visual match;
+        // partial/reachable columns additionally need a second correctly typed sibling proving the
+        // vertical ordering. The session still requires consecutive stable click frames afterwards.
+        if (
+            targetMappings.isNotEmpty() &&
+            activeTargetMappings.isEmpty() &&
+            inactiveRouteTopologyFallback == null
+        ) {
             return NodeAction.WaitForLoad
         }
 
@@ -193,6 +234,7 @@ class LabyrinthNodeActionPlanner {
                     .thenBy { it.confidence },
             )
             ?.screenRect
+            ?: inactiveRouteTopologyFallback?.screenRect
 
         return NodeAction.ClickNode(
             blockId = nextNode.blockId,
@@ -230,5 +272,9 @@ class LabyrinthNodeActionPlanner {
         const val PURPLE_EX_OVERRIDE_MIN_GLOW_SCORE = 0.08
         const val LINK_RELIC_OVERRIDE_MIN_CONFIDENCE = 0.75
         const val LINK_RELIC_SIBLING_MIN_CONFIDENCE = 0.70
+        const val INACTIVE_ROUTE_TARGET_MIN_VISUAL_CONFIDENCE = 0.80
+        const val INACTIVE_ROUTE_TARGET_MIN_TOPOLOGY_CONFIDENCE = 0.82
+        const val INACTIVE_ROUTE_SIBLING_MIN_VISUAL_CONFIDENCE = 0.60
+        const val INACTIVE_ROUTE_SIBLING_MIN_TOPOLOGY_CONFIDENCE = 0.80
     }
 }

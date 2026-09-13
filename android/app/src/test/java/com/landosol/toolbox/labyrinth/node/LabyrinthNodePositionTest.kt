@@ -64,6 +64,86 @@ class LabyrinthNodePositionTest {
     }
 
     @Test
+    fun `strong partial topology can recover inactive route target after reward transition`() {
+        val targetRect = EntryPixelRect(1335, 650, 280, 350)
+        val siblingRect = EntryPixelRect(1335, 126, 280, 350)
+        val target = node(40401, LabyrinthNodeTypes.EVENT)
+        val action = LabyrinthNodeActionPlanner().planAction(
+            NodeMatchResult(
+                currentNodeId = 40302L,
+                currentNodeType = LabyrinthNodeTypes.EX_BATTLE,
+                nextNode = target,
+                visibleNodes = emptyList(),
+                topologyMappings = listOf(
+                    NodeTopologyMapping(
+                        blockId = 40403L,
+                        expectedBlockType = LabyrinthNodeTypes.EVENT,
+                        logicalColumn = 4,
+                        visualColumn = 2,
+                        visualRow = 1,
+                        screenRect = siblingRect,
+                        detectedBlockType = LabyrinthNodeTypes.EVENT,
+                        visualConfidence = 0.688,
+                        topologyConfidence = 0.835,
+                        isClickable = false,
+                        bindingKind = NodeTopologyBindingKind.PARTIAL_COLUMN,
+                    ),
+                    NodeTopologyMapping(
+                        blockId = 40401L,
+                        expectedBlockType = LabyrinthNodeTypes.EVENT,
+                        logicalColumn = 4,
+                        visualColumn = 2,
+                        visualRow = 3,
+                        screenRect = targetRect,
+                        detectedBlockType = LabyrinthNodeTypes.EVENT,
+                        visualConfidence = 0.860,
+                        topologyConfidence = 0.835,
+                        isClickable = false,
+                        bindingKind = NodeTopologyBindingKind.PARTIAL_COLUMN,
+                    ),
+                ),
+                isComplete = false,
+            ),
+        )
+
+        assertTrue("action=$action", action is NodeAction.ClickNode)
+        assertEquals(targetRect, (action as NodeAction.ClickNode).screenRect)
+    }
+
+    @Test
+    fun `inactive partial topology without ordered sibling never becomes clickable`() {
+        val targetRect = EntryPixelRect(1335, 650, 280, 350)
+        val target = node(40401, LabyrinthNodeTypes.EVENT)
+        val action = LabyrinthNodeActionPlanner().planAction(
+            NodeMatchResult(
+                currentNodeId = 40302L,
+                currentNodeType = LabyrinthNodeTypes.EX_BATTLE,
+                nextNode = target,
+                visibleNodes = emptyList(),
+                topologyMappings = listOf(
+                    NodeTopologyMapping(
+                        blockId = 40401L,
+                        expectedBlockType = LabyrinthNodeTypes.EVENT,
+                        logicalColumn = 4,
+                        visualColumn = 2,
+                        visualRow = 3,
+                        screenRect = targetRect,
+                        detectedBlockType = LabyrinthNodeTypes.EVENT,
+                        visualConfidence = 0.860,
+                        topologyConfidence = 0.835,
+                        isClickable = false,
+                        bindingKind = NodeTopologyBindingKind.PARTIAL_COLUMN,
+                    ),
+                ),
+                isComplete = false,
+            ),
+        )
+
+        assertTrue("action=$action", action is NodeAction.ClickNode)
+        assertEquals(null, (action as NodeAction.ClickNode).screenRect)
+    }
+
+    @Test
     fun `column four anchor becomes visible after camera offset on 1920 frame`() {
         val definition = NodeAnchorDefinitions.NODE_ICON_RECTS.first {
             it.column == 4 && it.row == 1
