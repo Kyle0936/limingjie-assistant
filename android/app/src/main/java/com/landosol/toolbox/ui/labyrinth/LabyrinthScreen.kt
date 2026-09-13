@@ -173,10 +173,20 @@ fun LabyrinthScreen(
                         text = "测试版本，有较多 bug，可能会卡在某些流程。",
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                    TextButton(
-                        onClick = { uriHandler.openUri("http://127.0.0.1:8765/") },
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text("打开实时日志控制台")
+                        TextButton(
+                            onClick = { uriHandler.openUri("http://127.0.0.1:8765/") },
+                        ) {
+                            Text("打开实时日志控制台")
+                        }
+                        TextButton(
+                            onClick = { uriHandler.openUri("http://127.0.0.1:8765/logs.zip") },
+                        ) {
+                            Text("下载日志 ZIP")
+                        }
                     }
                 }
             }
