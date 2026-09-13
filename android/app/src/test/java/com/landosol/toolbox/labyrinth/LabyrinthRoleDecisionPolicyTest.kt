@@ -825,65 +825,54 @@ class LabyrinthRoleDecisionPolicyTest {
 
         val plan = searcher.initialSearch(
             roster,
-            LabyrinthRoleDecisionContext(defenseMarkStacks = 4, preferStrongestVanguard = true),
+            LabyrinthRoleDecisionContext(defenseMarkStacks = 4, optimizeBossVanguardSynergy = true),
         )
 
         assertEquals("protector", plan.teams.single().vanguardCharacterId)
-        assertTrue(plan.reason.contains("优先传统掩护者"))
+        assertTrue(plan.reason.contains("联合优化"))
     }
 
     @Test
-    fun `boss main team fronts strongest viable tank before optimizing damage`() {
+    fun `boss main team chooses adequate buff tank over over-tanky pure tank when team score wins`() {
         val roster = listOf(
-            physical(
-                "weak-tank",
-                "弱T",
-                position = 1,
-                quality = 95.0,
-                damage = 95.0,
-                reliableVanguard = 55.0,
-                roleClass = "掩护者",
+            combatRole(
+                id = "buff-tank", name = "进攻T", roleClass = "掩护者", position = 1,
+                userScore = 60.0, physical = 5.0, modelStatus = "database-v2",
+                physicalTeamUplift = 0.50, magicTeamUplift = 0.0, reliableVanguard = 75.0,
             ),
-            physical(
-                "strong-tank",
-                "强T",
-                position = 2,
-                quality = 60.0,
-                damage = 20.0,
-                reliableVanguard = 100.0,
-                roleClass = "掩护者",
+            combatRole(
+                id = "pure-tank", name = "纯肉T", roleClass = "掩护者", position = 2,
+                userScore = 60.0, physical = 5.0, modelStatus = "database-v2",
+                physicalTeamUplift = 0.0, magicTeamUplift = 0.0, reliableVanguard = 100.0,
             ),
-            physical("d1", "输出一", position = 3, damage = 95.0, aoe = 95.0),
-            physical("d2", "输出二", position = 4, damage = 94.0, aoe = 94.0),
-            physical("d3", "输出三", position = 5, damage = 93.0, aoe = 93.0),
-            physical("d4", "输出四", position = 6, damage = 92.0, aoe = 92.0),
-            physical("d5", "输出五", position = 7, damage = 91.0, aoe = 91.0),
+            combatRole("d1", "输出一", userScore = 95.0, physical = 100.0, position = 3),
+            combatRole("d2", "输出二", userScore = 94.0, physical = 98.0, position = 4),
+            combatRole("d3", "输出三", userScore = 93.0, physical = 96.0, position = 5),
+            combatRole("d4", "输出四", userScore = 92.0, physical = 94.0, position = 6),
         )
         val searcher = LabyrinthTeamPlanSearcher(
             optimizer,
             LabyrinthTeamPlanSearchConfig(
-                oneTeamKillScore = 0.0,
-                mainTeamScore = 0.0,
-                cleanupTeamScore = 0.0,
-                mainPlusCleanupCombinedScore = 0.0,
-                stableTeamScore = 0.0,
-                fallbackTeamScore = 0.0,
+                oneTeamKillScore = 0.0, mainTeamScore = 0.0, cleanupTeamScore = 0.0,
+                mainPlusCleanupCombinedScore = 0.0, stableTeamScore = 0.0, fallbackTeamScore = 0.0,
                 threeTeamCombinedScore = 0.0,
             ),
         )
-
-        val plan = searcher.initialSearch(
-            roster,
-            LabyrinthRoleDecisionContext(
-                defenseMarkStacks = 4,
-                targetCount = 3,
-                preferStrongestVanguard = true,
-            ),
+        val context = LabyrinthRoleDecisionContext(
+            defenseMarkStacks = 4,
+            targetCount = 1,
+            optimizeBossVanguardSynergy = true,
         )
 
-        assertEquals("strong-tank", plan.teams.single().vanguardCharacterId)
-        assertFalse(plan.teams.single().members.any { it.characterId == "weak-tank" })
-        assertTrue(plan.reason.contains("优先传统掩护者"))
+        assertTrue(roster[0].isEligibleBattleVanguard(context))
+        assertTrue(roster[1].labyrinthVanguardStrength(context) > roster[0].labyrinthVanguardStrength(context))
+        val plan = searcher.initialSearch(roster, context)
+
+        assertEquals("buff-tank", plan.teams.single().vanguardCharacterId)
+        assertFalse(plan.teams.single().members.any { it.characterId == "pure-tank" })
+        assertTrue(plan.teams.single().physicalTeamUplift > 0.40)
+        assertTrue(plan.reason.contains("联合优化"))
+        assertTrue(plan.teams.single().reasons.any { it.contains("物理队增益50%") })
     }
 
     @Test

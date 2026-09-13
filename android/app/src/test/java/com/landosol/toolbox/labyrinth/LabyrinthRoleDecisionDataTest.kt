@@ -77,7 +77,7 @@ class LabyrinthRoleDecisionDataTest {
 
         val first = planner.initialRecommendation(
             acquiredCharacterIds = acquired,
-            context = baseContext.copy(preferStrongestVanguard = true),
+            context = baseContext.copy(optimizeBossVanguardSynergy = true),
             requestedBossTeamCount = 3,
         ) as LabyrinthBattleTeamRecommendationResult.Ready
         val firstIds = first.recommendation.members.map { it.characterId }.toSet()

@@ -359,8 +359,8 @@ data class LabyrinthRoleDecisionContext(
     val targetCount: Int = 1,
     /** Set only by an explicitly requested post-failure fallback search. */
     val survivalRecovery: Boolean = false,
-    /** Boss team-1 only: use the strongest viable T as the actual vanguard before optimizing DPS. */
-    val preferStrongestVanguard: Boolean = false,
+    /** Boss planning: require a safe vanguard, then jointly optimize tank survivability + team-system synergy. */
+    val optimizeBossVanguardSynergy: Boolean = false,
     /** Battle preference: search tries a cohesive physical/magic team before mixed fallback. */
     val preferSingleDamageSystem: Boolean = false,
     /** Encounter guide rules; EX comes from OCR, Boss may come from the persisted route quest id. */
@@ -398,6 +398,8 @@ data class LabyrinthTeamScoringConfig(
     val systemFunctionWeight: Double = 0.13,
     val systemFormationWeight: Double = 0.04,
     val systemCohesionWeight: Double = 0.10,
+    /** Once a Boss vanguard clears the safety gate, only this fraction of extra tankiness is retained in scoring. */
+    val bossExcessVanguardSurvivalRetention: Double = 0.30,
     val damageSoftCeiling: Double = 1.50,
     val modeledRolePositiveUpliftCap: Double = 0.80,
     val modeledRoleNegativeUpliftFloor: Double = -0.95,
@@ -484,6 +486,7 @@ data class LabyrinthTeamScoringConfig(
                     systemFormationWeight + systemCohesionWeight - 1.0,
             ) < 0.000001,
         )
+        require(bossExcessVanguardSurvivalRetention in 0.0..1.0)
         require(damageSoftCeiling > 0.0)
         require(modeledRolePositiveUpliftCap >= 0.0)
         require(modeledRoleNegativeUpliftFloor in -1.0..0.0)
@@ -666,6 +669,15 @@ class LabyrinthTeamScorer(
                 config.encounterPreferredCapabilityBonus
         val encounterBonus = preferredCapabilityBonus
         val frontlineScore = vanguard.labyrinthVanguardStrength(context)
+        val frontlineScoreForTeam = if (
+            context.optimizeBossVanguardSynergy &&
+            frontlineScore > config.minimumReliableVanguard
+        ) {
+            config.minimumReliableVanguard +
+                (frontlineScore - config.minimumReliableVanguard) * config.bossExcessVanguardSurvivalRetention
+        } else {
+            frontlineScore
+        }
         val sustainAnchor = members.maxBy { effectiveSustainScore(it) }
         val sustainScore = effectiveSustainScore(sustainAnchor)
         val hasReliableFrontline = frontlineScore >= config.minimumReliableVanguard
@@ -687,7 +699,7 @@ class LabyrinthTeamScorer(
                 members.maxOf { max(it.functions.healing.orZero(), it.functions.regeneration.orZero()) } +
                 relevantReduction
             ) / 3.0
-        val survivalScore = frontlineScore * 0.70 + survivalSupport * 0.30
+        val survivalScore = frontlineScoreForTeam * 0.70 + survivalSupport * 0.30
 
         val aoe = members.maxOf { it.functions.aoeDamage.orZero() }
         val singleTarget = members.maxOf { it.functions.singleTargetDamage.orZero() }
@@ -876,7 +888,20 @@ class LabyrinthTeamScorer(
                     },
                 )
             }
+            val vanguardPhysicalUplift = roleTeamUplift(vanguard, LabyrinthRoleDamageType.PHYSICAL)
+            val vanguardMagicUplift = roleTeamUplift(vanguard, LabyrinthRoleDamageType.MAGIC)
             add("一号位${vanguard.displayName}，可靠度${frontlineScore.toInt()}")
+            if (context.optimizeBossVanguardSynergy) {
+                val durability = vanguard.vanguardProfile?.let { profile ->
+                    "物耐${profile.physicalDurability.orZero().toInt()}/法耐${profile.magicDurability.orZero().toInt()}；"
+                }.orEmpty()
+                add(
+                    "Boss一号位联合优化：${durability}过生存线后超额肉度按" +
+                        "${(config.bossExcessVanguardSurvivalRetention * 100).toInt()}%计入；" +
+                        "该T物理队增益${(vanguardPhysicalUplift * 100).toInt()}%、" +
+                        "法术队增益${(vanguardMagicUplift * 100).toInt()}%",
+                )
+            }
             add("玩家评分覆盖${(playerCoverage * 100).toInt()}%，有效权重${(effectivePlayerWeight * 100).toInt()}%")
             if (survivalMultiplier < 1.0) {
                 add("低守备生存门槛：存活输出倍率${(survivalMultiplier * 100).toInt()}%")
@@ -1338,15 +1363,20 @@ class LabyrinthTeamOptimizer(
         // Keep the prefilter on the same conceptual scale as the final player/system blend.
         // Effective Effect is added only to the system side, so a low player score remains low
         // instead of being bypassed by an unconditional post-blend bonus.
+        val modeledTeamUpliftPriority = maxOf(
+            role.physicalTeamUplift.orZero(),
+            role.magicTeamUplift.orZero(),
+        ).coerceAtLeast(0.0).times(100.0).coerceAtMost(100.0)
         val baseSystemPriority = (
             maxOf(physical.orZero(), magic.orZero()) +
                 role.functions.reliableVanguard.orZero() * 0.5 +
+                modeledTeamUpliftPriority * 0.45 +
                 maxOf(
                     role.functions.physicalDefenseDown.orZero(),
                     role.functions.magicDefenseDown.orZero(),
                 ) * 0.3 +
                 scenarioFunction * 0.2
-            ) / 2.0
+            ) / 2.45
         val requirementPriority = encounterRequirementContribution(listOf(role), context.encounterStrategy) *
             scorer.config.encounterPreferredCapabilityBonus
         val systemPriority = (baseSystemPriority + effectiveSystemBonus + guideCapabilityPriority + requirementPriority)
@@ -1654,33 +1684,7 @@ class LabyrinthTeamPlanSearcher(
                 "没有可用于编组的可靠角色",
             )
         }
-        val first = if (context.preferStrongestVanguard) {
-            val eligibleVanguards = roster
-                .distinctBy(LabyrinthRoleProfile::characterId)
-                .filter { it.isEligibleBattleVanguard(context, optimizer.scoringConfig.minimumReliableVanguard) }
-            val bossMainVanguards = eligibleVanguards
-                .filter { it.isLabyrinthBattleTank }
-                .takeIf { it.isNotEmpty() }
-                ?: eligibleVanguards
-            bossMainVanguards
-                .sortedWith(
-                    compareByDescending<LabyrinthRoleProfile> { it.labyrinthVanguardStrength(context) }
-                        .thenByDescending { it.effectiveUserScore ?: Double.NEGATIVE_INFINITY }
-                        .thenBy { it.position ?: Int.MAX_VALUE }
-                        .thenBy(LabyrinthRoleProfile::characterId),
-                )
-                .firstNotNullOfOrNull { preferredTank ->
-                    // Keep only this T for the trial so an earlier-position weaker T cannot become
-                    // the actual vanguard while the preferred T is merely carried in the same team.
-                    val restrictedRoster = roster.filter { role ->
-                        !role.isEligibleBattleVanguard(context, optimizer.scoringConfig.minimumReliableVanguard) ||
-                            role.characterId == preferredTank.characterId
-                    }
-                    optimizer.bestBattleFormation(restrictedRoster, context)
-                }
-        } else {
-            optimizer.bestBattleFormation(roster, context)
-        } ?: return LabyrinthTeamPlan(
+        val first = optimizer.bestBattleFormation(roster, context) ?: return LabyrinthTeamPlan(
             LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
             emptyList(),
             "自动战斗要求实际一号位满足生存资格；当前角色池无法组成满足条件的队伍",
@@ -1688,8 +1692,8 @@ class LabyrinthTeamPlanSearcher(
         return LabyrinthTeamPlan(
             LabyrinthTeamPlanKind.FIRST_ATTEMPT_ONE_TEAM,
             listOf(first),
-            if (context.preferStrongestVanguard) {
-                "Boss主力队优先传统掩护者；无合格掩护者时才使用机制型一号位，再优化其余四人，评分${formatScore(first.score)}"
+            if (context.optimizeBossVanguardSynergy) {
+                "Boss主力队先要求一号位通过生存线，再将T的物理/法术队伍增益与其余四人联合优化，评分${formatScore(first.score)}"
             } else {
                 "首次挑战使用满足“一号位生存资格”硬约束的当前最佳队伍，评分${formatScore(first.score)}；实际失败后才启用后续队伍"
             },
@@ -1769,7 +1773,7 @@ class LabyrinthTeamPlanSearcher(
         }
 
         val single = if (
-            context.preferStrongestVanguard &&
+            context.optimizeBossVanguardSynergy &&
             !survivalRecovery &&
             excludedTeamSignatures.isEmpty()
         ) {

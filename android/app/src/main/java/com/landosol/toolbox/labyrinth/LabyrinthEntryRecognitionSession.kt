@@ -2503,7 +2503,7 @@ class LabyrinthEntryRecognitionSession(
                 val decisionContext = LabyrinthRoleDecisionContext(
                     defenseMarkStacks = defenseStacks,
                     targetCount = targetCount,
-                    preferStrongestVanguard = currentCombatContext?.kind == LabyrinthCombatKind.BOSS &&
+                    optimizeBossVanguardSynergy = currentCombatContext?.kind == LabyrinthCombatKind.BOSS &&
                         currentCombatContext.teamIndex == 1,
                     preferSingleDamageSystem = preferCohesiveDamageSystem,
                     encounterStrategy = encounterStrategy,
