@@ -94,6 +94,16 @@ class LabyrinthRoleDecisionDataTest {
         assertTrue(second.recommendation.vanguard.characterId in setOf("1045", "1145"))
         assertTrue(second.recommendation.vanguard.characterId != first.recommendation.vanguard.characterId)
         assertFalse(second.recommendation.vanguard.characterId == "1330")
+
+        val frostWolf = planner.initialRecommendation(
+            acquiredCharacterIds = acquired,
+            context = baseContext.copy(
+                targetCount = 3,
+                optimizeBossVanguardSynergy = true,
+            ),
+            requestedBossTeamCount = 3,
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertEquals(2, frostWolf.recommendation.plannedBossTeamCount)
     }
 
     @Test

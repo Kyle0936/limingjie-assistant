@@ -397,7 +397,12 @@ internal fun labyrinthBattleTeamSelectionMessage(
         waiting,
         recommendation?.let {
             "推荐第一队：${it.members.joinToString("、") { member -> member.displayName }}；" +
-                "${it.damageTypeLabel}；评分${formatBattleTeamScore(it.score)}"
+                "${it.damageTypeLabel}；评分${formatBattleTeamScore(it.score)}" +
+                if (combatContext?.kind == LabyrinthCombatKind.BOSS) {
+                    "；本轮安全计划${it.plannedBossTeamCount}队"
+                } else {
+                    ""
+                }
         },
         unavailableReason?.let { "第一队建议不可用：$it" },
         selectionPlan?.let { plan ->

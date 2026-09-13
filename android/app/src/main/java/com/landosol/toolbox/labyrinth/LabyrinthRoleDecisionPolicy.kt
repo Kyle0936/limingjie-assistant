@@ -1751,7 +1751,11 @@ class LabyrinthTeamPlanSearcher(
             )
         }
 
-        val beam = ranked.take(config.multiTeamBeamWidth)
+        // rankedBattleFormations is already bounded by the scorer's search beam. Do not apply a
+        // second, narrower cut here: on multi-target Bosses the top formations often reuse the
+        // same AOE/DOT core, which can hide a perfectly valid disjoint second team just below the
+        // first few dozen candidates and incorrectly degrade 2-team capacity to 1.
+        val beam = ranked
         for (targetTeams in safeCapacity downTo 2) {
             val teams = when (targetTeams) {
                 3 -> bestDisjointTriple(beam, enforceThresholds = false)
