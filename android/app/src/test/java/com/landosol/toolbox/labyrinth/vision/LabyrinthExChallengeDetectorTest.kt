@@ -56,6 +56,27 @@ class LabyrinthExChallengeDetectorTest {
     }
 
     @Test
+    fun `lower live dual layout for misora and queen bee is recognized before single target fallback`() {
+        val pixels = IntArray(1920 * 1080) { rgb(35, 40, 60) }
+        // Live 2026-09 layout from the 美空/黄蜂女王 EX page.
+        fill(pixels, EntryPixelRect(852, 604, 56, 56), rgb(190, 205, 235))
+        fill(pixels, EntryPixelRect(1152, 604, 56, 56), rgb(190, 205, 235))
+
+        val result = requireNotNull(
+            LabyrinthExChallengeDetector().detect(
+                PixelImage(1920, 1080, pixels),
+                LabyrinthEntryPageState.BATTLE_CHALLENGE,
+            ),
+        )
+
+        assertTrue(result.specialDualLikely)
+        assertFalse(result.multiMonsterLikely)
+        val identity = requireNotNull(result.specialDualIdentityInfoButtonRect)
+        assertTrue(identity.left >= 1140)
+        assertTrue(identity.top >= 595)
+    }
+
+    @Test
     fun `five monster layout wins over accidental special evidence`() {
         val pixels = IntArray(1920 * 1080) { rgb(35, 40, 60) }
         listOf(395, 697, 995, 1295).forEach { x ->

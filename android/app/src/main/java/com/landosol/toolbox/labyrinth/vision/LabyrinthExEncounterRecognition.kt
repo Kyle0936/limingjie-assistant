@@ -89,12 +89,21 @@ class LabyrinthExChallengeDetector(
         val multi = count >= requiredInfoButtons
         val slot3 = scored.getOrNull(2)?.takeIf { passed.getOrNull(2) == true }?.first
 
-        val specialScored = SPECIAL_DUAL_INFO_BUTTON_RECTS.mapNotNull { reference ->
-            val rect = ReferenceFitMapper.map(frame.width, frame.height, STANDARD_REFERENCE, reference)
-                ?: return@mapNotNull null
-            rect to infoCircleScore(frame, rect)
-        }
-        val specialPassed = specialScored.size == SPECIAL_DUAL_INFO_BUTTON_RECTS.size &&
+        // Special dual-target EX has shipped with two slightly different vertical layouts.
+        // Score every calibrated pair and keep the strongest complete pair.  This avoids falling
+        // through to the single-target fixed Details tap when 美空/黄蜂女王 uses the lower layout.
+        val specialScored = SPECIAL_DUAL_INFO_BUTTON_RECT_VARIANTS
+            .mapNotNull { pair ->
+                val scoredPair = pair.mapNotNull inner@ { reference ->
+                    val rect = ReferenceFitMapper.map(frame.width, frame.height, STANDARD_REFERENCE, reference)
+                        ?: return@inner null
+                    rect to infoCircleScore(frame, rect)
+                }
+                scoredPair.takeIf { it.size == pair.size }
+            }
+            .maxByOrNull { scoredPair -> scoredPair.map { it.second }.average() }
+            .orEmpty()
+        val specialPassed = specialScored.size == 2 &&
             specialScored.all { (_, score) -> score >= minimumInfoScore }
         val specialDual = !multi && specialPassed
         val specialIdentity = specialScored.getOrNull(1)
@@ -157,9 +166,18 @@ class LabyrinthExChallengeDetector(
         // Screenshot-derived special-EX pair. ReferenceFitMapper keeps these proportional across
         // actual device resolutions; the social/video screenshots used for calibration may be
         // cropped, but the in-game 16:9 viewport uses this same centred geometry.
-        val SPECIAL_DUAL_INFO_BUTTON_RECTS = listOf(
-            EntryReferenceRect(856, 570, 56, 56),
-            EntryReferenceRect(1138, 570, 56, 56),
+        val SPECIAL_DUAL_INFO_BUTTON_RECT_VARIANTS = listOf(
+            // Older/current-alt layout: centres approximately (884, 598), (1166, 598).
+            listOf(
+                EntryReferenceRect(856, 570, 56, 56),
+                EntryReferenceRect(1138, 570, 56, 56),
+            ),
+            // 2026-09 live 美空/黄蜂女王 layout: the two Details circles sit ~34 px lower;
+            // the right identity target is also ~14 px farther right.
+            listOf(
+                EntryReferenceRect(852, 604, 56, 56),
+                EntryReferenceRect(1152, 604, 56, 56),
+            ),
         )
         const val SAMPLE_STEP = 3
     }
