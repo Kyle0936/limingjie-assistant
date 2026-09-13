@@ -24,6 +24,7 @@ data class LabyrinthEntryActionPlannerConfig(
     val maxPreAnnouncementClicks: Int = 30,
     val preAnnouncementTimeoutMillis: Long = 45_000L,
     val characterSelectionClickIntervalMillis: Long = 2_000L,
+    val openingSelectionFeedbackTimeoutMillis: Long = 3_000L,
     val openingRosterScrollIntervalMillis: Long = 900L,
     val maxOpeningRosterScrolls: Int = 12,
     val openingRosterBottomStableFrames: Int = 3,
@@ -44,6 +45,7 @@ data class LabyrinthEntryActionPlannerConfig(
         require(maxPreAnnouncementClicks > 0)
         require(preAnnouncementTimeoutMillis > 0)
         require(characterSelectionClickIntervalMillis > 0)
+        require(openingSelectionFeedbackTimeoutMillis > 0)
         require(openingRosterScrollIntervalMillis > 0)
         require(maxOpeningRosterScrolls > 0)
         require(openingRosterBottomStableFrames > 0)
@@ -110,6 +112,9 @@ class LabyrinthEntryActionPlanner(
     private var resumedExistingRun = false
     private var openingRosterPolicy: LabyrinthOpeningRosterPolicy? = null
     private val selectedOpeningCharacterIds = linkedSetOf<String>()
+    private var pendingOpeningCharacterId: String? = null
+    private var pendingOpeningCharacterName: String? = null
+    private var pendingOpeningCharacterClickedAt = Long.MIN_VALUE
     private var openingRosterScrollAttempts = 0
     private var openingRosterBottomMissFrames = 0
 
@@ -137,6 +142,9 @@ class LabyrinthEntryActionPlanner(
         openingRosterCompleted = false
         resumedExistingRun = false
         selectedOpeningCharacterIds.clear()
+        pendingOpeningCharacterId = null
+        pendingOpeningCharacterName = null
+        pendingOpeningCharacterClickedAt = Long.MIN_VALUE
         openingRosterScrollAttempts = 0
         openingRosterBottomMissFrames = 0
     }
@@ -144,6 +152,9 @@ class LabyrinthEntryActionPlanner(
     fun configureOpeningRoster(guildId: Int?) {
         openingRosterPolicy = LabyrinthOpeningRosterCatalog.policyFor(guildId)
         selectedOpeningCharacterIds.clear()
+        pendingOpeningCharacterId = null
+        pendingOpeningCharacterName = null
+        pendingOpeningCharacterClickedAt = Long.MIN_VALUE
         openingRosterScrollAttempts = 0
         openingRosterBottomMissFrames = 0
     }
@@ -409,6 +420,25 @@ class LabyrinthEntryActionPlanner(
             selectedOpeningCharacterIds += recognizedOpening
                 .filter(LabyrinthBattleCharacterMatch::selected)
                 .mapNotNull(LabyrinthBattleCharacterMatch::characterId)
+
+            pendingOpeningCharacterId?.let { pendingId ->
+                if (pendingId in selectedOpeningCharacterIds) {
+                    pendingOpeningCharacterId = null
+                    pendingOpeningCharacterName = null
+                    pendingOpeningCharacterClickedAt = Long.MIN_VALUE
+                } else {
+                    val elapsed = nowMillis - pendingOpeningCharacterClickedAt
+                    if (elapsed < config.openingSelectionFeedbackTimeoutMillis) {
+                        return LabyrinthEntryActionDecision.Wait(
+                            "已点击初始角色${pendingOpeningCharacterName ?: pendingId}，等待选中状态确认",
+                        )
+                    }
+                    return LabyrinthEntryActionDecision.Stop(
+                        "点击初始角色${pendingOpeningCharacterName ?: pendingId}后未观察到选中反馈；" +
+                            "已停止自动点击，避免重复点击错误位置",
+                    )
+                }
+            }
         }
         if (selectionReady(anchorScores)) {
             if (!config.manualCharacterSelection && configuredPolicy != null) {
@@ -475,16 +505,20 @@ class LabyrinthEntryActionPlanner(
                 val match = recognizedOpening.firstOrNull { it.characterId == target.characterId }
                     ?: return LabyrinthEntryActionDecision.Wait("目标角色${target.displayName}暂未稳定识别")
                 lastActionAt = nowMillis
+                pendingOpeningCharacterId = target.characterId
+                pendingOpeningCharacterName = target.displayName
+                pendingOpeningCharacterClickedAt = nowMillis
                 return LabyrinthEntryActionDecision.Execute(
                     LabyrinthEntryActionKind.SELECT_INITIAL_CHARACTER,
                     "选择初始角色${(selectedOpeningCharacterIds.size + 1).coerceAtMost(REQUIRED_INITIAL_CHARACTERS)}/" +
                         "$REQUIRED_INITIAL_CHARACTERS：${target.displayName}",
                     AutomationAction.Tap(
                         ScreenPoint(
-                            // Tapping the portrait opens character details. The purple add button
-                            // is anchored at the lower-left of every visible opening card.
-                            x = match.screenRect.left + match.screenRect.width * 0.16f,
-                            y = match.screenRect.top + match.screenRect.height * 0.86f,
+                            // Use the portrait body, away from the role/attribute badges along the
+                            // lower edge. The old 16%/86% point landed on the purple role icon and
+                            // produced no selection feedback on the current opening-roster UI.
+                            x = match.screenRect.left + match.screenRect.width * 0.50f,
+                            y = match.screenRect.top + match.screenRect.height * 0.45f,
                         ),
                     ),
                 )

@@ -122,16 +122,17 @@ class LabyrinthEntryActionPlannerTest {
         assertTrue(labels.none { it.contains("无关角色") })
 
         val firstTap = decisions.first().action as AutomationAction.Tap
-        assertEquals(616f, firstTap.point.x, 0.01f)
-        assertEquals(386f, firstTap.point.y, 0.01f)
+        assertEquals(650f, firstTap.point.x, 0.01f)
+        assertEquals(345f, firstTap.point.y, 0.01f)
     }
 
     @Test
-    fun `configured opening roster retries the same target until the frame confirms selection`() {
+    fun `configured opening roster waits for visual feedback instead of blindly retapping the same target`() {
         val planner = LabyrinthEntryActionPlanner(
             LabyrinthEntryActionPlannerConfig(
                 stableFrames = 1,
                 characterSelectionClickIntervalMillis = 1L,
+                openingSelectionFeedbackTimeoutMillis = 100L,
                 requireConfiguredOpeningRoster = true,
             ),
         )
@@ -156,18 +157,29 @@ class LabyrinthEntryActionPlannerTest {
             anchorScores = selecting,
             openingCharacterMatches = matches,
         ) as LabyrinthEntryActionDecision.Execute
-        val retry = planner.decide(
+        val waiting = planner.decide(
             state = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
             frameWidth = 1920,
             frameHeight = 1080,
             nowMillis = 1L,
             anchorScores = selecting,
             openingCharacterMatches = matches,
-        ) as LabyrinthEntryActionDecision.Execute
+        )
+
+        val timedOut = planner.decide(
+            state = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+            frameWidth = 1920,
+            frameHeight = 1080,
+            nowMillis = 101L,
+            anchorScores = selecting,
+            openingCharacterMatches = matches,
+        )
 
         assertTrue(first.label.contains("贪吃佩可(夏日)"))
-        assertTrue(retry.label.contains("贪吃佩可(夏日)"))
-        assertEquals(first.action, retry.action)
+        assertTrue(waiting is LabyrinthEntryActionDecision.Wait)
+        assertTrue((waiting as LabyrinthEntryActionDecision.Wait).reason.contains("等待选中状态确认"))
+        assertTrue(timedOut is LabyrinthEntryActionDecision.Stop)
+        assertTrue((timedOut as LabyrinthEntryActionDecision.Stop).reason.contains("避免重复点击错误位置"))
     }
 
     @Test
