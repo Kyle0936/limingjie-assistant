@@ -5,6 +5,7 @@ import com.landosol.toolbox.gamedata.EventLayoutTemplateResource
 import com.landosol.toolbox.gamedata.EventResource
 import com.landosol.toolbox.gamedata.NormalizedOcrRect
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 data class LabyrinthEventTextMatch(
     val event: EventResource?,
@@ -207,6 +208,28 @@ internal fun normalizeEventText(value: String): String = buildString(value.lengt
 }
 
 private fun List<Double>.averageOrZero(): Double = if (isEmpty()) 0.0 else average()
+
+/** Shared by the bitmap resolver and screenshot regressions. Text and borders are sampled too. */
+internal fun labyrinthEventBlueButtonConfidence(
+    rect: EntryPixelRect,
+    pixelAt: (Int, Int) -> Int,
+): Double {
+    var blue = 0
+    val rows = 8
+    val columns = 16
+    for (row in 1..rows) {
+        val y = rect.top + (row.toDouble() * (rect.height - 1) / (rows + 1)).roundToInt()
+        for (column in 1..columns) {
+            val x = rect.left + (column.toDouble() * (rect.width - 1) / (columns + 1)).roundToInt()
+            val color = pixelAt(x, y)
+            val red = color ushr 16 and 0xff
+            val green = color ushr 8 and 0xff
+            val channelBlue = color and 0xff
+            if (channelBlue >= 105 && channelBlue >= red + 18 && channelBlue >= green - 25) blue++
+        }
+    }
+    return blue.toDouble() / (rows * columns)
+}
 
 /**
  * Blue fill is an actionability signal, not a reliable option-count signal: condition-gated

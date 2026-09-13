@@ -442,7 +442,7 @@ internal fun labyrinthKeepsPendingNodeTransition(
         nodeSelectionFramesSinceAction < MIN_NODE_SELECTION_FRAMES_BEFORE_TRANSITION_RETRY
 
 /**
- * After the movement-confirmation button was accepted, the destination can render one or more
+ * After a node or its movement-confirmation button was tapped, the game can render one or more
  * transitional frames before its semantic page becomes recognizable. Those frames must not erase
  * the pending route transition; otherwise the game can enter/finish a node while the local route
  * cursor remains one step behind.
@@ -450,14 +450,15 @@ internal fun labyrinthKeepsPendingNodeTransition(
  * This does not authorize any click. It only keeps the already-dispatched semantic transition
  * alive until a real destination page confirms it or the bounded entry timeout expires.
  */
-internal fun labyrinthPreservesConfirmedNodeTransitionAcrossPage(
+internal fun labyrinthPreservesPendingNodeTransitionAcrossPage(
     pageState: LabyrinthEntryPageState,
     confirmationDispatchedAtMillis: Long?,
     nowMillis: Long,
     timeoutMillis: Long,
+    dispatchedAtMillis: Long? = null,
 ): Boolean {
-    val confirmedAt = confirmationDispatchedAtMillis ?: return false
-    val elapsed = (nowMillis - confirmedAt).coerceAtLeast(0L)
+    val startedAt = confirmationDispatchedAtMillis ?: dispatchedAtMillis ?: return false
+    val elapsed = (nowMillis - startedAt).coerceAtLeast(0L)
     if (elapsed >= timeoutMillis) return false
     return pageState in setOf(
         LabyrinthEntryPageState.UNKNOWN,
@@ -658,6 +659,8 @@ class LabyrinthEntryRecognitionSession(
     private var bossEditorBlocked = false
     private var bossEditorPreparationStage = LabyrinthBossEditorPreparationStage.INACTIVE
     private var preparedBossFirstTeamIds: List<String> = emptyList()
+    /** Chosen safe team count for the current Boss multi-team attempt; 1/2 teams leave later tabs empty. */
+    private var bossMultiTeamTargetCount: Int? = null
     private var bossTeamMode: LabyrinthBossTeamMode = LabyrinthBossTeamMode.MULTI_TEAM
     private var preferPureBossDamageSystem: Boolean = true
     private var rerollAfterThreeBattleFailures: Boolean = false
@@ -1297,13 +1300,14 @@ class LabyrinthEntryRecognitionSession(
                 hasPendingNodeTransition = pendingNodeTransition != null,
                 hasMoveConfirmation = result.nodeMoveConfirmation != null,
             )
-        val preserveConfirmedNodeTransition = !current.dryRun &&
+        val preservePendingNodeTransitionAcrossPage = !current.dryRun &&
             pendingNodeTransition?.let { pending ->
-                labyrinthPreservesConfirmedNodeTransitionAcrossPage(
+                labyrinthPreservesPendingNodeTransitionAcrossPage(
                     pageState = pageState,
                     confirmationDispatchedAtMillis = pending.confirmationDispatchedAtMillis,
                     nowMillis = timestampMillis,
                     timeoutMillis = NODE_ENTRY_CONFIRMATION_TIMEOUT_MILLIS,
+                    dispatchedAtMillis = pending.dispatchedAtMillis,
                 )
             } == true
         val confirmedTransitionTimedOut = !current.dryRun &&
@@ -1338,7 +1342,7 @@ class LabyrinthEntryRecognitionSession(
         invalidatePreviousPageState(
             pageState = pageState,
             preservePendingNodeMoveConfirmation =
-                preservePendingNodeMoveConfirmation || preserveConfirmedNodeTransition,
+                preservePendingNodeMoveConfirmation || preservePendingNodeTransitionAcrossPage,
         )
         synchronizeBossEditor(result)
         refreshRelicStackCalibration(result)
@@ -2393,6 +2397,20 @@ class LabyrinthEntryRecognitionSession(
                 battleTeamRecommendationUnavailableReason = "第一队已确认；按单队首战策略核对空置队伍并前往第三队开始战斗")
             return
         }
+        val partialBossTarget = bossMultiTeamTargetCount
+        if (
+            bossTeamMode == LabyrinthBossTeamMode.MULTI_TEAM &&
+            partialBossTarget != null && partialBossTarget < 3 &&
+            (bossEditorTeamIndex ?: 1) > partialBossTarget
+        ) {
+            _state.value = _state.value.copy(
+                battleTeamRecommendation = null,
+                battleTeamSelectionPlan = null,
+                battleTeamRecommendationUnavailableReason =
+                    "Boss已确认${partialBossTarget}支安全队伍；后续队伍留空并准备开始挑战",
+            )
+            return
+        }
 
         val current = _state.value
         val currentCombatContext = combatContext
@@ -2412,6 +2430,15 @@ class LabyrinthEntryRecognitionSession(
         )
             .getValue(LabyrinthRelicMark.DEFENSE)
         val targetCount = encounterStrategy?.targetCount ?: currentCombatContext?.targetCount ?: 1
+        val requestedBossTeamCount = if (
+            currentCombatContext?.kind == LabyrinthCombatKind.BOSS &&
+            bossTeamMode == LabyrinthBossTeamMode.MULTI_TEAM
+        ) {
+            val absoluteTarget = bossMultiTeamTargetCount ?: 3
+            (absoluteTarget - currentCombatContext.teamIndex + 1).coerceIn(1, 3)
+        } else {
+            1
+        }
         val acquiredCharacterIds = current.joinedCharacters
             .map(LabyrinthJoinedCharacter::characterId)
             .map(::canonicalLabyrinthRoleId)
@@ -2424,6 +2451,12 @@ class LabyrinthEntryRecognitionSession(
             append(targetCount)
             append("|team=")
             append(currentCombatContext?.teamIndex ?: 1)
+            append("|bossMode=")
+            append(bossTeamMode.name)
+            append("|requestedBossTeams=")
+            append(requestedBossTeamCount)
+            append("|bossTarget=")
+            append(bossMultiTeamTargetCount ?: 0)
             append("|retry=")
             append(battleRetryCount)
             append("|encounter=")
@@ -2490,11 +2523,13 @@ class LabyrinthEntryRecognitionSession(
                         lastFailedTeamSignature = synchronized(failedBattleTeamSignatures) {
                             failedBattleTeamSignatures.lastOrNull()
                         },
+                        requestedBossTeamCount = requestedBossTeamCount,
                     )
                 } else {
                     planner.initialRecommendation(
                         acquiredCharacterIds = eligibleCharacterIds,
                         context = decisionContext,
+                        requestedBossTeamCount = requestedBossTeamCount,
                     )
                 }
             }.getOrElse { failure ->
@@ -2511,6 +2546,16 @@ class LabyrinthEntryRecognitionSession(
         when (recommendationResult) {
             is LabyrinthBattleTeamRecommendationResult.Ready -> {
                 val recommendation = recommendationResult.recommendation
+                if (
+                    currentCombatContext?.kind == LabyrinthCombatKind.BOSS &&
+                    bossTeamMode == LabyrinthBossTeamMode.MULTI_TEAM
+                ) {
+                    val teamIndex = currentCombatContext.teamIndex.coerceIn(1, 3)
+                    val absoluteTarget = (teamIndex - 1 + recommendation.plannedBossTeamCount).coerceIn(teamIndex, 3)
+                    if (bossMultiTeamTargetCount == null || teamIndex == 1) {
+                        bossMultiTeamTargetCount = absoluteTarget
+                    }
+                }
                 _state.value = current.copy(
                     battleTeamRecommendation = recommendation,
                     battleTeamRecommendationUnavailableReason = null,
@@ -3977,6 +4022,7 @@ class LabyrinthEntryRecognitionSession(
                     bossEditorBlocked = false
                     pendingBossTeamAdvance = null
                     preparedBossFirstTeamIds = emptyList()
+                    bossMultiTeamTargetCount = null
                     synchronized(committedBattleCharacterIds) { committedBattleCharacterIds.clear() }
                     synchronized(currentBattleTeamSignatures) { currentBattleTeamSignatures.clear() }
                     combatContext = (combatContext ?: LabyrinthCombatContext(LabyrinthCombatKind.BOSS))
@@ -4005,7 +4051,28 @@ class LabyrinthEntryRecognitionSession(
             _state.value = _state.value.copy(message = "Boss切队记录不完整，请从队伍1重新启动自动编组；禁止复用其他队建议")
             return
         }
-        val step = preparationStep ?: if (
+        val step = (preparationStep ?: if (
+            bossTeamMode == LabyrinthBossTeamMode.MULTI_TEAM &&
+            bossMultiTeamTargetCount != null &&
+            bossMultiTeamTargetCount!! < 3 &&
+            (observation.bossTeamIndex ?: 1) > bossMultiTeamTargetCount!!
+        ) {
+            labyrinthBossPartialMultiTeamExecutionStep(
+                observation = observation,
+                completedTeamCount = bossMultiTeamTargetCount!!,
+                startButtonRect = anchorRect(result, EntryAnchorId.BATTLE_TEAM_START_BUTTON),
+            ).also { next ->
+                if (next == null) {
+                    _state.value = _state.value.copy(message = when {
+                        observation.recognitionState != com.landosol.toolbox.labyrinth.vision.LabyrinthBattleTeamRecognitionState.STABLE ->
+                            "Boss空队切换后等待画面稳定"
+                        observation.selectedCharacters.isNotEmpty() ->
+                            "Boss计划仅使用${bossMultiTeamTargetCount}队，但第${observation.bossTeamIndex}队并非空队；停止自动点击"
+                        else -> "Boss已完成${bossMultiTeamTargetCount}队安全编组；等待空队页与开始按钮"
+                    })
+                }
+            }
+        } else if (
             bossTeamMode == LabyrinthBossTeamMode.SINGLE_TEAM &&
             preparedBossFirstTeamIds.isNotEmpty()
         ) {
@@ -4061,7 +4128,7 @@ class LabyrinthEntryRecognitionSession(
                     LabyrinthBattleRosterScrollDirection.TO_TOP else LabyrinthBattleRosterScrollDirection.NEXT_PAGE,
             )
             plannedStep
-        } ?: return
+        }) ?: return
 
         if (step.key != lastBattleTeamExecutionKey) {
             lastBattleTeamExecutionKey = step.key
@@ -4336,6 +4403,7 @@ class LabyrinthEntryRecognitionSession(
                                 LabyrinthBossEditorPreparationStage.INACTIVE
                             }
                             preparedBossFirstTeamIds = emptyList()
+                            bossMultiTeamTargetCount = null
                             combatContext = combatContext?.copy(teamIndex = 1)
                             lastBattleTeamRecommendationKey = null
                             lastBattleTeamSelectionPlanLog = null
@@ -4483,6 +4551,7 @@ class LabyrinthEntryRecognitionSession(
         bossEditorBlocked = false
         bossEditorPreparationStage = LabyrinthBossEditorPreparationStage.INACTIVE
         preparedBossFirstTeamIds = emptyList()
+        bossMultiTeamTargetCount = null
         activeNodeType = null
         eventActionAttempts = 0
         _state.value = _state.value.copy(
@@ -4948,12 +5017,14 @@ class LabyrinthEntryRecognitionSession(
                         LabyrinthBossEditorPreparationStage.INACTIVE
                     }
                     preparedBossFirstTeamIds = emptyList()
+                    bossMultiTeamTargetCount = null
                     combatContext = combatContextFor(action.blockType)
                     pendingNodeTransition = PendingNodeTransition(
                         blockId = action.blockId,
                         blockType = action.blockType,
                         label = label,
-                        dispatchedAtMillis = timestampMillis,
+                        // Dense-map recognition can consume most of the timeout before the tap.
+                        dispatchedAtMillis = clock(),
                     )
                     resetPendingNodeClickStability()
                     if (activeSessionId == sessionId) {
@@ -5001,6 +5072,11 @@ class LabyrinthEntryRecognitionSession(
             )
             return true
         }
+        if (timestampMillis < pending.dispatchedAtMillis) {
+            resetNodeMoveConfirmationTracking()
+            publishNodeMoveConfirmationMessage(sessionId, "等待节点点击后的新画面")
+            return true
+        }
         val rect = confirmation.confirmButtonRect
         if (lastNodeMoveConfirmationRect == rect) {
             nodeMoveConfirmationStableFrames++
@@ -5025,7 +5101,7 @@ class LabyrinthEntryRecognitionSession(
             return true
         }
         if (!actionInFlight.compareAndSet(false, true)) return true
-        dispatchNodeMoveConfirmation(sessionId, pending, rect, timestampMillis)
+        dispatchNodeMoveConfirmation(sessionId, pending, rect)
         return true
     }
 
@@ -5033,7 +5109,6 @@ class LabyrinthEntryRecognitionSession(
         sessionId: AutomationSessionId,
         pending: PendingNodeTransition,
         rect: EntryPixelRect,
-        timestampMillis: Long,
     ) {
         actionScope.launch {
             val tap = AutomationAction.Tap(
@@ -5059,7 +5134,7 @@ class LabyrinthEntryRecognitionSession(
                     val currentPending = pendingNodeTransition
                     if (currentPending?.blockId == pending.blockId) {
                         pendingNodeTransition = currentPending.copy(
-                            confirmationDispatchedAtMillis = timestampMillis,
+                            confirmationDispatchedAtMillis = clock(),
                             confirmationAttempts = currentPending.confirmationAttempts + 1,
                             nodeSelectionFramesSinceAction = 0,
                         )

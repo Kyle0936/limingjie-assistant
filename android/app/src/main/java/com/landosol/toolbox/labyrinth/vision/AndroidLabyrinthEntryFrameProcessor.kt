@@ -26,7 +26,7 @@ class AndroidLabyrinthEntryTemplateLoader(
         return AndroidPixelImageAdapter.from(bitmap).also { bitmap.recycle() }
     }
 
-    private companion object {
+    internal companion object {
         const val ROOT = "resource-packs/cn-bilibili/vision"
         val TEMPLATE_PATHS = mapOf(
             EntryAnchorId.TITLE_LOGO to "$ROOT/entry_title_logo.bmp",

@@ -172,7 +172,7 @@ class LabyrinthEntryRecognitionPolicyTest {
         ).forEach { page ->
             assertTrue(
                 page.name,
-                labyrinthPreservesConfirmedNodeTransitionAcrossPage(
+                labyrinthPreservesPendingNodeTransitionAcrossPage(
                     pageState = page,
                     confirmationDispatchedAtMillis = confirmedAt,
                     nowMillis = confirmedAt + 5_999L,
@@ -186,7 +186,7 @@ class LabyrinthEntryRecognitionPolicyTest {
     fun `confirmed node transition expires and never survives a semantic destination page`() {
         val confirmedAt = 10_000L
         assertTrue(
-            !labyrinthPreservesConfirmedNodeTransitionAcrossPage(
+            !labyrinthPreservesPendingNodeTransitionAcrossPage(
                 pageState = LabyrinthEntryPageState.UNKNOWN,
                 confirmationDispatchedAtMillis = confirmedAt,
                 nowMillis = confirmedAt + 6_000L,
@@ -194,7 +194,7 @@ class LabyrinthEntryRecognitionPolicyTest {
             ),
         )
         assertTrue(
-            !labyrinthPreservesConfirmedNodeTransitionAcrossPage(
+            !labyrinthPreservesPendingNodeTransitionAcrossPage(
                 pageState = LabyrinthEntryPageState.EVENT_CHOICE,
                 confirmationDispatchedAtMillis = confirmedAt,
                 nowMillis = confirmedAt + 500L,
@@ -202,7 +202,7 @@ class LabyrinthEntryRecognitionPolicyTest {
             ),
         )
         assertTrue(
-            !labyrinthPreservesConfirmedNodeTransitionAcrossPage(
+            !labyrinthPreservesPendingNodeTransitionAcrossPage(
                 pageState = LabyrinthEntryPageState.UNKNOWN,
                 confirmationDispatchedAtMillis = null,
                 nowMillis = confirmedAt + 500L,

@@ -620,6 +620,9 @@ class LabyrinthEntryFrameProcessor(
             // event layer while its translucent backdrop remains visible.
             standard(EntryAnchorId.EVENT_SINGLE_CHOICE_TRIGGER_TITLE, 720, 35, 480, 120),
             standard(EntryAnchorId.EVENT_SINGLE_CHOICE_SELECT_BUTTON, 820, 805, 295, 145),
+            // The same select-button artwork is used by the two-choice event overlay.
+            standard(EntryAnchorId.EVENT_SINGLE_CHOICE_SELECT_BUTTON, 545, 805, 295, 145),
+            standard(EntryAnchorId.EVENT_SINGLE_CHOICE_SELECT_BUTTON, 1100, 805, 295, 145),
             standard(EntryAnchorId.EVENT_ANIMATION_TITLE, 650, 80, 620, 120),
             standard(EntryAnchorId.EVENT_ANIMATION_SKIP, 760, 850, 400, 120),
             standard(EntryAnchorId.LINK_CHOICE_TITLE, 635, 40, 650, 110),

@@ -294,14 +294,25 @@ class LabyrinthEntryPageClassifier(
         val second = ranked.getOrNull(1)
         val bestRankingScore = rankingScores[best.key] ?: 0.0
         val secondRankingScore = second?.let { rankingScores[it.key] ?: 0.0 } ?: 0.0
+        // Events leave the map header and controls visible. A strong trigger banner plus a
+        // select button owns that overlay even when the underlying map scores higher.
+        val eventOverlayScore = minimum(
+            anchorScores[EntryAnchorId.EVENT_SINGLE_CHOICE_TRIGGER_TITLE],
+            anchorScores[EntryAnchorId.EVENT_SINGLE_CHOICE_SELECT_BUTTON],
+        )
         val state = when {
+            eventOverlayScore >= maxOf(minScore, EVENT_OVERLAY_MIN_SCORE) && best.key in setOf(
+                LabyrinthEntryPageState.NODE_SELECTION,
+                LabyrinthEntryPageState.NODE_MAP_VIEW,
+                LabyrinthEntryPageState.EVENT_CHOICE,
+            ) -> LabyrinthEntryPageState.EVENT_CHOICE
             best.value < minScore -> LabyrinthEntryPageState.UNKNOWN
             bestRankingScore - secondRankingScore < minMargin -> LabyrinthEntryPageState.UNKNOWN
             else -> best.key
         }
         return LabyrinthEntryPageObservation(
             state = state,
-            confidence = if (state == LabyrinthEntryPageState.UNKNOWN) 0.0 else best.value,
+            confidence = if (state == LabyrinthEntryPageState.UNKNOWN) 0.0 else stateScores.getValue(state),
             stateScores = stateScores,
             anchorScores = anchorScores,
             reason = if (state == LabyrinthEntryPageState.UNKNOWN) "entry-page-untrusted" else null,
@@ -337,6 +348,7 @@ class LabyrinthEntryPageClassifier(
     private fun minimum(vararg values: Double): Double = values.minOrNull() ?: 0.0
 
     private companion object {
+        const val EVENT_OVERLAY_MIN_SCORE = 0.65
         const val BATTLE_CHALLENGE_STRONG_BUTTON_SCORE = 0.80
         const val BATTLE_TEAM_STRONG_START_BUTTON_SCORE = 0.80
         const val BATTLE_RESULT_STRONG_NEXT_SCORE = 0.80

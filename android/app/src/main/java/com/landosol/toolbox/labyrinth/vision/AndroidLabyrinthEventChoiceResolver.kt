@@ -54,15 +54,14 @@ class AndroidLabyrinthEventChoiceResolver(
 ) {
     private val recognizer = LabyrinthEventTextRecognizer(data.events)
     private val layoutMapper = LabyrinthEventLayoutMapper(data.ocr.layouts)
-    private var cached: CachedOcr? = null
-    private var pendingFingerprint: Long? = null
+    private val ocrCache = LabyrinthEventOcrCache()
     private var lastEventId: String? = null
     private var stableFrames = 0
     private var lastOcrRequestAtMillis = Long.MIN_VALUE
 
     @Synchronized
     fun resolve(bitmap: Bitmap, result: LabyrinthEntryFrameResult): LabyrinthEntryFrameResult {
-        if (result.observation.state !in ELIGIBLE_STATES) {
+        if (result.nodeMoveConfirmation != null || result.observation.state !in ELIGIBLE_STATES) {
             clearPageState()
             return result
         }
@@ -98,10 +97,13 @@ class AndroidLabyrinthEventChoiceResolver(
             referenceRect = OCR_REFERENCE_RECT,
         ) ?: return result
         val fingerprint = differenceHash(bitmap, cropRect)
-        val observedText = cached?.takeIf { cache ->
-            java.lang.Long.bitCount(cache.fingerprint xor fingerprint) <= MAX_CACHE_HASH_DISTANCE
-        }?.text
+        val observedText = ocrCache.read(
+            LabyrinthEventOcrCache.Key(fingerprint, cropRect),
+            android.os.SystemClock.elapsedRealtime(),
+        )
         if (observedText == null) {
+            lastEventId = null
+            stableFrames = 0
             schedule(bitmap, cropRect, fingerprint)
             return result
         }
@@ -165,56 +167,34 @@ class AndroidLabyrinthEventChoiceResolver(
     }
 
     private fun schedule(bitmap: Bitmap, rect: EntryPixelRect, fingerprint: Long) {
-        if (pendingFingerprint != null) return
+        val now = android.os.SystemClock.elapsedRealtime()
+        val requestId = ocrCache.begin(LabyrinthEventOcrCache.Key(fingerprint, rect), now) ?: return
         val crop = Bitmap.createBitmap(bitmap, rect.left, rect.top, rect.width, rect.height)
-        pendingFingerprint = fingerprint
-        lastOcrRequestAtMillis = System.currentTimeMillis()
+        lastOcrRequestAtMillis = now
         runCatching {
             submitTextRead(crop) { text ->
                 synchronized(this) {
-                    val submitted = pendingFingerprint
-                    pendingFingerprint = null
-                    if (submitted == fingerprint && !text.isNullOrBlank()) {
-                        cached = CachedOcr(fingerprint, text.trim())
-                    }
+                    ocrCache.complete(requestId, text, android.os.SystemClock.elapsedRealtime())
                 }
                 if (!crop.isRecycled) crop.recycle()
             }
         }.onFailure {
-            pendingFingerprint = null
+            ocrCache.complete(requestId, null, android.os.SystemClock.elapsedRealtime())
             if (!crop.isRecycled) crop.recycle()
         }
     }
 
     /** A poor first OCR read must never pin a static event page forever. */
     private fun retryOcr(bitmap: Bitmap, rect: EntryPixelRect, fingerprint: Long) {
-        if (pendingFingerprint != null) return
-        val now = System.currentTimeMillis()
+        val now = android.os.SystemClock.elapsedRealtime()
         if (lastOcrRequestAtMillis != Long.MIN_VALUE &&
             now - lastOcrRequestAtMillis < MIN_OCR_RETRY_INTERVAL_MILLIS
         ) return
-        cached = null
         schedule(bitmap, rect, fingerprint)
     }
 
-    private fun blueButtonConfidence(bitmap: Bitmap, rect: EntryPixelRect): Double {
-        var blue = 0
-        var sampled = 0
-        for (row in 1..BUTTON_SAMPLE_ROWS) {
-            val y = rect.top + (row.toDouble() * (rect.height - 1) / (BUTTON_SAMPLE_ROWS + 1)).roundToInt()
-            for (column in 1..BUTTON_SAMPLE_COLUMNS) {
-                val x = rect.left +
-                    (column.toDouble() * (rect.width - 1) / (BUTTON_SAMPLE_COLUMNS + 1)).roundToInt()
-                val color = bitmap.getPixel(x, y)
-                val red = color ushr 16 and 0xff
-                val green = color ushr 8 and 0xff
-                val channelBlue = color and 0xff
-                if (channelBlue >= 105 && channelBlue >= red + 18 && channelBlue >= green - 25) blue++
-                sampled++
-            }
-        }
-        return if (sampled == 0) 0.0 else blue.toDouble() / sampled
-    }
+    private fun blueButtonConfidence(bitmap: Bitmap, rect: EntryPixelRect): Double =
+        labyrinthEventBlueButtonConfidence(rect, bitmap::getPixel)
 
     private fun differenceHash(bitmap: Bitmap, rect: EntryPixelRect): Long {
         var output = 0L
@@ -244,14 +224,12 @@ class AndroidLabyrinthEventChoiceResolver(
     }
 
     private fun clearPageState() {
-        cached = null
-        pendingFingerprint = null
+        ocrCache.clear()
         lastEventId = null
         stableFrames = 0
         lastOcrRequestAtMillis = Long.MIN_VALUE
     }
 
-    private data class CachedOcr(val fingerprint: Long, val text: String)
     private companion object {
         val ELIGIBLE_STATES = setOf(
             LabyrinthEntryPageState.UNKNOWN,
@@ -261,11 +239,8 @@ class AndroidLabyrinthEventChoiceResolver(
         val OCR_REFERENCE_RECT = EntryReferenceRect(150, 95, 1620, 750)
         const val EVENT_OCR_FEATURE = "entry.event_choice.ocr"
         const val REQUIRED_STABLE_FRAMES = 2
-        const val MAX_CACHE_HASH_DISTANCE = 8
         const val HASH_COLUMNS = 9
         const val HASH_ROWS = 8
-        const val BUTTON_SAMPLE_COLUMNS = 16
-        const val BUTTON_SAMPLE_ROWS = 8
         const val MINIMUM_EVENT_BUTTON_CANDIDATE = 0.12
         const val MIN_OCR_RETRY_INTERVAL_MILLIS = 1_500L
     }
