@@ -76,12 +76,34 @@ class LabyrinthCharacterRecognizer(
             referenceRect = slot.referenceRect,
         ) ?: return emptyMatch(slot.id)
         val requiredAttribute = if (slot.useAttributeBadge) recognizeRoleCardAttribute(frame, rect) else null
-        val match = requireNotNull(iconMatcher).match(
+        val matcher = requireNotNull(iconMatcher)
+        val initial = matcher.match(
             frame = frame,
             iconRect = rect,
             mask = slot.mask,
             requiredAttribute = requiredAttribute,
         )
+        // Reward portraits are large and stationary, but their rendered card border can shift a
+        // few pixels between emulator scaling paths.  The shared icon matcher intentionally has a
+        // permissive global trust floor; the irreversible three-choice page is stricter.  When an
+        // otherwise plausible reward portrait is close to that stricter line, spend a bounded
+        // local geometry search instead of repeatedly returning the same marginal crop forever.
+        val match = if (
+            slot.refineAmbiguousGeometry &&
+            (initial.confidence < ROLE_REWARD_GEOMETRY_REFINE_CONFIDENCE ||
+                initial.rivalMargin < ROLE_REWARD_GEOMETRY_REFINE_MARGIN)
+        ) {
+            matcher.refineMemberGeometry(
+                frame = frame,
+                iconRect = rect,
+                initial = initial,
+                mask = slot.mask,
+                requiredAttribute = requiredAttribute,
+                force = true,
+            )
+        } else {
+            initial
+        }
         return LabyrinthCharacterMatch(
             slotId = slot.id,
             characterId = match.characterId,
@@ -148,6 +170,7 @@ class LabyrinthCharacterRecognizer(
         val referenceRect: EntryReferenceRect,
         val mask: LabyrinthCharacterIconMask = LabyrinthCharacterIconMask(),
         val useAttributeBadge: Boolean = false,
+        val refineAmbiguousGeometry: Boolean = false,
     )
 
     /**
@@ -242,20 +265,29 @@ class LabyrinthCharacterRecognizer(
                 EntryReferenceRect(286, 365, 240, 240),
                 LabyrinthCharacterIconMask(ignoreRightEdge = true, ignoreBottomLeft = true),
                 useAttributeBadge = true,
+                refineAmbiguousGeometry = true,
             ),
             IconSlot(
                 "role_reward_center",
                 EntryReferenceRect(841, 365, 240, 240),
                 LabyrinthCharacterIconMask(ignoreRightEdge = true, ignoreBottomLeft = true),
                 useAttributeBadge = true,
+                refineAmbiguousGeometry = true,
             ),
             IconSlot(
                 "role_reward_right",
                 EntryReferenceRect(1395, 365, 240, 240),
                 LabyrinthCharacterIconMask(ignoreRightEdge = true, ignoreBottomLeft = true),
                 useAttributeBadge = true,
+                refineAmbiguousGeometry = true,
             ),
         )
+
+        // This is not a relaxed identity threshold. It only decides whether the fixed reward-card
+        // crop deserves the existing bounded ±pixel geometry calibration before the normal safety
+        // gates are evaluated by the role-reward planner.
+        const val ROLE_REWARD_GEOMETRY_REFINE_CONFIDENCE = 0.60
+        const val ROLE_REWARD_GEOMETRY_REFINE_MARGIN = 0.12
 
         const val ATTRIBUTE_BADGE_LEFT_RATIO = 0.78
         const val ATTRIBUTE_BADGE_TOP_RATIO = 0.76

@@ -335,6 +335,35 @@ class LabyrinthRoleDecisionDataTest {
     }
 
     @Test
+    fun `reward planner ignores one unsafe card and chooses between the two reliable cards`() {
+        val profiles = (acquiredProfiles() + listOf(
+            role("left", "普通可靠候选", damage = 40.0),
+            role("center", "更优可靠候选", damage = 95.0),
+            role("right", "未可靠候选", damage = 100.0),
+        )).associateBy(LabyrinthRoleProfile::characterId)
+        val planner = LabyrinthRoleRewardChoicePlanner(
+            profiles,
+            LabyrinthRoleChoicePolicy(LabyrinthTeamOptimizer(LabyrinthTeamScorer(scoring()))),
+        )
+
+        val result = planner.decide(
+            candidates = listOf(
+                trustedMatch("role_reward_left", "left", "普通可靠候选", confidence = 0.62, margin = 0.18),
+                trustedMatch("role_reward_center", "center", "更优可靠候选", confidence = 0.60, margin = 0.16),
+                trustedMatch("role_reward_right", "right", "未可靠候选", confidence = 0.50, margin = 0.07),
+            ),
+            acquiredCharacterIds = acquiredProfiles().map(LabyrinthRoleProfile::characterId).toSet(),
+            context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
+            frameWidth = 1920,
+            frameHeight = 1080,
+        ) as LabyrinthRoleRewardChoiceDecision.Select
+
+        assertEquals("center", result.characterId)
+        assertEquals(EntryPixelRect(815, 810, 290, 155), result.buttonRect)
+        assertTrue(result.safetyNote.orEmpty().contains("剩余2个可靠候选"))
+    }
+
+    @Test
     fun `all combined member ids canonicalize to one battle unit`() {
         val expected = mapOf(
             "1183" to "1807",

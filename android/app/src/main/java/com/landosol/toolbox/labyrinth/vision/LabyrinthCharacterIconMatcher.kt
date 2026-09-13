@@ -142,8 +142,9 @@ class LabyrinthCharacterIconMatcher(
             ignoreTopLeft = true,
         ),
         requiredAttribute: LabyrinthCharacterAttribute? = null,
+        force: Boolean = false,
     ): LabyrinthCharacterIconMatch {
-        if (initial.trusted) return initial
+        if (initial.trusted && !force) return initial
         val radius = (iconRect.width / 90.0).roundToInt().coerceIn(1, 3)
         val deltas = listOf(-radius, -1, 1, radius).distinct()
         val candidateRects = buildList {
@@ -173,14 +174,15 @@ class LabyrinthCharacterIconMatcher(
                 requiredAttribute = requiredAttribute,
             )
         }
-        return reconcileGeometryMatches(initial, alternatives)
+        return reconcileGeometryMatches(initial, alternatives, force = force)
     }
 
     internal fun reconcileGeometryMatches(
         initial: LabyrinthCharacterIconMatch,
         alternatives: List<LabyrinthCharacterIconMatch>,
+        force: Boolean = false,
     ): LabyrinthCharacterIconMatch {
-        if (initial.trusted) return initial
+        if (initial.trusted && !force) return initial
         // A rival from ANY crop must compete with the winner. Do not accept the first crop that
         // happens to clear the threshold, or compare star variants as different characters.
         val candidates = (listOf(initial) + alternatives).flatMap { it.candidates }

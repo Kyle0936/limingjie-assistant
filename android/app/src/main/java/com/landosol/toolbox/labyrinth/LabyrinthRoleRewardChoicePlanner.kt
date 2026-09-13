@@ -43,8 +43,9 @@ sealed interface LabyrinthRoleRewardChoiceDecision {
 }
 
 /**
- * Safety adapter between visual recognition and role scoring. It permits a tap only when all
- * three different candidates are trusted. Incomplete scoring data is advisory, not a tap gate.
+ * Safety adapter between visual recognition and role scoring. Normally all three candidates are
+ * scored. If exactly one portrait remains unsafe, the two independently safe cards can still be
+ * compared and tapped; the unknown card is never clicked or assigned a guessed identity.
  */
 class LabyrinthRoleRewardChoicePlanner(
     private val profiles: Map<String, LabyrinthRoleProfile>,
@@ -72,20 +73,23 @@ class LabyrinthRoleRewardChoicePlanner(
                 it.displayName.isNullOrBlank() ||
                 !labyrinthRoleRewardIdentityIsActionSafe(it)
         }
-        if (weak.isNotEmpty()) {
+        if (weak.size >= 2) {
             return LabyrinthRoleRewardChoiceDecision.Wait(
                 "角色头像识别未可信：${weak.joinToString { match ->
                     "${match.slotId}=${formatConfidence(match.confidence)}/差${formatConfidence(match.rivalMargin)}"
                 }}",
             )
         }
-        val candidateIds = ordered.map { canonicalLabyrinthRoleId(requireNotNull(it.characterId)) }
-        if (candidateIds.distinct().size != SLOT_IDS.size) {
-            return LabyrinthRoleRewardChoiceDecision.Wait("三个候选被识别成重复角色，拒绝点击")
+        val safeCandidates = ordered.filterNot(weak::contains)
+        val candidateIds = safeCandidates.map { canonicalLabyrinthRoleId(requireNotNull(it.characterId)) }
+        if (candidateIds.distinct().size != safeCandidates.size) {
+            return LabyrinthRoleRewardChoiceDecision.Wait("可靠候选被识别成重复角色，拒绝点击")
         }
         val canonicalAcquiredIds = acquiredCharacterIds.map(::canonicalLabyrinthRoleId).toSet()
         val knownProfiles = profiles.withKnownRoleIdentities(candidateIds + canonicalAcquiredIds,
-            ordered.associate { canonicalLabyrinthRoleId(requireNotNull(it.characterId)) to requireNotNull(it.displayName) })
+            safeCandidates.associate {
+                canonicalLabyrinthRoleId(requireNotNull(it.characterId)) to requireNotNull(it.displayName)
+            })
         val incompleteIds = (candidateIds + canonicalAcquiredIds).distinct()
             .filterNot { knownProfiles.getValue(it).isStrictDecisionReady }.sorted()
         val choice = roleChoicePolicy.chooseOneRole(
@@ -97,13 +101,20 @@ class LabyrinthRoleRewardChoicePlanner(
         )
         return when (choice) {
             is LabyrinthOneRoleDecision.Ready -> choice.toSelection(
-                candidateIds = candidateIds,
+                candidates = safeCandidates,
                 frameWidth = frameWidth,
                 frameHeight = frameHeight,
                 actionSafe = true,
-                safetyNote = incompleteIds.takeIf { it.isNotEmpty() }?.let {
-                    "部分角色资料不完整，按已有信息评分并允许自动选择：${it.joinToString()}"
-                },
+                safetyNote = buildList {
+                    weak.singleOrNull()?.let { failed ->
+                        add(
+                            "${failed.slotId}头像未达到安全线，已忽略该卡并在剩余2个可靠候选中选择",
+                        )
+                    }
+                    incompleteIds.takeIf { it.isNotEmpty() }?.let {
+                        add("部分角色资料不完整，按已有信息评分：${it.joinToString()}")
+                    }
+                }.takeIf { it.isNotEmpty() }?.joinToString("；"),
             )
             is LabyrinthOneRoleDecision.Unavailable -> LabyrinthRoleRewardChoiceDecision.Wait(choice.reason)
         }
@@ -181,13 +192,17 @@ class LabyrinthRoleRewardChoicePlanner(
     }
 
     private fun LabyrinthOneRoleDecision.Ready.toSelection(
-        candidateIds: List<String>,
+        candidates: List<LabyrinthCharacterMatch>,
         frameWidth: Int,
         frameHeight: Int,
         actionSafe: Boolean,
         safetyNote: String? = null,
     ): LabyrinthRoleRewardChoiceDecision {
-        val slotIndex = candidateIds.indexOf(chosen.characterId)
+        val chosenMatch = candidates.firstOrNull { match ->
+            match.characterId?.let(::canonicalLabyrinthRoleId) == chosen.characterId
+        } ?: return LabyrinthRoleRewardChoiceDecision.Wait("推荐角色不在当前可靠候选中")
+        val slotIndex = SLOT_IDS.indexOf(chosenMatch.slotId)
+        if (slotIndex < 0) return LabyrinthRoleRewardChoiceDecision.Wait("推荐角色槽位无法映射到选择按钮")
         val buttonRect = ReferenceFitMapper.map(
             frameWidth = frameWidth,
             frameHeight = frameHeight,

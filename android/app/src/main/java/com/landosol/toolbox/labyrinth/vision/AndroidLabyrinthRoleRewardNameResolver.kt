@@ -80,7 +80,32 @@ class AndroidLabyrinthRoleRewardNameResolver(
             nameEvidenceScore = evidence.score,
             nameEvidenceMargin = evidence.margin,
         )
-        if (!evidence.trusted) return evidenceOnly
+        if (!evidence.trusted) {
+            val singleCharacter = roleRewardSingleCharacterOcrAssist(
+                observedText = observedText,
+                candidates = candidates,
+                suspectedCharacterId = match.suspectedCharacterId,
+                iconConfidence = match.confidence,
+                iconMargin = match.rivalMargin,
+            ) ?: return evidenceOnly
+            val strongestOther = candidates
+                .filter { it.characterId != singleCharacter.characterId }
+                .maxOfOrNull(LabyrinthCharacterIconCandidate::confidence)
+                ?: 0.0
+            return evidenceOnly.copy(
+                characterId = singleCharacter.characterId,
+                displayName = singleCharacter.displayName,
+                iconVariant = singleCharacter.iconVariant,
+                confidence = singleCharacter.confidence,
+                rivalMargin = singleCharacter.confidence - strongestOther,
+                trusted = true,
+                suspectedCharacterId = singleCharacter.characterId,
+                suspectedDisplayName = singleCharacter.displayName,
+                nameEvidenceScore = SINGLE_CHARACTER_OCR_ASSIST_SCORE,
+                nameEvidenceMargin = SINGLE_CHARACTER_OCR_ASSIST_MARGIN,
+                nameAssisted = true,
+            )
+        }
 
         val chosen = candidates.firstOrNull { it.characterId == evidence.characterId }
             ?: return evidenceOnly
@@ -177,7 +202,39 @@ class AndroidLabyrinthRoleRewardNameResolver(
         const val MAX_NEW_OCR_RUNS_PER_FRAME = 1
         const val HASH_COLUMNS = 9
         const val HASH_ROWS = 8
+        const val SINGLE_CHARACTER_OCR_ASSIST_SCORE = 0.82
+        const val SINGLE_CHARACTER_OCR_ASSIST_MARGIN = 0.16
     }
+}
+
+/**
+ * Single-character role names are a special OCR failure mode: a visually similar Han glyph can be
+ * substituted every frame (露 -> 路 in a live report), while edit-distance=1 is meaningless for an
+ * arbitrary one-character vocabulary.  Do not maintain a hand-written glyph table.  Instead allow
+ * text to break the tie only when the icon shortlist itself supplies exactly one one-character
+ * role and that role is already the portrait matcher's moderately separated best hypothesis.
+ */
+internal fun roleRewardSingleCharacterOcrAssist(
+    observedText: String,
+    candidates: List<LabyrinthCharacterIconCandidate>,
+    suspectedCharacterId: String?,
+    iconConfidence: Double,
+    iconMargin: Double,
+): LabyrinthCharacterIconCandidate? {
+    val observed = observedText.filter(Char::isLetterOrDigit)
+    if (observed.length != 1) return null
+    if (iconConfidence < 0.45 || iconMargin < 0.06) return null
+    val singleCharacterCandidates = candidates.filter { candidate ->
+        val names = sequenceOf(candidate.displayName) + candidate.aliases.asSequence()
+        names.any { name ->
+            name.substringBefore('(').substringBefore('（')
+                .filter(Char::isLetterOrDigit)
+                .length == 1
+        }
+    }
+    if (singleCharacterCandidates.size != 1) return null
+    return singleCharacterCandidates.single()
+        .takeIf { it.characterId == suspectedCharacterId }
 }
 
 /**

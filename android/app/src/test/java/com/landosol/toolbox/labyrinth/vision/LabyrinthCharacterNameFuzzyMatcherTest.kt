@@ -28,6 +28,33 @@ class LabyrinthCharacterNameFuzzyMatcherTest {
     }
 
     @Test
+    fun `single character OCR typo may assist only the unique one character icon candidate`() {
+        val assisted = roleRewardSingleCharacterOcrAssist(
+            observedText = "路",
+            candidates = listOf(
+                LabyrinthCharacterIconCandidate("1093", "露", "31", 0.503),
+                LabyrinthCharacterIconCandidate("rival", "其他角色", "31", 0.430),
+            ),
+            suspectedCharacterId = "1093",
+            iconConfidence = 0.503,
+            iconMargin = 0.073,
+        )
+        assertEquals("1093", assisted?.characterId)
+
+        val ambiguous = roleRewardSingleCharacterOcrAssist(
+            observedText = "路",
+            candidates = listOf(
+                LabyrinthCharacterIconCandidate("1093", "露", "31", 0.503),
+                LabyrinthCharacterIconCandidate("one", "怜", "31", 0.430),
+            ),
+            suspectedCharacterId = "1093",
+            iconConfidence = 0.503,
+            iconMargin = 0.073,
+        )
+        assertEquals(null, ambiguous)
+    }
+
+    @Test
     fun `complete multiline variant name separates variant from original`() {
         for (text in listOf("优衣\n（新年）", "优衣 ( 新年 )", "优衣 新年")) {
             val result = matcher.match(text, yuiVariants)
