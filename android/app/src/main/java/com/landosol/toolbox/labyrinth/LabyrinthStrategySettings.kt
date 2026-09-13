@@ -31,8 +31,10 @@ data class LabyrinthStrategySettings(
     val bossTeamMode: LabyrinthBossTeamMode = LabyrinthBossTeamMode.MULTI_TEAM,
     /** Boss-only soft preference: favor a coherent physical or magic damage system. */
     val preferPureBossDamageSystem: Boolean = true,
-    /** Single-team Boss fallback: after three failed attempts, retry this Boss in multi-team mode. */
+    /** Single-team Boss fallback: after the configured retries are exhausted, retry in multi-team mode. */
     val singleBossFallbackToMultiAfterThreeFailures: Boolean = true,
+    /** Number of "重新挑战" taps allowed in single-team Boss mode before switching to multi-team. */
+    val singleBossRetryCountBeforeMulti: Int = 2,
     /** After the third failed combat attempt, abandon the run and start rerolling via the API. */
     val rerollAfterThreeBattleFailures: Boolean = true,
     val baselineLastArea: Int = 3,
@@ -55,6 +57,7 @@ data class LabyrinthStrategySettings(
         duplicateRolePenalty !in 0..30 -> "重复纯职能扣分必须在 0–30 之间"
         mixedDamagePenalty !in 0..30 -> "物法混编扣分必须在 0–30 之间"
         effectiveCharacterSystemBonus !in 0..30 -> "有效效果角色系统加分必须在 0–30 之间"
+        singleBossRetryCountBeforeMulti !in 0..10 -> "单队Boss重试次数必须在 0–10 之间"
         baselineLastArea !in 0..5 -> "补基础层数的截止区域必须在 0–5 之间"
         baselineTarget !in 1..4 -> "基础目标层数必须在 1–4 之间"
         debuffPivotMinimum !in 5..15 -> "转追削弱的最低层数必须在 5–15 之间"

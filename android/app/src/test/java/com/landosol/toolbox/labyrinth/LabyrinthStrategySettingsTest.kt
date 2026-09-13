@@ -12,6 +12,7 @@ class LabyrinthStrategySettingsTest {
         assertTrue(LabyrinthStrategySettings().preferPureBossDamageSystem)
         assertTrue(LabyrinthStrategySettings().attributePairingBonusEnabled)
         assertTrue(LabyrinthStrategySettings().singleBossFallbackToMultiAfterThreeFailures)
+        assertEquals(2, LabyrinthStrategySettings().singleBossRetryCountBeforeMulti)
         assertTrue(LabyrinthStrategySettings().rerollAfterThreeBattleFailures)
         assertEquals(15, LabyrinthStrategySettings().mixedDamagePenalty)
         assertEquals(8, LabyrinthStrategySettings().effectiveCharacterSystemBonus)
@@ -22,6 +23,7 @@ class LabyrinthStrategySettingsTest {
             bossTeamMode = LabyrinthBossTeamMode.SINGLE_TEAM,
             preferPureBossDamageSystem = false,
             singleBossFallbackToMultiAfterThreeFailures = false,
+            singleBossRetryCountBeforeMulti = 5,
             rerollAfterThreeBattleFailures = false,
             attributePairingBonusEnabled = false,
             mixedDamagePenalty = 21, effectiveCharacterSystemBonus = 6,
@@ -35,6 +37,7 @@ class LabyrinthStrategySettingsTest {
         assertTrue(decoded.preferPureBossDamageSystem)
         assertTrue(decoded.attributePairingBonusEnabled)
         assertTrue(decoded.singleBossFallbackToMultiAfterThreeFailures)
+        assertEquals(2, decoded.singleBossRetryCountBeforeMulti)
         assertTrue(decoded.rerollAfterThreeBattleFailures)
     }
 
@@ -82,6 +85,8 @@ class LabyrinthStrategySettingsTest {
         listOf(LabyrinthStrategySettings(duplicateRolePenalty = 31),
             LabyrinthStrategySettings(mixedDamagePenalty = 31),
             LabyrinthStrategySettings(effectiveCharacterSystemBonus = 31),
+            LabyrinthStrategySettings(singleBossRetryCountBeforeMulti = 11),
+            LabyrinthStrategySettings(singleBossRetryCountBeforeMulti = -1),
             LabyrinthStrategySettings(secondTeamWeight = -1), LabyrinthStrategySettings(baselineTarget = 0),
             LabyrinthStrategySettings(debuffPivotMinimum = 4), LabyrinthStrategySettings(debuffPivotTolerance = 6),
             LabyrinthStrategySettings(refreshFromArea = 0), LabyrinthStrategySettings(normalWinRate = 101))

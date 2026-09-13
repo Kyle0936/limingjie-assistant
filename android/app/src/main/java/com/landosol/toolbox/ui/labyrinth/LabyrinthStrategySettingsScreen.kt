@@ -129,17 +129,29 @@ fun LabyrinthStrategySettingsScreen(
                         !saving,
                     ) { draft = draft.copy(preferPureBossDamageSystem = it) }
                     StrategySwitch(
-                        "单队Boss 3次失败后切换多队",
-                        "仅单队编组生效。首次挑战 + 2次重新挑战都失败后，不直接重刷开局，而是返回编组并临时切换为多队模式；随后按当前角色池自动使用可安全组成的3/2/1队。不会永久修改你的Boss编组设置。",
+                        "单队Boss失败后切换多队",
+                        "仅单队编组生效。达到下面设置的重新挑战次数后仍失败，不直接重刷开局，而是返回编组并临时切换为多队模式；随后按当前角色池自动使用可安全组成的3/2/1队。不会永久修改你的Boss编组设置。",
                         draft.singleBossFallbackToMultiAfterThreeFailures,
                         !saving,
                     ) { draft = draft.copy(singleBossFallbackToMultiAfterThreeFailures = it) }
+                    StrategyNumber(
+                        "单队Boss重新挑战次数",
+                        draft.singleBossRetryCountBeforeMulti,
+                        0..10,
+                        "次",
+                        !saving && draft.singleBossFallbackToMultiAfterThreeFailures,
+                    ) { draft = draft.copy(singleBossRetryCountBeforeMulti = it) }
+                    Text(
+                        "当前设置：首次挑战失败后最多重新挑战 ${draft.singleBossRetryCountBeforeMulti} 次；" +
+                            "第 ${draft.singleBossRetryCountBeforeMulti + 1} 次挑战仍失败时切换多队。0 表示首次失败就切多队。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
                 }
                 StrategySection(
                     "战斗失败",
                     when {
                         draft.bossTeamMode == LabyrinthBossTeamMode.SINGLE_TEAM && draft.singleBossFallbackToMultiAfterThreeFailures ->
-                            "单队3次失败先切多队"
+                            "单队${draft.singleBossRetryCountBeforeMulti + 1}次挑战失败后切多队"
                         draft.rerollAfterThreeBattleFailures -> "3次失败后自动重刷"
                         else -> "达到原重试上限后停止"
                     },

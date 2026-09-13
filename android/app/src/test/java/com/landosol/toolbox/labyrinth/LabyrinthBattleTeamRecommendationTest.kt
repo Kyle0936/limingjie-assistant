@@ -499,13 +499,13 @@ class LabyrinthBattleTeamRecommendationTest {
     }
 
     @Test
-    fun `single boss fallback gets three attempts then switches to multi before reroll`() {
+    fun `single boss fallback retry count is configurable and switches before reroll`() {
         assertEquals(
-            2,
+            4,
             labyrinthEffectiveBattleRetryLimit(
                 LabyrinthCombatKind.BOSS,
                 rerollAfterThreeFailures = false,
-                singleBossFallbackAfterThreeFailures = true,
+                singleBossFallbackRetryCount = 4,
             ),
         )
         assertFalse(
@@ -513,7 +513,8 @@ class LabyrinthBattleTeamRecommendationTest {
                 enabled = true,
                 kind = LabyrinthCombatKind.BOSS,
                 mode = LabyrinthBossTeamMode.SINGLE_TEAM,
-                battleRetryCount = 1,
+                battleRetryCount = 3,
+                retryCountBeforeMulti = 4,
             ),
         )
         assertTrue(
@@ -521,7 +522,17 @@ class LabyrinthBattleTeamRecommendationTest {
                 enabled = true,
                 kind = LabyrinthCombatKind.BOSS,
                 mode = LabyrinthBossTeamMode.SINGLE_TEAM,
-                battleRetryCount = 2,
+                battleRetryCount = 4,
+                retryCountBeforeMulti = 4,
+            ),
+        )
+        assertTrue(
+            labyrinthShouldSwitchSingleBossToMulti(
+                enabled = true,
+                kind = LabyrinthCombatKind.BOSS,
+                mode = LabyrinthBossTeamMode.SINGLE_TEAM,
+                battleRetryCount = 0,
+                retryCountBeforeMulti = 0,
             ),
         )
         assertFalse(
@@ -529,7 +540,8 @@ class LabyrinthBattleTeamRecommendationTest {
                 enabled = true,
                 kind = LabyrinthCombatKind.BOSS,
                 mode = LabyrinthBossTeamMode.MULTI_TEAM,
-                battleRetryCount = 2,
+                battleRetryCount = 4,
+                retryCountBeforeMulti = 4,
             ),
         )
         assertFalse(
@@ -537,7 +549,8 @@ class LabyrinthBattleTeamRecommendationTest {
                 enabled = false,
                 kind = LabyrinthCombatKind.BOSS,
                 mode = LabyrinthBossTeamMode.SINGLE_TEAM,
-                battleRetryCount = 2,
+                battleRetryCount = 4,
+                retryCountBeforeMulti = 4,
             ),
         )
     }
