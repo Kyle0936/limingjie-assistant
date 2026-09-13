@@ -223,7 +223,11 @@ class AndroidLabyrinthExEncounterResolver(
 
         // Calibrated from the current 1920x1080 monster-detail modal.  The name row is deliberately
         // isolated from HP numbers and the long description so fuzzy matching has very little noise.
-        val DETAIL_NAME_RECT = EntryReferenceRect(530, 135, 850, 105)
+        // Keep only the actual name row. The previous 530..1380 x 135..240 crop included the
+        // decorative blue curl to the left (OCR'd as a stable leading "C" on 爆炸・遗物), the
+        // underline and the top edge of the stats panel. A tighter static crop also gives the OCR
+        // scheduler a stable fingerprint so its required second independent read can complete.
+        val DETAIL_NAME_RECT = EntryReferenceRect(585, 140, 795, 70)
         val DETAIL_CLOSE_RECT = EntryReferenceRect(750, 915, 420, 115)
         val DETAIL_HEADER_SAMPLE = EntryReferenceRect(500, 45, 900, 90)
         val DETAIL_NAME_SAMPLE = EntryReferenceRect(540, 140, 820, 90)

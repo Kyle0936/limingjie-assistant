@@ -36,6 +36,25 @@ class LabyrinthExEncounterCatalogTest {
     }
 
     @Test
+    fun `explosion relic tolerates one decorative leading ascii OCR glyph only`() {
+        val formal = requireNotNull(LabyrinthExEncounterCatalog.matchObservedName("爆炸・遗物"))
+        val liveOcr = requireNotNull(LabyrinthExEncounterCatalog.matchObservedName("C爆炸·遗物"))
+
+        assertEquals("multi_explosion_relic", formal.id)
+        assertEquals(formal.id, liveOcr.id)
+        assertEquals("爆炸・遗物", liveOcr.identityName)
+        assertEquals(5, liveOcr.targetCount)
+    }
+
+    @Test
+    fun `arbitrary surrounding detail text is not a perfect encounter name match`() {
+        assertEquals(
+            null,
+            LabyrinthExEncounterCatalog.matchObservedName("Lv370说明爆炸・遗物测试"),
+        )
+    }
+
+    @Test
     fun `single target boss name resolves directly from challenge page OCR`() {
         val strategy = requireNotNull(LabyrinthExEncounterCatalog.matchObservedName("幽灵领主"))
 

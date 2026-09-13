@@ -297,12 +297,16 @@ object LabyrinthExEncounterCatalog {
     fun matchObservedName(text: String?): LabyrinthExEncounterStrategy? {
         val observed = normalizeEncounterName(text ?: return null)
         if (observed.isBlank()) return null
+        val observedVariants = encounterObservedNameVariants(observed)
         return all
             .filterNot { it.identityName.startsWith("？？？") }
             .map { strategy ->
                 val names = sequenceOf(strategy.identityName) + strategy.identityAliases.asSequence()
                 strategy to names.maxOf { name ->
-                    encounterNameSimilarity(normalizeEncounterName(name), observed)
+                    val expected = normalizeEncounterName(name)
+                    observedVariants.maxOf { candidate ->
+                        encounterNameSimilarity(expected, candidate)
+                    }
                 }
             }
             .filter { (_, score) -> score >= MIN_NAME_SCORE }
@@ -324,9 +328,32 @@ object LabyrinthExEncounterCatalog {
         .replace('）', ')')
         .lowercase()
 
+    /**
+     * Monster-detail titles have a decorative blue curl immediately to the left of the name.
+     * Android OCR can consistently turn a clipped piece of that curl into one ASCII glyph (the
+     * live 爆炸・遗物 sample produced "C爆炸・遗物").  Repair only one non-CJK edge glyph; never
+     * use arbitrary substring containment as an OCR shortcut.
+     */
+    private fun encounterObservedNameVariants(observed: String): Set<String> = buildSet {
+        add(observed)
+        if (observed.length >= 4 && observed.first().isEncounterEdgeNoise()) {
+            add(observed.drop(1))
+        }
+        if (observed.length >= 4 && observed.last().isEncounterEdgeNoise()) {
+            add(observed.dropLast(1))
+        }
+    }
+
+    private fun Char.isEncounterEdgeNoise(): Boolean = code < 128 &&
+        (isLetterOrDigit() || this in setOf(':', ';', '|', '[', ']', '{', '}', '<', '>', '_'))
+
     private fun encounterNameSimilarity(expected: String, observed: String): Double {
-        if (observed.contains(expected) || expected.contains(observed) && observed.length >= 3) return 1.0
-        val lcs = longestCommonSubsequence(expected, observed).toDouble() / max(1, expected.length)
+        if (expected == observed) return 1.0
+        // Use the longer string as the denominator. The old expected-only denominator gave
+        // "C爆炸・遗物" a perfect 1.0 simply because it contained the known name, and broad title
+        // decorations/text could therefore masquerade as a clean identity match.
+        val lcs = longestCommonSubsequence(expected, observed).toDouble() /
+            max(1, max(expected.length, observed.length))
         val expectedBigrams = expected.windowed(2).toSet()
         val observedBigrams = observed.windowed(2).toSet()
         val dice = if (expectedBigrams.isEmpty() || observedBigrams.isEmpty()) 0.0 else {
@@ -349,7 +376,7 @@ object LabyrinthExEncounterCatalog {
         return previous.last()
     }
 
-    private const val MIN_NAME_SCORE = 0.66
+    private const val MIN_NAME_SCORE = 0.72
     private const val MIN_NAME_MARGIN = 0.08
 }
 
