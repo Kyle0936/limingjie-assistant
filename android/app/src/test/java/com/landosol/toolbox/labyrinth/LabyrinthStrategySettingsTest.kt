@@ -11,6 +11,7 @@ class LabyrinthStrategySettingsTest {
         assertEquals(LabyrinthBossTeamMode.MULTI_TEAM, LabyrinthStrategySettings().bossTeamMode)
         assertTrue(LabyrinthStrategySettings().preferPureBossDamageSystem)
         assertTrue(LabyrinthStrategySettings().attributePairingBonusEnabled)
+        assertTrue(LabyrinthStrategySettings().singleBossFallbackToMultiAfterThreeFailures)
         assertTrue(LabyrinthStrategySettings().rerollAfterThreeBattleFailures)
         assertEquals(15, LabyrinthStrategySettings().mixedDamagePenalty)
         assertEquals(8, LabyrinthStrategySettings().effectiveCharacterSystemBonus)
@@ -20,6 +21,7 @@ class LabyrinthStrategySettingsTest {
         val settings = LabyrinthStrategySettings(playerWeight = 45, secondTeamWeight = 80,
             bossTeamMode = LabyrinthBossTeamMode.SINGLE_TEAM,
             preferPureBossDamageSystem = false,
+            singleBossFallbackToMultiAfterThreeFailures = false,
             rerollAfterThreeBattleFailures = false,
             attributePairingBonusEnabled = false,
             mixedDamagePenalty = 21, effectiveCharacterSystemBonus = 6,
@@ -32,6 +34,7 @@ class LabyrinthStrategySettingsTest {
         assertEquals(LabyrinthBossTeamMode.MULTI_TEAM, decoded.bossTeamMode)
         assertTrue(decoded.preferPureBossDamageSystem)
         assertTrue(decoded.attributePairingBonusEnabled)
+        assertTrue(decoded.singleBossFallbackToMultiAfterThreeFailures)
         assertTrue(decoded.rerollAfterThreeBattleFailures)
     }
 

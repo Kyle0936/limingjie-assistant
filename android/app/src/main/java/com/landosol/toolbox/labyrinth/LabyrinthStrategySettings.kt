@@ -31,6 +31,8 @@ data class LabyrinthStrategySettings(
     val bossTeamMode: LabyrinthBossTeamMode = LabyrinthBossTeamMode.MULTI_TEAM,
     /** Boss-only soft preference: favor a coherent physical or magic damage system. */
     val preferPureBossDamageSystem: Boolean = true,
+    /** Single-team Boss fallback: after three failed attempts, retry this Boss in multi-team mode. */
+    val singleBossFallbackToMultiAfterThreeFailures: Boolean = true,
     /** After the third failed combat attempt, abandon the run and start rerolling via the API. */
     val rerollAfterThreeBattleFailures: Boolean = true,
     val baselineLastArea: Int = 3,

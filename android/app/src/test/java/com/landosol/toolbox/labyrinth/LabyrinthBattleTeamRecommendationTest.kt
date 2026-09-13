@@ -498,6 +498,50 @@ class LabyrinthBattleTeamRecommendationTest {
         assertFalse(labyrinthShouldRerollAfterBattleFailure(false, 2))
     }
 
+    @Test
+    fun `single boss fallback gets three attempts then switches to multi before reroll`() {
+        assertEquals(
+            2,
+            labyrinthEffectiveBattleRetryLimit(
+                LabyrinthCombatKind.BOSS,
+                rerollAfterThreeFailures = false,
+                singleBossFallbackAfterThreeFailures = true,
+            ),
+        )
+        assertFalse(
+            labyrinthShouldSwitchSingleBossToMulti(
+                enabled = true,
+                kind = LabyrinthCombatKind.BOSS,
+                mode = LabyrinthBossTeamMode.SINGLE_TEAM,
+                battleRetryCount = 1,
+            ),
+        )
+        assertTrue(
+            labyrinthShouldSwitchSingleBossToMulti(
+                enabled = true,
+                kind = LabyrinthCombatKind.BOSS,
+                mode = LabyrinthBossTeamMode.SINGLE_TEAM,
+                battleRetryCount = 2,
+            ),
+        )
+        assertFalse(
+            labyrinthShouldSwitchSingleBossToMulti(
+                enabled = true,
+                kind = LabyrinthCombatKind.BOSS,
+                mode = LabyrinthBossTeamMode.MULTI_TEAM,
+                battleRetryCount = 2,
+            ),
+        )
+        assertFalse(
+            labyrinthShouldSwitchSingleBossToMulti(
+                enabled = false,
+                kind = LabyrinthCombatKind.BOSS,
+                mode = LabyrinthBossTeamMode.SINGLE_TEAM,
+                battleRetryCount = 2,
+            ),
+        )
+    }
+
     private fun recommendationPlanner(
         profiles: Map<String, LabyrinthRoleProfile>,
     ): LabyrinthBattleTeamRecommendationPlanner {

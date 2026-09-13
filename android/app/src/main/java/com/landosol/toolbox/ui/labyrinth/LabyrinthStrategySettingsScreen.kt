@@ -109,7 +109,7 @@ fun LabyrinthStrategySettingsScreen(
                     section,
                     { section = it },
                 ) {
-                    Text("多队模式会依次编组 Boss 第1、2、3队，并避免复用前队角色；单队模式只编第一队。每支实际编组队伍仍要求最前站位为 T。物法偏好是软限制，不会为了纯体系牺牲明显更强或更能生存的阵容。")
+                    Text("多队模式会按当前角色池自动使用可安全组成的3/2/1队，并优化多队总评分；单队模式只编第一队。每支实际编组队伍都要求一号位达到生存资格。物法偏好是软限制，不会为了纯体系牺牲明显更强或更能生存的阵容。")
                     StrategyRadioChoice(
                         label = "多队编组",
                         detail = "默认。依次生成并自动配置三支互不重复的 Boss 队伍。",
@@ -128,10 +128,21 @@ fun LabyrinthStrategySettingsScreen(
                         draft.preferPureBossDamageSystem,
                         !saving,
                     ) { draft = draft.copy(preferPureBossDamageSystem = it) }
+                    StrategySwitch(
+                        "单队Boss 3次失败后切换多队",
+                        "仅单队编组生效。首次挑战 + 2次重新挑战都失败后，不直接重刷开局，而是返回编组并临时切换为多队模式；随后按当前角色池自动使用可安全组成的3/2/1队。不会永久修改你的Boss编组设置。",
+                        draft.singleBossFallbackToMultiAfterThreeFailures,
+                        !saving,
+                    ) { draft = draft.copy(singleBossFallbackToMultiAfterThreeFailures = it) }
                 }
                 StrategySection(
                     "战斗失败",
-                    if (draft.rerollAfterThreeBattleFailures) "3次失败后自动重刷" else "达到原重试上限后停止",
+                    when {
+                        draft.bossTeamMode == LabyrinthBossTeamMode.SINGLE_TEAM && draft.singleBossFallbackToMultiAfterThreeFailures ->
+                            "单队3次失败先切多队"
+                        draft.rerollAfterThreeBattleFailures -> "3次失败后自动重刷"
+                        else -> "达到原重试上限后停止"
+                    },
                     section,
                     { section = it },
                 ) {

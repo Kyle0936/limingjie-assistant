@@ -189,13 +189,27 @@ internal fun labyrinthBattleRetryLimit(kind: LabyrinthCombatKind): Int = when (k
 internal fun labyrinthEffectiveBattleRetryLimit(
     kind: LabyrinthCombatKind,
     rerollAfterThreeFailures: Boolean,
-): Int = if (rerollAfterThreeFailures) {
+    singleBossFallbackAfterThreeFailures: Boolean = false,
+): Int = if (
+    rerollAfterThreeFailures ||
+    (kind == LabyrinthCombatKind.BOSS && singleBossFallbackAfterThreeFailures)
+) {
     maxOf(labyrinthBattleRetryLimit(kind), 2)
 } else {
     labyrinthBattleRetryLimit(kind)
 }
 
 /** battleRetryCount counts successful "重新挑战" taps; retryCount=2 means the third attempt failed. */
+internal fun labyrinthShouldSwitchSingleBossToMulti(
+    enabled: Boolean,
+    kind: LabyrinthCombatKind,
+    mode: LabyrinthBossTeamMode,
+    battleRetryCount: Int,
+): Boolean = enabled &&
+    kind == LabyrinthCombatKind.BOSS &&
+    mode == LabyrinthBossTeamMode.SINGLE_TEAM &&
+    battleRetryCount >= 2
+
 internal fun labyrinthShouldRerollAfterBattleFailure(
     rerollAfterThreeFailures: Boolean,
     battleRetryCount: Int,
@@ -661,8 +675,11 @@ class LabyrinthEntryRecognitionSession(
     private var preparedBossFirstTeamIds: List<String> = emptyList()
     /** Chosen safe team count for the current Boss multi-team attempt; 1/2 teams leave later tabs empty. */
     private var bossMultiTeamTargetCount: Int? = null
+    private var configuredBossTeamMode: LabyrinthBossTeamMode = LabyrinthBossTeamMode.MULTI_TEAM
     private var bossTeamMode: LabyrinthBossTeamMode = LabyrinthBossTeamMode.MULTI_TEAM
     private var preferPureBossDamageSystem: Boolean = true
+    private var singleBossFallbackToMultiAfterThreeFailures: Boolean = false
+    private var pendingSingleBossFallbackToMulti: Boolean = false
     private var rerollAfterThreeBattleFailures: Boolean = false
     @Volatile
     private var lastObservedPageState: LabyrinthEntryPageState? = null
@@ -885,9 +902,14 @@ class LabyrinthEntryRecognitionSession(
             is AutomationSessionStartResult.Started -> started.session
         }
         rerollAfterThreeBattleFailures = false
+        singleBossFallbackToMultiAfterThreeFailures = false
+        pendingSingleBossFallbackToMulti = false
         strategySnapshot?.let { snapshot ->
-            bossTeamMode = snapshot.settings.bossTeamMode
+            configuredBossTeamMode = snapshot.settings.bossTeamMode
+            bossTeamMode = configuredBossTeamMode
             preferPureBossDamageSystem = snapshot.settings.preferPureBossDamageSystem
+            singleBossFallbackToMultiAfterThreeFailures =
+                snapshot.settings.singleBossFallbackToMultiAfterThreeFailures
             rerollAfterThreeBattleFailures = snapshot.settings.rerollAfterThreeBattleFailures
             relicChoicePolicy = snapshot.settings.relicPolicy()
             shopPolicy = LabyrinthShopPolicy(
@@ -3487,8 +3509,17 @@ class LabyrinthEntryRecognitionSession(
                 finishFromPlanner(sessionId, "已识别战斗失败页，但缺少本次战斗上下文；未自动点击结束或重新挑战")
                 return
             }
+            if (!pendingSingleBossFallbackToMulti) {
+                pendingSingleBossFallbackToMulti = labyrinthShouldSwitchSingleBossToMulti(
+                    enabled = singleBossFallbackToMultiAfterThreeFailures,
+                    kind = context.kind,
+                    mode = bossTeamMode,
+                    battleRetryCount = battleRetryCount,
+                )
+            }
             if (
                 !_state.value.dryRun &&
+                !pendingSingleBossFallbackToMulti &&
                 labyrinthShouldRerollAfterBattleFailure(
                     rerollAfterThreeFailures = rerollAfterThreeBattleFailures,
                     battleRetryCount = battleRetryCount,
@@ -3503,8 +3534,10 @@ class LabyrinthEntryRecognitionSession(
             val retryLimit = labyrinthEffectiveBattleRetryLimit(
                 kind = context.kind,
                 rerollAfterThreeFailures = rerollAfterThreeBattleFailures,
+                singleBossFallbackAfterThreeFailures = singleBossFallbackToMultiAfterThreeFailures &&
+                    bossTeamMode == LabyrinthBossTeamMode.SINGLE_TEAM,
             )
-            if (battleRetryCount >= retryLimit) {
+            if (!pendingSingleBossFallbackToMulti && battleRetryCount >= retryLimit) {
                 finishFromPlanner(
                     sessionId,
                     "${labyrinthBattleKindLabel(context.kind)}已达到自动重试上限：" +
@@ -3892,7 +3925,11 @@ class LabyrinthEntryRecognitionSession(
 
             LabyrinthEntryPageState.BATTLE_FAILED ->
                 result.battleFailure?.let { failure ->
-                    "战斗失败：重新挑战" to failure.retryButtonRect
+                    (if (pendingSingleBossFallbackToMulti) {
+                        "Boss单队3次失败：切换多队重新挑战"
+                    } else {
+                        "战斗失败：重新挑战"
+                    }) to failure.retryButtonRect
                 }
 
             LabyrinthEntryPageState.BATTLE_CHALLENGE ->
@@ -4382,7 +4419,9 @@ class LabyrinthEntryRecognitionSession(
                             exSlot3ProbePending = false
                             exEncounterProbeStartedAt = Long.MIN_VALUE
                         }
-                        "战斗失败：重新挑战" -> {
+                        "战斗失败：重新挑战",
+                        "Boss单队3次失败：切换多队重新挑战"
+                        -> {
                             synchronized(failedBattleTeamSignatures) {
                                 failedBattleTeamSignatures += currentBattleTeamSignatures
                             }
@@ -4392,7 +4431,14 @@ class LabyrinthEntryRecognitionSession(
                             synchronized(committedBattleCharacterIds) {
                                 committedBattleCharacterIds.clear()
                             }
-                            battleRetryCount++
+                            if (pendingSingleBossFallbackToMulti) {
+                                bossTeamMode = LabyrinthBossTeamMode.MULTI_TEAM
+                                pendingSingleBossFallbackToMulti = false
+                                battleRetryCount = 0
+                                synchronized(failedBattleTeamSignatures) { failedBattleTeamSignatures.clear() }
+                            } else {
+                                battleRetryCount++
+                            }
                             battleWait.reset()
                             bossEditorTeamIndex = null
                             pendingBossTeamAdvance = null
@@ -5005,6 +5051,10 @@ class LabyrinthEntryRecognitionSession(
                         ?.area
                         ?: _state.value.routeProgress?.currentArea
                     eventActionAttempts = 0
+                    if (action.blockType == LabyrinthNodeTypes.BOSS) {
+                        bossTeamMode = configuredBossTeamMode
+                        pendingSingleBossFallbackToMulti = false
+                    }
                     synchronized(committedBattleCharacterIds) { committedBattleCharacterIds.clear() }
                     resetBattleRetryTracking()
                     resetExEncounterTracking()
