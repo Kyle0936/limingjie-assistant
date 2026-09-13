@@ -264,6 +264,40 @@ class LabyrinthBattleTeamSelectionPlanTest {
     }
 
     @Test
+    fun `partial boss multi team leaves unused tabs empty and starts from team three`() {
+        val start = EntryPixelRect(1565, 850, 270, 110)
+        val team2Empty = observation(selected = emptyList()).copy(
+            bossTeamIndex = 2,
+            bossTeamTabs = bossTabs,
+        )
+        val skipToThree = requireNotNull(
+            labyrinthBossPartialMultiTeamExecutionStep(team2Empty, completedTeamCount = 1, startButtonRect = start),
+        )
+        assertEquals(LabyrinthBattleTeamExecutionKind.NEXT_BOSS_TEAM, skipToThree.kind)
+        assertTrue(skipToThree.confirmedTeamIds.isEmpty())
+
+        val team3Empty = team2Empty.copy(bossTeamIndex = 3)
+        val startWithOne = requireNotNull(
+            labyrinthBossPartialMultiTeamExecutionStep(team3Empty, completedTeamCount = 1, startButtonRect = start),
+        )
+        assertEquals(LabyrinthBattleTeamExecutionKind.START_BATTLE, startWithOne.kind)
+
+        val startWithTwo = requireNotNull(
+            labyrinthBossPartialMultiTeamExecutionStep(team3Empty, completedTeamCount = 2, startButtonRect = start),
+        )
+        assertEquals(LabyrinthBattleTeamExecutionKind.START_BATTLE, startWithTwo.kind)
+        assertEquals(
+            null,
+            labyrinthBossPartialMultiTeamExecutionStep(
+                team3Empty.copy(selectedCharacters = listOf(match("slot", "A", selected = true))),
+                completedTeamCount = 2,
+                startButtonRect = start,
+            ),
+        )
+        assertEquals(null, labyrinthBossPartialMultiTeamExecutionStep(team2Empty, 2, start))
+    }
+
+    @Test
     fun `boss ready team advances by observed tab and never arms battle for team one or two`() {
         val ids = listOf("A", "B", "C", "D", "E")
         val recommendation = recommendation(*ids.toTypedArray())

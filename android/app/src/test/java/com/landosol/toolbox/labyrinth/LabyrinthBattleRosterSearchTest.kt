@@ -11,6 +11,31 @@ import org.junit.Test
 
 class LabyrinthBattleRosterSearchTest {
     private val session = AutomationSessionId(1L)
+
+    @Test fun `visible end of short roster finishes only after top was observed`() {
+        val search = LabyrinthBattleRosterSearch()
+        fun shortRoster(position: Double) = observation(position).let {
+            it.copy(scrollbar = it.scrollbar.copy(contentEndVisible = true))
+        }
+        assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP,
+            search.observe(session, shortRoster(0.5), listOf("A")))
+        assertEquals(LabyrinthBattleRosterSearchDecision.EXHAUSTED,
+            search.observe(session, shortRoster(0.0), listOf("A")))
+        val changed = shortRoster(0.5).copy(currentFilter = LabyrinthBattleElementFilter.EFFECTIVE_EFFECT)
+        assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP,
+            search.observe(session, changed, listOf("A")))
+    }
+
+    @Test fun `rewind rebound with empty trailing space completes a short roster`() {
+        val search = LabyrinthBattleRosterSearch()
+        val short = observation(0.05).let {
+            it.copy(scrollbar = it.scrollbar.copy(contentEndVisible = true))
+        }
+        assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, search.observe(session, short, listOf("A")))
+        search.recordExecutedScroll(LabyrinthBattleRosterScrollDirection.TO_TOP, 0.05)
+        assertEquals(LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE, search.observe(session, short, listOf("A")))
+        assertEquals(LabyrinthBattleRosterSearchDecision.EXHAUSTED, search.observe(session, short, listOf("A")))
+    }
     private fun observation(position: Double) = LabyrinthBattleTeamObservation(
         currentFilter = LabyrinthBattleElementFilter.FIRE,
         filters = emptyList(), visibleCharacters = listOf(character()), selectedCharacters = emptyList(),

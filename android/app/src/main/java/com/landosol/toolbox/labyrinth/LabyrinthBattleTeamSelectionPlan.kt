@@ -431,6 +431,38 @@ internal fun labyrinthBattleRosterScrollStep(
     )
 }
 
+/**
+ * Multi-team mode may intentionally stop at one or two safe teams. The remaining Boss tabs must
+ * stay empty; only team 3 exposes Start, so walk empty tabs without asking the team recommender to
+ * invent an unsafe extra formation.
+ */
+internal fun labyrinthBossPartialMultiTeamExecutionStep(
+    observation: LabyrinthBattleTeamObservation,
+    completedTeamCount: Int,
+    startButtonRect: EntryPixelRect?,
+): LabyrinthBattleTeamExecutionStep? {
+    if (completedTeamCount !in 1..2 ||
+        observation.recognitionState != LabyrinthBattleTeamRecognitionState.STABLE ||
+        observation.selectedCharacters.isNotEmpty()
+    ) return null
+    val index = observation.bossTeamIndex ?: return null
+    if (index <= completedTeamCount || index !in 2..3) return null
+    val rect = (if (index < 3) observation.bossTeamTabs.getOrNull(2) else startButtonRect)
+        ?: return null
+    val start = index == 3
+    return LabyrinthBattleTeamExecutionStep(
+        kind = if (start) LabyrinthBattleTeamExecutionKind.START_BATTLE else LabyrinthBattleTeamExecutionKind.NEXT_BOSS_TEAM,
+        key = "boss-partial:$completedTeamCount:$index:${observation.viewportRevision}",
+        label = if (start) {
+            "Boss仅编组${completedTeamCount}队，其余留空，开始挑战"
+        } else {
+            "Boss仅编组${completedTeamCount}队，队伍${index}留空，切换队伍3"
+        },
+        action = AutomationAction.Tap(ScreenPoint(rect.left + rect.width / 2f, rect.top + rect.height / 2f)),
+        confirmedTeamIds = emptyList(),
+    )
+}
+
 /** Single-team first attempt: teams two/three may be empty; only the third tab owns Start. */
 internal fun labyrinthBossSingleTeamExecutionStep(
     observation: LabyrinthBattleTeamObservation,
@@ -561,12 +593,15 @@ class LabyrinthBattleTeamSelectionPlanner(
             if (recommendedIds.size !in 1..5 || recommendedIds.distinct().size != recommendedIds.size) {
                 add("推荐角色canonical后不是1至5个不同角色")
             }
-            if (selectedMatches.any { it.characterId == null }) add("顶部当前已选角色存在无法解释的识别结果")
-            if (selectedIds.size != selectedIds.distinct().size) add("顶部当前已选角色canonical后存在重复")
-            if (selectedMatches.size > 5) add("顶部当前已选角色超过5人")
+            selectedMatches.filter { it.characterId == null }.takeIf { it.isNotEmpty() }?.let { unknown ->
+                val slots = unknown.joinToString("、") { "成员" + it.slotId.substringAfterLast('_') }
+                add("下方当前成员头像未确认（$slots），请检查识别框是否贴合头像")
+            }
+            if (selectedIds.size != selectedIds.distinct().size) add("下方当前成员canonical后存在重复")
+            if (selectedMatches.size > 5) add("下方当前成员超过5人")
             selectedMatches.filter { it.characterId != null && it.confidence < minimumCharacterConfidence }
                 .takeIf(List<LabyrinthBattleCharacterMatch>::isNotEmpty)
-                ?.let { add("顶部当前已选角色存在低置信度识别") }
+                ?.let { add("下方当前成员存在低置信度识别") }
             if (observation.currentFilter == LabyrinthBattleElementFilter.UNKNOWN) add("当前属性筛选识别不明")
             if (unsafeMatches.isNotEmpty()) add("目标角色存在低置信度视觉识别，不生成可执行点击目标")
             if (recommendedNextFilter != null &&

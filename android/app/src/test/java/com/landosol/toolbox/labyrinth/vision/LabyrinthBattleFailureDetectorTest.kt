@@ -9,6 +9,22 @@ import org.junit.Test
 
 class LabyrinthBattleFailureDetectorTest {
     @Test
+    fun `current lower damage report layout is recognized`() {
+        val pixels = IntArray(1920 * 1080) { rgb(45, 50, 80) }
+        fill(pixels, EntryPixelRect(740, 40, 450, 130), rgb(70, 145, 220))
+        fill(pixels, EntryPixelRect(1380, 250, 380, 55), rgb(90, 165, 240))
+        fill(pixels, EntryPixelRect(945, 935, 430, 110), rgb(245, 245, 245))
+        fill(pixels, EntryPixelRect(1405, 935, 430, 110), rgb(65, 150, 240))
+
+        val result = requireNotNull(
+            LabyrinthBattleFailureDetector().detect(PixelImage(1920, 1080, pixels)),
+        )
+
+        assertTrue(result.confidence >= 0.60)
+        assertEquals(EntryPixelRect(1405, 935, 430, 110), result.retryButtonRect)
+    }
+
+    @Test
     fun `failure layout exposes retry button but not the end button as the action target`() {
         val pixels = IntArray(1920 * 1080) { rgb(45, 50, 80) }
         fill(pixels, EntryPixelRect(740, 40, 450, 130), rgb(70, 145, 220))

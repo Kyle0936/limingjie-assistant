@@ -35,6 +35,8 @@ data class LabyrinthBattleScrollbarObservation(
     val visible: Boolean,
     val canScroll: Boolean,
     val position: Double,
+    /** A complete card row followed by substantial empty list space; not a rewind signal. */
+    val contentEndVisible: Boolean = false,
 )
 
 enum class LabyrinthBattleTeamRecognitionState {
@@ -160,6 +162,7 @@ class LabyrinthBattleTeamRecognizer(
     private var openingStableObservation: LabyrinthBattleTeamObservation? = null
     private var openingViewportRevision = 0L
     private val gridDetector = LabyrinthCharacterGridDetector()
+    private val currentMemberStripDetector = LabyrinthCurrentMemberStripDetector()
 
     /** Clears the viewport cache when the entry page leaves the battle team selector. */
     @Synchronized
@@ -605,41 +608,19 @@ class LabyrinthBattleTeamRecognizer(
                 allowBottomClip = detected.clippedAtBottom,
             )
         }
-        val selectedSlots = profile.selectedViewport?.let { selectedViewport ->
-            gridDetector.detect(
-                frame = frame,
-                viewportReference = selectedViewport,
-                referenceCardSize = AVAILABLE_SLOT_SIZE,
-                referenceColumnPitch = CURRENT_MEMBER_COLUMN_PITCH,
-                referenceRowPitch = AVAILABLE_ROW_PITCH,
-                maxColumns = CURRENT_MEMBER_SLOTS.size,
-                rowTopHints = CURRENT_MEMBER_SLOTS.mapNotNull { slot ->
-                    val reference = slot.referenceRect ?: return@mapNotNull null
-                    ReferenceFitMapper.map(
-                        frameWidth = frame.width,
-                        frameHeight = frame.height,
-                        referenceSize = STANDARD_REFERENCE,
-                        referenceRect = reference,
-                    )?.top
-                }.distinct(),
-            ).map { detected ->
-                val slotId = "current_member_${detected.columnIndex + 1}"
-                Slot(
-                    id = slotId,
-                    screenRect = detected.fullRect,
-                    // Empty leading member slots shift the first detected band to a later visual
-                    // column. The actual border is authoritative; indexing into the fixed slot
-                    // list would crop a blank or a neighbouring member and return a false name.
-                    recognitionRect = detected.fullRect,
-                )
+        // The member strip is a fixed row. Do not let the scrolling-grid projection
+        // derive its pitch/top from portrait contents or the power labels above each face.
+        val memberHints = profile.fallbackSelectedSlots.mapNotNull { slot -> mapSlotRect(frame, slot) }
+        val selectedSlots = currentMemberStripDetector.refine(frame, memberHints)
+            .mapIndexed { index, rect ->
+                Slot(id = "current_member_${index + 1}", screenRect = rect, recognitionRect = rect)
             }
-        }.orEmpty().ifEmpty { profile.fallbackSelectedSlots }
         return BattleTeamLayout(
             currentFilter = selectedFilter,
             filters = filters,
             visibleSlots = detectedVisibleSlots.ifEmpty { fallbackVisibleSlots },
             selectedSlots = selectedSlots,
-            scrollbar = scrollbar,
+            scrollbar = scrollbar.copy(contentEndVisible = rosterEndVisible(frame, profile.viewport, detectedGridSlots)),
             viewport = profile.viewport,
         )
     }
@@ -1097,28 +1078,72 @@ class LabyrinthBattleTeamRecognizer(
         return EntryPixelRect(left, top, right - left, bottom - top)
     }
 
+    private fun rosterEndVisible(
+        frame: PixelImage,
+        viewportReference: EntryReferenceRect,
+        slots: List<LabyrinthDetectedGridSlot>,
+    ): Boolean {
+        if (slots.isEmpty() || slots.any { it.clippedAtBottom }) return false
+        val viewport = ReferenceFitMapper.map(frame.width, frame.height, STANDARD_REFERENCE, viewportReference)
+            ?: return false
+        val size = slots.maxOf { it.fullRect.height }
+        val bottom = slots.maxOf { it.fullRect.top + it.fullRect.height }
+        val end = viewport.top + viewport.height - size / 8
+        if (end - bottom < size * 0.65) return false
+        var blank = 0
+        var samples = 0
+        for (y in bottom + size / 8 until end step 4) {
+            for (x in viewport.left + size / 8 until viewport.left + viewport.width - size / 3 step 4) {
+                val color = frame[x, y]
+                val low = minOf(channel(color, 0), channel(color, 1), channel(color, 2))
+                val high = maxOf(channel(color, 0), channel(color, 1), channel(color, 2))
+                if (low >= 238 && high - low <= 20) blank++
+                samples++
+            }
+        }
+        return samples > 0 && blank.toDouble() / samples >= 0.98
+    }
+
     private fun observeScrollbar(
         frame: PixelImage,
         trackReference: EntryReferenceRect,
     ): LabyrinthBattleScrollbarObservation {
-        val track = ReferenceFitMapper.map(
+        val nominalTrack = ReferenceFitMapper.map(
             frameWidth = frame.width,
             frameHeight = frame.height,
             referenceSize = STANDARD_REFERENCE,
             referenceRect = trackReference,
         ) ?: EntryPixelRect(0, 0, 3, 3)
-        val blueRows = BooleanArray(track.height) { row ->
-            var blue = 0
-            var samples = 0
-            var x = track.left
-            while (x < track.left + track.width) {
-                if (isBlue(frame[x, track.top + row])) blue++
-                samples++
-                x += 2
+        fun thumbRun(track: EntryPixelRect): Pair<Int, Int>? {
+            val blueRows = BooleanArray(track.height) { row ->
+                var blue = 0
+                var samples = 0
+                var x = track.left
+                while (x < track.left + track.width) {
+                    if (isBlue(frame[x, track.top + row])) blue++
+                    samples++
+                    x += 2
+                }
+                samples > 0 && blue.toDouble() / samples >= SCROLLBAR_ROW_BLUE_MIN
             }
-            samples > 0 && blue.toDouble() / samples >= SCROLLBAR_ROW_BLUE_MIN
+            return longestRun(blueRows)?.takeIf { (top, bottom) ->
+                bottom - top >= maxOf(12, track.height / 12)
+            }
         }
-        val run = longestRun(blueRows)
+        // Window captures can shift the narrow scrollbar beyond the calibrated x coordinate.
+        // Search nearby vertical strips, rejecting short horizontal dividers as thumb evidence.
+        val radius = nominalTrack.width * 2
+        val stripWidth = maxOf(3, nominalTrack.width / 4)
+        val candidates = (maxOf(0, nominalTrack.left - radius)..
+            minOf(frame.width - stripWidth, nominalTrack.left + radius)).mapNotNull { left ->
+            val candidate = nominalTrack.copy(left = left, width = stripWidth)
+            thumbRun(candidate)?.let { candidate to it }
+        }
+        val best = candidates.maxWithOrNull(compareBy<Pair<EntryPixelRect, Pair<Int, Int>>> {
+            it.second.second - it.second.first
+        }.thenBy { -abs(it.first.left - nominalTrack.left) })
+        val track = best?.first ?: nominalTrack
+        val run = best?.second
         val thumb = run?.let { (top, bottomExclusive) ->
             EntryPixelRect(track.left, track.top + top, track.width, bottomExclusive - top)
         }

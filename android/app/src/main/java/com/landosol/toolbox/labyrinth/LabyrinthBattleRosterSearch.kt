@@ -125,11 +125,12 @@ internal class LabyrinthBattleRosterSearch {
                             if (isAtVisualTopBoundary(scrollbar, rebound = true)) {
                                 pendingScroll = null
                                 topObserved = true
-                                return LabyrinthBattleRosterSearchDecision.NEXT_PAGE
+                                return normalDecision(scrollbar)
                             }
                         }
                         LabyrinthBattleRosterScrollDirection.NEXT_PAGE -> {
-                            if (isAtVisualBottomBoundary(scrollbar, rebound = true)) {
+                            if (isAtVisualBottomBoundary(scrollbar, rebound = true) ||
+                                (topObserved && scrollbar.contentEndVisible)) {
                                 pendingScroll = null
                                 return LabyrinthBattleRosterSearchDecision.EXHAUSTED
                             }
@@ -166,6 +167,7 @@ internal class LabyrinthBattleRosterSearch {
     private fun normalDecision(scrollbar: com.landosol.toolbox.labyrinth.vision.LabyrinthBattleScrollbarObservation): LabyrinthBattleRosterSearchDecision = when {
         !scrollbar.canScroll -> LabyrinthBattleRosterSearchDecision.EXHAUSTED
         !topObserved -> LabyrinthBattleRosterSearchDecision.TO_TOP
+        scrollbar.contentEndVisible -> LabyrinthBattleRosterSearchDecision.EXHAUSTED
         scrollbar.position >= BOTTOM_POSITION_THRESHOLD -> LabyrinthBattleRosterSearchDecision.EXHAUSTED
         else -> LabyrinthBattleRosterSearchDecision.NEXT_PAGE
     }
