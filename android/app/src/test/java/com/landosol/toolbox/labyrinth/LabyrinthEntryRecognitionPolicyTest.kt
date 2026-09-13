@@ -223,6 +223,25 @@ class LabyrinthEntryRecognitionPolicyTest {
     }
 
     @Test
+    fun `map swipe moves its lane when the default release point overlaps a node`() {
+        // Live regression: while searching for relic #30302, a BACKWARD swipe ended at
+        // (1459,626), inside the visible event hitbox below, and the game opened that event.
+        val eventRect = EntryPixelRect(left = 1335, top = 612, width = 280, height = 350)
+        val swipe = labyrinthMapSwipe(
+            frameWidth = 1920,
+            frameHeight = 1080,
+            direction = LabyrinthMapScanDirection.BACKWARD,
+            avoidRects = listOf(eventRect),
+        ) as AutomationAction.Swipe
+
+        assertEquals(691.2f, swipe.start.x, 0.01f)
+        assertEquals(1459.2f, swipe.end.x, 0.01f)
+        assertTrue(swipe.end.y < eventRect.top || swipe.end.y > eventRect.top + eventRect.height)
+        assertTrue(swipe.start.y < eventRect.top || swipe.start.y > eventRect.top + eventRect.height)
+        assertEquals(450L, swipe.durationMillis)
+    }
+
+    @Test
     fun `backward map swipe reverses the segment direction without entering bottom controls`() {
         val swipe = labyrinthMapSwipe(
             frameWidth = 1920,

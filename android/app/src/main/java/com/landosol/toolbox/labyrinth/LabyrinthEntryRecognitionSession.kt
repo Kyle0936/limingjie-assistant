@@ -295,16 +295,33 @@ internal fun labyrinthMapSwipe(
     frameWidth: Int,
     frameHeight: Int,
     direction: LabyrinthMapScanDirection,
+    avoidRects: List<EntryPixelRect> = emptyList(),
 ): AutomationAction.Swipe? {
     if (frameWidth <= 0 || frameHeight <= 0) return null
-    val y = frameHeight * 0.58f
     val (startX, endX) = when (direction) {
         LabyrinthMapScanDirection.FORWARD -> 0.76f to 0.36f
         LabyrinthMapScanDirection.BACKWARD -> 0.36f to 0.76f
     }
+    val startPx = frameWidth * startX
+    val endPx = frameWidth * endX
+    val yRatios = listOf(0.58f, 0.46f, 0.34f, 0.70f, 0.24f)
+    val y = yRatios
+        .map { ratio -> frameHeight * ratio }
+        .minByOrNull { candidateY ->
+            avoidRects.sumOf { rect ->
+                fun pointPenalty(x: Float): Int {
+                    val margin = maxOf(24, minOf(rect.width, rect.height) / 12)
+                    val insideX = x >= rect.left - margin && x <= rect.left + rect.width + margin
+                    val insideY = candidateY >= rect.top - margin && candidateY <= rect.top + rect.height + margin
+                    return if (insideX && insideY) 1 else 0
+                }
+                pointPenalty(startPx) + pointPenalty(endPx)
+            }
+        }
+        ?: frameHeight * 0.58f
     return AutomationAction.Swipe(
-        start = ScreenPoint(frameWidth * startX, y),
-        end = ScreenPoint(frameWidth * endX, y),
+        start = ScreenPoint(startPx, y),
+        end = ScreenPoint(endPx, y),
         durationMillis = MAP_SCROLL_DURATION_MILLIS,
     )
 }
@@ -739,6 +756,8 @@ class LabyrinthEntryRecognitionSession(
     private var pendingNodeClickStableFrames = 0
     @Volatile
     private var nodeScrollAttempts = 0
+    @Volatile
+    private var lastNodeSwipeAvoidRects: List<EntryPixelRect> = emptyList()
     @Volatile
     private var pendingNodeScrollBlockId = Long.MIN_VALUE
     @Volatile
@@ -1664,6 +1683,7 @@ class LabyrinthEntryRecognitionSession(
         nodeTapAttempts = 0
         resetNodeMoveConfirmationTracking()
         nodeScrollAttempts = 0
+        lastNodeSwipeAvoidRects = emptyList()
         resetNodeScrollSearchGate()
         lastNodeScrollSourceSignature = null
         nodeViewportScanner.reset()
@@ -4723,6 +4743,10 @@ class LabyrinthEntryRecognitionSession(
         timestampMillis: Long,
     ) {
         portraitRecovery.reset()
+        val visibleNodeRects = result.nodeClassifications.mapNotNull { it.screenRect }
+        if (visibleNodeRects.isNotEmpty()) {
+            lastNodeSwipeAvoidRects = visibleNodeRects
+        }
         val session = nodeSession
         if (session == null) {
             maybeStartNodeInit(sessionId)
@@ -5097,6 +5121,7 @@ class LabyrinthEntryRecognitionSession(
                 frameHeight,
                 timestampMillis,
                 viewportSignature,
+                lastNodeSwipeAvoidRects,
             )
             return
         }
@@ -5607,6 +5632,7 @@ class LabyrinthEntryRecognitionSession(
         frameHeight: Int,
         timestampMillis: Long,
         viewportSignature: String,
+        avoidRects: List<EntryPixelRect>,
     ) {
         nodeLog(
             "node-scroll-request target=$label attempt=${nodeScrollAttempts + 1}/$MAX_NODE_SCROLL_ATTEMPTS " +
@@ -5673,7 +5699,7 @@ class LabyrinthEntryRecognitionSession(
         ) {
             return
         }
-        val swipe = labyrinthMapSwipe(frameWidth, frameHeight, scanPlan.direction) ?: run {
+        val swipe = labyrinthMapSwipe(frameWidth, frameHeight, scanPlan.direction, avoidRects) ?: run {
             finishFromPlanner(sessionId, "地图尺寸无效，无法滚动到下一节点：$label")
             return
         }
@@ -5684,7 +5710,9 @@ class LabyrinthEntryRecognitionSession(
         lastNodeActionAt = timestampMillis
         nodeLog(
             "node-scroll-dispatch target=$label direction=${scanPlan.direction.name} " +
-                "reason=${scanPlan.reason} viewport=$viewportSignature",
+                "reason=${scanPlan.reason} viewport=$viewportSignature " +
+                "swipe=${swipe.start.x.toInt()},${swipe.start.y.toInt()}->" +
+                "${swipe.end.x.toInt()},${swipe.end.y.toInt()} avoidRects=${avoidRects.size}",
         )
         actionScope.launch {
             val executor = actionExecutor
