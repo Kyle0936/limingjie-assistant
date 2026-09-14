@@ -120,7 +120,9 @@ class LandosolToolboxApplication : Application() {
         AndroidLabyrinthCnDatabaseRepository(this)
     }
     private val labyrinthDebugDashboard by lazy {
-        LabyrinthDebugDashboardServer().also { server ->
+        LabyrinthDebugDashboardServer(
+            frameArchiveDirectory = java.io.File(cacheDir, "labyrinth-frame-archive"),
+        ).also { server ->
             server.start()
         }
     }

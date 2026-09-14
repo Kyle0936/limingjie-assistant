@@ -232,6 +232,9 @@ class LabyrinthNodeClassifier(
     private var trackedFrames = 0
     var lastSearchMode: String = "full"
         private set
+    /** Candidate windows scored by [classifyNode] during the most recent [classifyMapNodes]. */
+    var lastSearchWindowCount: Int = 0
+        private set
 
     fun resetTracking() {
         previousFrame = null
@@ -547,6 +550,7 @@ class LabyrinthNodeClassifier(
                 val rect = node.screenRect ?: return@mapNotNull null
                 classifyNode(frame, rect, templates)?.copy(column = node.column, row = node.row)
             }
+            lastSearchWindowCount = refreshed.size
             if (refreshed.size == previousNodes.size && refreshed.zip(previousNodes).all { (now, old) ->
                     now.blockType == old.blockType && now.isClickable == old.isClickable
                 }) {
@@ -558,6 +562,7 @@ class LabyrinthNodeClassifier(
         }
         lastSearchMode = "full"
         trackedFrames = 0
+        var scoredWindows = 0
         try {
             matcher.prepareFrame(frame)
             proposalMatcher.sharePreparedFrame(matcher)
@@ -614,7 +619,9 @@ class LabyrinthNodeClassifier(
                         } }.maxByOrNull { refinementMatcher.score(frame, it, template) } ?: best
                     }
                 }
-                val candidateDetections = (proposals + refined).distinct().mapNotNull {
+                val candidateWindows = (proposals + refined).distinct()
+                scoredWindows += candidateWindows.size
+                val candidateDetections = candidateWindows.mapNotNull {
                     classifyNode(frame, it, regularTemplates)
                 }
                 selectSpatiallyDistinct(candidateDetections, MAX_DETECTIONS_PER_SEARCH_ANCHOR)
@@ -639,6 +646,7 @@ class LabyrinthNodeClassifier(
                     .mapNotNull { (offsetX, offsetY) ->
                         val rect = candidate.rect.offsetInside(offsetX, offsetY, frame.width, frame.height)
                             ?: return@mapNotNull null
+                        scoredWindows++
                         classifyNode(frame, rect, specialTemplates)
                     }
                     .maxByOrNull(NodeClassification::confidence)
@@ -653,6 +661,7 @@ class LabyrinthNodeClassifier(
             previousFrame = viewportSignature(frame)
             previousTemplates = templates
             previousNodes = result
+            lastSearchWindowCount = scoredWindows
             return result
         } finally {
             matcher.clearPreparedFrame()

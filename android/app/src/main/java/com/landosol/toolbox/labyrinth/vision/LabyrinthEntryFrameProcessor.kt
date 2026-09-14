@@ -324,6 +324,8 @@ data class LabyrinthEntryFrameResult(
     val frameHeight: Int = 0,
     val stageMillis: Map<String, Long> = emptyMap(),
     val nodeSearchMode: String = "none",
+    /** Candidate windows the node classifier scored on this frame; 0 when no node scan ran. */
+    val nodeSearchWindowCount: Int = 0,
     val finalBossPlatforms: List<FinalBossPlatformMatch> = emptyList(),
     val finalBossPlatformCandidates: List<FinalBossPlatformMatch> = emptyList(),
 )
@@ -375,6 +377,7 @@ class LabyrinthEntryFrameProcessor(
         var nodesNanos = 0L
         var bossPlatformNanos = 0L
         var nodeSearchMode = "none"
+        var nodeSearchWindowCount = 0
         val elapsedNanos = measureNanoTime {
             val measurements = DEFINITIONS_BY_ID.mapValues { (id, definitions) ->
                 val template = templates.values[id]
@@ -463,6 +466,7 @@ class LabyrinthEntryFrameProcessor(
                         nodeClassifications = nodeClassifier.classifyMapNodes(frame, nodeTemplates)
                     }
                     nodeSearchMode = nodeClassifier.lastSearchMode
+                    nodeSearchWindowCount = nodeClassifier.lastSearchWindowCount
                 }
                 bossPlatformNanos = measureNanoTime {
                     finalBossPlatforms = finalBossPlatformLocator.locate(frame)
@@ -512,6 +516,7 @@ class LabyrinthEntryFrameProcessor(
                 "bossPlatform" to bossPlatformNanos / 1_000_000,
                 "pageAndOther" to (elapsedNanos - nodesNanos - bossPlatformNanos) / 1_000_000),
             nodeSearchMode = nodeSearchMode,
+            nodeSearchWindowCount = nodeSearchWindowCount,
             anchorMatches = anchorMatches,
             nodeClassifications = nodeClassifications,
             finalBossPlatforms = finalBossPlatforms,
