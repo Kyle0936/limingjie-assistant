@@ -135,6 +135,11 @@ internal fun inferActiveNodeType(evidence: ActiveNodeColorEvidence): ActiveNodeT
             evidence.magentaRatio + evidence.redRatio,
         )
 
+        // The pink statue can fill the entire icon ROI; its cyan pedestal is below that ROI.
+        // Require a non-magenta lower frame to separate it from a purple EX platform.
+        evidence.magentaRatio >= 0.30 && evidence.lowerMagentaRatio < 0.15 ->
+            LabyrinthNodeTypes.LINK to evidence.magentaRatio
+
         evidence.greenRatio >= 0.30 && evidence.greenRatio > evidence.magentaRatio * 2 ->
             LabyrinthNodeTypes.SHOP to evidence.greenRatio
 

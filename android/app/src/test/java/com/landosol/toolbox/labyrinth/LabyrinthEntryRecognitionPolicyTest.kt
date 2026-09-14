@@ -242,6 +242,44 @@ class LabyrinthEntryRecognitionPolicyTest {
     }
 
     @Test
+    fun `map recovery nudge is short alternating and stays clear of a visible node lane`() {
+        val nodeRect = EntryPixelRect(left = 1320, top = 560, width = 300, height = 330)
+        val forward = requireNotNull(
+            labyrinthMapNudge(
+                frameWidth = 1920,
+                frameHeight = 1080,
+                direction = LabyrinthMapScanDirection.FORWARD,
+                avoidRects = listOf(nodeRect),
+            ),
+        ) as AutomationAction.Swipe
+        val backward = requireNotNull(
+            labyrinthMapNudge(
+                frameWidth = 1920,
+                frameHeight = 1080,
+                direction = LabyrinthMapScanDirection.BACKWARD,
+                avoidRects = listOf(nodeRect),
+            ),
+        ) as AutomationAction.Swipe
+
+        assertTrue(forward.start.x > forward.end.x)
+        assertTrue(backward.start.x < backward.end.x)
+        assertTrue(kotlin.math.abs(forward.start.x - forward.end.x) < 1920 * 0.20f)
+        assertTrue(kotlin.math.abs(backward.start.x - backward.end.x) < 1920 * 0.20f)
+        assertTrue(forward.start.y < nodeRect.top || forward.start.y > nodeRect.top + nodeRect.height)
+        assertEquals(220L, forward.durationMillis)
+        assertEquals(
+            listOf(
+                LabyrinthMapScanDirection.BACKWARD,
+                LabyrinthMapScanDirection.FORWARD,
+                LabyrinthMapScanDirection.FORWARD,
+                LabyrinthMapScanDirection.BACKWARD,
+                LabyrinthMapScanDirection.BACKWARD,
+            ),
+            (0..4).map(::labyrinthNodeRecoveryNudgeDirection),
+        )
+    }
+
+    @Test
     fun `backward map swipe reverses the segment direction without entering bottom controls`() {
         val swipe = labyrinthMapSwipe(
             frameWidth = 1920,

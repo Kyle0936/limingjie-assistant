@@ -326,6 +326,54 @@ internal fun labyrinthMapSwipe(
     )
 }
 
+private const val MAP_NUDGE_DURATION_MILLIS = 220L
+
+/**
+ * Small side-lane camera perturbation used when the route target should already be nearby but the
+ * current background makes classification unstable. Unlike the segmented map scan this gesture
+ * deliberately stays near one side and moves only a small fraction of the viewport.
+ */
+internal fun labyrinthMapNudge(
+    frameWidth: Int,
+    frameHeight: Int,
+    direction: LabyrinthMapScanDirection,
+    avoidRects: List<EntryPixelRect> = emptyList(),
+): AutomationAction.Swipe? {
+    if (frameWidth <= 0 || frameHeight <= 0) return null
+    val (startX, endX) = when (direction) {
+        LabyrinthMapScanDirection.FORWARD -> 0.82f to 0.70f
+        LabyrinthMapScanDirection.BACKWARD -> 0.18f to 0.30f
+    }
+    val startPx = frameWidth * startX
+    val endPx = frameWidth * endX
+    val minX = minOf(startPx, endPx)
+    val maxX = maxOf(startPx, endPx)
+    val y = listOf(0.58f, 0.46f, 0.34f, 0.70f, 0.24f)
+        .map { frameHeight * it }
+        .minByOrNull { candidateY ->
+            avoidRects.count { rect ->
+                val margin = maxOf(24, minOf(rect.width, rect.height) / 12)
+                val crossesX = maxX >= rect.left - margin && minX <= rect.left + rect.width + margin
+                val crossesY = candidateY >= rect.top - margin && candidateY <= rect.top + rect.height + margin
+                crossesX && crossesY
+            }
+        } ?: frameHeight * 0.58f
+    return AutomationAction.Swipe(
+        start = ScreenPoint(startPx, y),
+        end = ScreenPoint(endPx, y),
+        durationMillis = MAP_NUDGE_DURATION_MILLIS,
+    )
+}
+
+/** center -> left -> center -> right -> center, then repeat. */
+internal fun labyrinthNodeRecoveryNudgeDirection(completedNudges: Int): LabyrinthMapScanDirection {
+    require(completedNudges >= 0)
+    return when (completedNudges % 4) {
+        0, 3 -> LabyrinthMapScanDirection.BACKWARD
+        else -> LabyrinthMapScanDirection.FORWARD
+    }
+}
+
 /** Compatibility helper retained for policy tests and callers that explicitly need later columns. */
 internal fun labyrinthForwardMapSwipe(frameWidth: Int, frameHeight: Int): AutomationAction.Swipe? =
     labyrinthMapSwipe(frameWidth, frameHeight, LabyrinthMapScanDirection.FORWARD)
@@ -506,6 +554,11 @@ private data class PendingNodeTransition(
     val confirmationDispatchedAtMillis: Long? = null,
     val confirmationAttempts: Int = 0,
     val nodeSelectionFramesSinceAction: Int = 0,
+)
+
+private data class ConfirmedNodeEntryReceipt(
+    val transition: PendingNodeTransition,
+    val sourceId: Long,
 )
 
 private enum class LabyrinthPostBossStage {
@@ -739,6 +792,7 @@ class LabyrinthEntryRecognitionSession(
     /** A single OCR read is evidence, not truth; require repeated/same-frame corroboration. */
     @Volatile
     private var lastShopDialogState: LabyrinthShopDialogState = LabyrinthShopDialogState.NONE
+    private val nodeConflictRecovery = com.landosol.toolbox.labyrinth.node.LabyrinthNodeConflictRecovery()
     @Volatile
     private var nodeSession: LabyrinthNodeSession? = null
     private val nodeInitStarted = AtomicBoolean(false)
@@ -757,6 +811,10 @@ class LabyrinthEntryRecognitionSession(
     @Volatile
     private var nodeScrollAttempts = 0
     @Volatile
+    private var nodeRecoveryNudgeBlockId = Long.MIN_VALUE
+    @Volatile
+    private var nodeRecoveryNudgeCount = 0
+    @Volatile
     private var lastNodeSwipeAvoidRects: List<EntryPixelRect> = emptyList()
     @Volatile
     private var pendingNodeScrollBlockId = Long.MIN_VALUE
@@ -770,6 +828,10 @@ class LabyrinthEntryRecognitionSession(
     private var lastNodeActionAt = Long.MIN_VALUE
     @Volatile
     private var pendingNodeTransition: PendingNodeTransition? = null
+    // Semantic receipt survives page-local invalidation during title/loading re-entry.
+    // Keep transition + source atomic so frame processing can never observe a mismatched pair.
+    @Volatile
+    private var confirmedNodeEntryReceipt: ConfirmedNodeEntryReceipt? = null
     @Volatile
     private var nodeTapAttempts = 0
     @Volatile
@@ -981,6 +1043,7 @@ class LabyrinthEntryRecognitionSession(
         lease = (registration as CaptureFrameRegistrationResult.Registered).lease
         activeSessionId = session.id
         activeRunAccountId = accountId
+        confirmedNodeEntryReceipt = null
         validatedRoute = executionRoute
         lastProcessedAt = Long.MIN_VALUE
         actionInFlight.set(false)
@@ -1683,6 +1746,7 @@ class LabyrinthEntryRecognitionSession(
         nodeTapAttempts = 0
         resetNodeMoveConfirmationTracking()
         nodeScrollAttempts = 0
+        resetNodeRecoveryNudgeTracking()
         lastNodeSwipeAvoidRects = emptyList()
         resetNodeScrollSearchGate()
         lastNodeScrollSourceSignature = null
@@ -4668,9 +4732,11 @@ class LabyrinthEntryRecognitionSession(
         entryPhaseComplete = false
         resetPendingNodeClickStability()
         pendingNodeTransition = null
+        confirmedNodeEntryReceipt = null
         nodeTapAttempts = 0
         resetNodeMoveConfirmationTracking()
         nodeScrollAttempts = 0
+        resetNodeRecoveryNudgeTracking()
         resetNodeScrollSearchGate()
         lastNodeScrollSourceSignature = null
         nodeViewportScanner.reset()
@@ -4811,7 +4877,21 @@ class LabyrinthEntryRecognitionSession(
             resetNodeMoveConfirmationTracking()
             resetPendingNodeClickStability()
             if (nodeTapAttempts >= MAX_NODE_TAP_ATTEMPTS) {
-                finishFromPlanner(sessionId, "节点点击未被游戏确认：${pending.label}")
+                nodeTapAttempts = 0
+                requestNodeMapNudge(
+                    sessionId = sessionId,
+                    label = pending.label,
+                    targetBlockId = pending.blockId,
+                    frameWidth = frameWidth,
+                    frameHeight = frameHeight,
+                    timestampMillis = timestampMillis,
+                    viewportSignature = viewportSignature,
+                    avoidRects = lastNodeSwipeAvoidRects,
+                    reason = "node-tap-not-confirmed",
+                )
+                if (activeSessionId == sessionId) {
+                    _state.value = _state.value.copy(message = "节点多次点击未被确认；已切换为轻微移动地图后重新定位并重试：${pending.label}")
+                }
                 return
             }
             nodeLog(
@@ -4829,7 +4909,18 @@ class LabyrinthEntryRecognitionSession(
         }
         // Bind any current-frame ordinary-node evidence. The final-Boss-only fast path supplies
         // none: observing that empty mapping also invalidates old camera coordinates after a pan.
-        val visuallyPlannedAction = session.processClassifications(result.nodeClassifications)
+        val rawNodeAction = session.processClassifications(result.nodeClassifications)
+        val conflictTargetId = (rawNodeAction as? NodeAction.TypeConflict)?.blockId
+        val visuallyPlannedAction = nodeConflictRecovery.resolve(
+            session = sessionId.toString(),
+            action = rawNodeAction,
+            visible = result.nodeClassifications,
+            uniqueReachableRouteTarget = conflictTargetId != null &&
+                session.uniqueReachableRouteTarget()?.blockId == conflictTargetId,
+        )
+        if (rawNodeAction is NodeAction.TypeConflict && visuallyPlannedAction is NodeAction.ClickNode) {
+            nodeLog("node-conflict-recovery route=${visuallyPlannedAction.blockId} generic-route-bound stable=3+ rect=${visuallyPlannedAction.screenRect}")
+        }
         session.getLastMatchResult()?.let { match ->
             nodeViewportScanner.observe(
                 area = nodeState.currentArea,
@@ -4860,11 +4951,24 @@ class LabyrinthEntryRecognitionSession(
                 resetPendingNodeClickStability()
                 publishRouteProgress(sessionId, session, nextLabel = "Boss#${directFinalBoss.blockId}", nextRect = null)
                 if (finalBossLocalizationStartedAt == Long.MIN_VALUE) finalBossLocalizationStartedAt = timestampMillis
-                if (!_state.value.dryRun && timestampMillis - finalBossLocalizationStartedAt >= 30_000L) {
-                    finishFromPlanner(sessionId, "最终Boss底座定位超时，已保留诊断；未执行固定坐标点击")
+                if (!_state.value.dryRun &&
+                    timestampMillis - finalBossLocalizationStartedAt >= NODE_TARGET_VISIBLE_MAX_WAIT_MILLIS
+                ) {
+                    requestNodeMapNudge(
+                        sessionId = sessionId,
+                        label = "Boss#${directFinalBoss.blockId}",
+                        targetBlockId = directFinalBoss.blockId,
+                        frameWidth = frameWidth,
+                        frameHeight = frameHeight,
+                        timestampMillis = timestampMillis,
+                        viewportSignature = viewportSignature,
+                        avoidRects = lastNodeSwipeAvoidRects,
+                        reason = "final-boss-platform-not-localized",
+                    )
+                    finalBossLocalizationStartedAt = timestampMillis
                     return
                 }
-                _state.value = _state.value.copy(message = "最终Boss底座未可靠定位或与路线位置矛盾，等待新画面；禁止固定坐标点击")
+                _state.value = _state.value.copy(message = "最终Boss底座暂未可靠定位；保持节点页，稍后将轻微左右移动地图重新识别")
                 return
             }
             finalBossLocalizationStartedAt = Long.MIN_VALUE
@@ -4912,23 +5016,52 @@ class LabyrinthEntryRecognitionSession(
                         "rect=${action.screenRect}",
                     warning = true,
                 )
-                // Do not turn a semantic contradiction into a scroll request: the crop is already
-                // on screen. A few frames are tolerated for map animation/template jitter, while a
-                // persistent conflict stops live execution before any unsafe click can occur.
+                // Every node type can be recovered when route-bound visual evidence is stable.
+                // If the conflict remains ambiguous, actively perturb the background instead of
+                // watching the same bad crop forever.
                 nodeErrorStreak++
                 publishRouteProgress(sessionId, session, nextLabel = label, nextRect = action.screenRect)
-                val message = "TYPE_CONFLICT：视觉$detected ≠ 路线$label，已拒绝点击"
-                if (!_state.value.dryRun && nodeErrorStreak >= MAX_NODE_ERROR_STREAK) {
-                    finishFromPlanner(sessionId, "$message（连续${nodeErrorStreak}帧）")
-                } else if (activeSessionId == sessionId) {
+                val message = "节点类型待复核：视觉$detected / 路线$label，正在结合路线与当前画面自恢复"
+                if (activeSessionId == sessionId) {
                     _state.value = _state.value.copy(message = message)
                     overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
+                }
+                if (!_state.value.dryRun && nodeErrorStreak >= NODE_CONFLICT_NUDGE_STREAK) {
+                    requestNodeMapNudge(
+                        sessionId = sessionId,
+                        label = label,
+                        targetBlockId = action.blockId,
+                        frameWidth = frameWidth,
+                        frameHeight = frameHeight,
+                        timestampMillis = timestampMillis,
+                        viewportSignature = viewportSignature,
+                        avoidRects = lastNodeSwipeAvoidRects,
+                        reason = "persistent-type-conflict",
+                    )
                 }
             }
 
             NodeAction.WaitForLoad -> {
                 nodeLog("node-decision wait-for-load")
-                publishRouteProgress(sessionId, session, nextLabel = null, nextRect = null)
+                val waitTarget = session.getLastMatchResult()?.nextNode
+                val waitLabel = waitTarget?.let { "${LabyrinthNodeTypes.labelOf(it.blockType)}#${it.blockId}" }
+                publishRouteProgress(sessionId, session, nextLabel = waitLabel, nextRect = null)
+                nodeErrorStreak++
+                if (!_state.value.dryRun && waitTarget != null && nodeErrorStreak >= NODE_WAIT_NUDGE_STREAK) {
+                    requestNodeMapNudge(
+                        sessionId = sessionId,
+                        label = waitLabel ?: "节点#${waitTarget.blockId}",
+                        targetBlockId = waitTarget.blockId,
+                        frameWidth = frameWidth,
+                        frameHeight = frameHeight,
+                        timestampMillis = timestampMillis,
+                        viewportSignature = viewportSignature,
+                        avoidRects = lastNodeSwipeAvoidRects,
+                        reason = "route-target-visible-but-not-active",
+                    )
+                } else if (activeSessionId == sessionId && waitTarget != null) {
+                    _state.value = _state.value.copy(message = "已定位路线目标但节点尚未稳定激活，继续识别；持续无变化时将轻微移动地图")
+                }
             }
 
             NodeAction.Complete -> {
@@ -5087,13 +5220,20 @@ class LabyrinthEntryRecognitionSession(
                     pendingNodeScrollStableFrames >= NODE_TARGET_VISIBLE_MAX_WAIT_FRAMES &&
                     elapsed >= NODE_TARGET_VISIBLE_MAX_WAIT_MILLIS
                 ) {
-                    finishFromPlanner(
-                        sessionId,
-                        "路线目标${label}按当前地图几何应已在画面内，但连续多帧未可靠识别；保持地图不滚动并停止，避免把目标滚出视野",
+                    requestNodeMapNudge(
+                        sessionId = sessionId,
+                        label = label,
+                        targetBlockId = action.blockId,
+                        frameWidth = frameWidth,
+                        frameHeight = frameHeight,
+                        timestampMillis = timestampMillis,
+                        viewportSignature = viewportSignature,
+                        avoidRects = lastNodeSwipeAvoidRects,
+                        reason = "target-geometry-visible-but-classification-missing",
                     )
                 } else if (activeSessionId == sessionId) {
                     _state.value = _state.value.copy(
-                        message = "${label}按地图几何应在当前画面，保持镜头不动并重新识别（" +
+                        message = "${label}按地图几何应在当前画面，先保持镜头并复识别；持续失败将左右轻微移动制造新背景（" +
                             "$pendingNodeScrollStableFrames/$NODE_TARGET_VISIBLE_MAX_WAIT_FRAMES）",
                     )
                 }
@@ -5216,6 +5356,7 @@ class LabyrinthEntryRecognitionSession(
         resetPendingNodeClickStability()
         resetNodeScrollSearchGate()
         nodeScrollAttempts = 0
+        resetNodeRecoveryNudgeTracking()
         lastNodeScrollSourceSignature = null
         nodeLog(
             "node-move-confirm-recover target=$label confidence=${"%.3f".format(confidence)} " +
@@ -5430,6 +5571,11 @@ class LabyrinthEntryRecognitionSession(
                             confirmationAttempts = currentPending.confirmationAttempts + 1,
                             nodeSelectionFramesSinceAction = 0,
                         )
+                        val confirmed = pendingNodeTransition
+                        val sourceId = nodeSession?.getState()?.currentNodeId
+                        if (confirmed != null && sourceId != null) {
+                            confirmedNodeEntryReceipt = ConfirmedNodeEntryReceipt(confirmed, sourceId)
+                        }
                     }
                     if (activeSessionId == sessionId) {
                         val current = _state.value
@@ -5479,8 +5625,25 @@ class LabyrinthEntryRecognitionSession(
         pageState: LabyrinthEntryPageState,
     ) {
         if (!labyrinthConfirmsNodeEntry(pageState)) return
-        val pending = pendingNodeTransition ?: return
         val session = nodeSession ?: return
+        val recoveredReceipt = confirmedNodeEntryReceipt?.takeIf { receipt ->
+            labyrinthCanRecoverConfirmedNodeEntry(
+                receipt.transition.blockType,
+                pageState,
+                receipt.sourceId,
+                session.getState().currentNodeId,
+                session.uniqueReachableRouteTarget()?.blockId == receipt.transition.blockId,
+                receipt.transition.confirmationDispatchedAtMillis,
+                clock(),
+            )
+        }
+        val pending = pendingNodeTransition ?: recoveredReceipt?.transition ?: return
+        if (pendingNodeTransition == null) {
+            nodeLog(
+                "node-entry-recovered target=${pending.label} page=${pageState.name} " +
+                    "source=${recoveredReceipt?.sourceId}",
+            )
+        }
         if (!labyrinthNodeEntryMatchesExpectedType(pending.blockType, pageState)) {
             nodeLog(
                 "node-entry-mismatch target=${pending.label} expected=" +
@@ -5498,6 +5661,7 @@ class LabyrinthEntryRecognitionSession(
                 "confirmationAttempts=${pending.confirmationAttempts} tapAttempts=$nodeTapAttempts",
         )
         session.afterClick(pending.blockId)
+        confirmedNodeEntryReceipt = null
         persistNodeRouteProgress(sessionId, session.getState())
         if (!_state.value.dryRun && session.getState().isComplete &&
             postBossStage == LabyrinthPostBossStage.NONE
@@ -5514,6 +5678,7 @@ class LabyrinthEntryRecognitionSession(
         nodeTapAttempts = 0
         resetNodeMoveConfirmationTracking()
         nodeScrollAttempts = 0
+        resetNodeRecoveryNudgeTracking()
         resetNodeScrollSearchGate()
         lastNodeScrollSourceSignature = null
         if (activeSessionId == sessionId) {
@@ -5610,6 +5775,12 @@ class LabyrinthEntryRecognitionSession(
         pendingNodeScrollStartedAt = Long.MIN_VALUE
     }
 
+    private fun resetNodeRecoveryNudgeTracking() {
+        nodeRecoveryNudgeBlockId = Long.MIN_VALUE
+        nodeRecoveryNudgeCount = 0
+        nodeConflictRecovery.reset()
+    }
+
     private fun nodeClickRectsAreStable(
         previous: EntryPixelRect?,
         current: EntryPixelRect?,
@@ -5623,6 +5794,81 @@ class LabyrinthEntryRecognitionSession(
         val yTolerance = maxOf(16, minOf(previous.height, current.height) * 18 / 100)
         return kotlin.math.abs(previousCenterX - currentCenterX) <= xTolerance &&
             kotlin.math.abs(previousCenterY - currentCenterY) <= yTolerance
+    }
+
+    private fun requestNodeMapNudge(
+        sessionId: AutomationSessionId,
+        label: String,
+        targetBlockId: Long,
+        frameWidth: Int,
+        frameHeight: Int,
+        timestampMillis: Long,
+        viewportSignature: String,
+        avoidRects: List<EntryPixelRect>,
+        reason: String,
+    ) {
+        if (nodeRecoveryNudgeBlockId != targetBlockId) {
+            nodeRecoveryNudgeBlockId = targetBlockId
+            nodeRecoveryNudgeCount = 0
+            nodeConflictRecovery.reset()
+        }
+        if (lastNodeActionAt != Long.MIN_VALUE &&
+            timestampMillis - lastNodeActionAt < NODE_RECOVERY_NUDGE_INTERVAL_MILLIS
+        ) return
+        val direction = labyrinthNodeRecoveryNudgeDirection(nodeRecoveryNudgeCount)
+        val swipe = labyrinthMapNudge(frameWidth, frameHeight, direction, avoidRects) ?: return
+        if (!actionInFlight.compareAndSet(false, true)) return
+        val attempt = nodeRecoveryNudgeCount + 1
+        lastNodeActionAt = timestampMillis
+        resetNodeScrollSearchGate()
+        resetPendingNodeClickStability()
+        nodeConflictRecovery.reset()
+        nodeLog(
+            "node-nudge-dispatch target=$label attempt=$attempt direction=${direction.name} " +
+                "reason=$reason viewport=$viewportSignature swipe=" +
+                "${swipe.start.x.toInt()},${swipe.start.y.toInt()}->${swipe.end.x.toInt()},${swipe.end.y.toInt()}",
+            warning = true,
+        )
+        actionScope.launch {
+            val executor = actionExecutor
+            val result = if (executor == null) {
+                AutomationActionResult.Rejected(swipe, "动作执行器不可用")
+            } else {
+                executor.execute(sessionId, swipe)
+            }
+            when (result) {
+                is AutomationActionResult.Executed -> {
+                    nodeRecoveryNudgeCount = attempt
+                    nodeErrorStreak = 0
+                    if (activeSessionId == sessionId) {
+                        val directionLabel = when (direction) {
+                            LabyrinthMapScanDirection.FORWARD -> "向右轻移"
+                            LabyrinthMapScanDirection.BACKWARD -> "向左轻移"
+                        }
+                        val current = _state.value
+                        _state.value = current.copy(
+                            actionCount = current.actionCount + 1,
+                            lastActionLabel = "微调地图重新识别 $label",
+                            message = "已${directionLabel}地图制造新背景证据，重新识别$label（第${attempt}次微调）",
+                        )
+                        overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
+                    }
+                }
+                is AutomationActionResult.Rejected -> {
+                    lastNodeActionAt = Long.MIN_VALUE
+                    if (result.reason == GAME_NOT_FOREGROUND_REASON) {
+                        publishWaitingForGameForeground(sessionId)
+                    } else if (activeSessionId == sessionId) {
+                        _state.value = _state.value.copy(message = "地图微调未执行：${result.reason}；保持节点页并等待重试")
+                        overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
+                    }
+                }
+                AutomationActionResult.StaleSession -> Unit
+                AutomationActionResult.Paused -> Unit
+                is AutomationActionResult.DryRun -> Unit
+            }
+            actionInFlight.set(false)
+        }
     }
 
     private fun requestNodeMapScroll(
@@ -5640,17 +5886,6 @@ class LabyrinthEntryRecognitionSession(
                 nodeViewportScanner.diagnostics(nodeSession?.getLastMatchResult()?.nextNode?.blockId),
             warning = true,
         )
-        if (nodeScrollAttempts >= MAX_NODE_SCROLL_ATTEMPTS) {
-            logNodeScrollTerminalDiagnostics(
-                label = label,
-                reason = "MAX_ATTEMPTS",
-                frameWidth = frameWidth,
-                frameHeight = frameHeight,
-                viewportSignature = viewportSignature,
-            )
-            finishFromPlanner(sessionId, "自动滚动后仍找不到下一节点：$label")
-            return
-        }
         val routeTarget = nodeSession?.getLastMatchResult()?.nextNode
         if (routeTarget == null) {
             logNodeScrollTerminalDiagnostics(
@@ -5661,6 +5896,27 @@ class LabyrinthEntryRecognitionSession(
                 viewportSignature = viewportSignature,
             )
             finishFromPlanner(sessionId, "路线缺少待定位节点，无法继续扫描：$label")
+            return
+        }
+        if (nodeScrollAttempts >= MAX_NODE_SCROLL_ATTEMPTS) {
+            logNodeScrollTerminalDiagnostics(
+                label = label,
+                reason = "MAX_ATTEMPTS_SWITCH_TO_LOCAL_RECOVERY",
+                frameWidth = frameWidth,
+                frameHeight = frameHeight,
+                viewportSignature = viewportSignature,
+            )
+            requestNodeMapNudge(
+                sessionId = sessionId,
+                label = label,
+                targetBlockId = routeTarget.blockId,
+                frameWidth = frameWidth,
+                frameHeight = frameHeight,
+                timestampMillis = timestampMillis,
+                viewportSignature = viewportSignature,
+                avoidRects = avoidRects,
+                reason = "segmented-scan-budget-exhausted",
+            )
             return
         }
         val hasVisualViewport = viewportSignature.isNotBlank()
@@ -5686,12 +5942,22 @@ class LabyrinthEntryRecognitionSession(
         if (scanPlan == null) {
             logNodeScrollTerminalDiagnostics(
                 label = label,
-                reason = "FULL_AREA_BOUNDARIES",
+                reason = "FULL_AREA_BOUNDARIES_SWITCH_TO_LOCAL_RECOVERY",
                 frameWidth = frameWidth,
                 frameHeight = frameHeight,
                 viewportSignature = viewportSignature,
             )
-            finishFromPlanner(sessionId, "已分段扫描地图两侧边界，仍未识别到下一节点：$label")
+            requestNodeMapNudge(
+                sessionId = sessionId,
+                label = label,
+                targetBlockId = routeTarget.blockId,
+                frameWidth = frameWidth,
+                frameHeight = frameHeight,
+                timestampMillis = timestampMillis,
+                viewportSignature = viewportSignature,
+                avoidRects = avoidRects,
+                reason = "both-map-boundaries-scanned",
+            )
             return
         }
         if (lastNodeActionAt != Long.MIN_VALUE &&
@@ -6684,6 +6950,9 @@ class LabyrinthEntryRecognitionSession(
         const val MAX_NODE_MOVE_CONFIRMATION_ATTEMPTS = 3
         const val MAX_NODE_TAP_ATTEMPTS = 3
         const val MAX_NODE_SCROLL_ATTEMPTS = 6
+        const val NODE_CONFLICT_NUDGE_STREAK = 4
+        const val NODE_WAIT_NUDGE_STREAK = 8
+        const val NODE_RECOVERY_NUDGE_INTERVAL_MILLIS = 1_500L
         const val NODE_SCROLL_CURRENT_VIEW_STABLE_FRAMES = 5
         const val NODE_SCROLL_CURRENT_VIEW_MIN_WAIT_MILLIS = 1_500L
         const val NODE_TARGET_VISIBLE_MAX_WAIT_FRAMES = 12

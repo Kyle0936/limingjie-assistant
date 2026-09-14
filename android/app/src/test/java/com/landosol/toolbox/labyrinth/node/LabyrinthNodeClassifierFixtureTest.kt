@@ -12,6 +12,20 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LabyrinthNodeClassifierFixtureTest {
+    @Test fun `pink link statue in reported map is not a blue relic`() {
+        val frame = readImage(File(locateProjectRoot(), "android/app/src/test/resources/labyrinth/node-link-20260914.png"))
+        val templates = NodeTemplateSet(NODE_TEMPLATE_FILES.mapValues { (_, name) ->
+            readImage(File(locateProjectRoot(), "android/app/src/main/assets/resource-packs/cn-bilibili/vision/$name"))
+        })
+        val rect = EntryPixelRect(348, 42, 119, 148)
+        val color = activeNodeColorEvidence(frame, rect)
+        assertEquals("color=$color", LabyrinthNodeTypes.LINK, color?.let(::inferActiveNodeType)?.blockType)
+        val nodes = LabyrinthNodeClassifier().classifyMapNodes(frame, templates)
+        val result = nodes.firstOrNull { it.isClickable && it.screenRect?.let { r ->
+            r.left + r.width / 2 in 370..445 && r.top in 0..90
+        } == true }
+        assertEquals("nodes=$nodes", LabyrinthNodeTypes.LINK, result?.blockType)
+    }
     @Test
     fun `stable color ROI rejects a same-shape background with the wrong platform colors`() {
         val width = 80
