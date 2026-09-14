@@ -728,6 +728,9 @@ class LabyrinthEntryRecognitionSession(
     @Volatile
     private var battleTeamScrollActions = 0
     private val battleRosterSearch = LabyrinthBattleRosterSearch()
+    /** Attribute tabs already scanned to the end for the current set of still-missing roles. */
+    private val exhaustedBattleRosterFilters = linkedSetOf<com.landosol.toolbox.labyrinth.vision.LabyrinthBattleElementFilter>()
+    private var exhaustedBattleRosterFiltersKey: String? = null
     @Volatile
     private var lastBattleTeamActionAt = Long.MIN_VALUE
     private val committedBattleCharacterIds = linkedSetOf<String>()
@@ -2745,10 +2748,18 @@ class LabyrinthEntryRecognitionSession(
             }
             return
         }
+        val recommendationKey = recommendation.members.joinToString(",") {
+            canonicalLabyrinthRoleId(it.characterId)
+        }
+        if (exhaustedBattleRosterFiltersKey != recommendationKey) {
+            exhaustedBattleRosterFiltersKey = recommendationKey
+            exhaustedBattleRosterFilters.clear()
+        }
         val plan = planner.plan(
             sessionId = sessionId,
             recommendation = recommendation,
             observation = observation,
+            exhaustedFilters = exhaustedBattleRosterFilters.toSet(),
         )
         val logText = plan.logText()
         val current = _state.value
@@ -4282,6 +4293,7 @@ class LabyrinthEntryRecognitionSession(
             val plan = _state.value.battleTeamSelectionPlan ?: return
             if (!plan.isStillValid(sessionId, recommendation, observation)) return
             val search = battleRosterSearch.observe(sessionId, observation, plan.recommendedIds)
+            var rosterRecoveryStep: LabyrinthBattleTeamExecutionStep? = null
             if (plan.scrollRequired) {
                 when (search) {
                     LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE -> {
@@ -4292,17 +4304,40 @@ class LabyrinthEntryRecognitionSession(
                         val missing = plan.notCurrentlyVisibleIds.joinToString("、") {
                             plan.recommendedNames[it] ?: plan.currentlySelectedNames[it] ?: it
                         }
-                        finishFromPlanner(sessionId, "自动编组已从顶部查找到底部，${observation.currentFilter.label}筛选仍未找到可靠目标：$missing；停止滚动")
-                        return
+                        battleRosterSearch.reset()
+                        battleTeamScrollActions = 0
+                        // Walk the missing roles' attribute tabs first (usually one or two rows,
+                        // so no multi-row ambiguity), then 全部 as the last resort. Each tab is
+                        // scanned to the end at most once per recommendation; the set is keyed to
+                        // the recommendation in refreshBattleTeamSelectionPlan.
+                        exhaustedBattleRosterFilters += observation.currentFilter
+                        val recoveryStep = labyrinthBattleRosterFilterRecoveryStep(
+                            plan = plan,
+                            observation = observation,
+                            exhaustedFilters = exhaustedBattleRosterFilters,
+                        )
+                        if (recoveryStep != null) {
+                            rosterRecoveryStep = recoveryStep
+                        } else {
+                            val scanned = exhaustedBattleRosterFilters.joinToString("、") { it.label }
+                            exhaustedBattleRosterFilters.clear()
+                            exhaustedBattleRosterFiltersKey = null
+                            resetBattleTeamExecutionTracking()
+                            _state.value = _state.value.copy(
+                                message = "已在${scanned}筛选均扫到底仍未识别推荐角色：$missing；保持编组页并从顶部重新建立角色扫描",
+                            )
+                            return
+                        }
                     }
                     LabyrinthBattleRosterSearchDecision.UNAVAILABLE -> {
-                        finishFromPlanner(sessionId, "自动编组无法确认角色列表已稳定或可靠识别滚动边界，已停止；不执行盲目滑动")
+                        resetBattleTeamExecutionTracking()
+                        _state.value = _state.value.copy(message = "角色列表反馈暂不可确认；保持编组页并重新建立扫描")
                         return
                     }
                     else -> Unit
                 }
             }
-            val plannedStep = labyrinthBattleTeamExecutionStep(
+            rosterRecoveryStep ?: labyrinthBattleTeamExecutionStep(
                 plan = plan,
                 sessionId = sessionId,
                 recommendation = recommendation,
@@ -4313,7 +4348,6 @@ class LabyrinthEntryRecognitionSession(
                 scrollDirection = if (search == LabyrinthBattleRosterSearchDecision.TO_TOP)
                     LabyrinthBattleRosterScrollDirection.TO_TOP else LabyrinthBattleRosterScrollDirection.NEXT_PAGE,
             )
-            plannedStep
         }) ?: return
 
         if (step.key != lastBattleTeamExecutionKey) {

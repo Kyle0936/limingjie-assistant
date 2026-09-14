@@ -148,6 +148,12 @@ data class LabyrinthBattleTeamSelectionPlan(
     val currentFilter: LabyrinthBattleElementFilter,
     val recommendedNextFilter: LabyrinthBattleElementFilter?,
     val recommendedFilterTarget: LabyrinthBattleFilterObservation?,
+    /**
+     * Attribute tabs that can still contain [notCurrentlyVisibleIds], most promising first and
+     * always ending with the全部 tab. A single-attribute tab usually holds one or two rows, so
+     * scanning there removes the multi-row ambiguity of the全部 list.
+     */
+    val missingTargetFilters: List<LabyrinthBattleElementFilter>,
     val scrollRequired: Boolean,
     val viewportRevision: Long,
     val readyToExecute: Boolean,
@@ -242,6 +248,11 @@ data class LabyrinthBattleTeamSelectionPlan(
         appendLine("尚未找到：${describe(notCurrentlyVisibleIds, recommendedNames)}")
         appendLine("当前筛选：${currentFilter.label}")
         appendLine("建议下一筛选：${recommendedNextFilter?.label ?: "无"}")
+        appendLine(
+            "尚未找到目标可用筛选：" +
+                missingTargetFilters.joinToString("、", transform = LabyrinthBattleElementFilter::label)
+                    .ifBlank { "无" },
+        )
         appendLine("需要滚动：${if (scrollRequired) "是" else "否"}")
         appendLine("viewportRevision：$viewportRevision")
         append(
@@ -396,6 +407,44 @@ fun labyrinthBattleTeamExecutionStep(
 
 private const val BATTLE_TEAM_SCROLL_DURATION_MILLIS = 360L
 
+/**
+ * After the current tab was scanned to its end without finding every missing role, pick the next
+ * tab to search: the missing roles' own attribute tabs first, 全部 last, skipping the current tab
+ * and tabs already exhausted for this missing-role set. Returns null when every candidate tab has
+ * been scanned or its button is not visible.
+ */
+internal fun labyrinthBattleRosterFilterRecoveryTarget(
+    plan: LabyrinthBattleTeamSelectionPlan,
+    observation: LabyrinthBattleTeamObservation,
+    exhaustedFilters: Set<LabyrinthBattleElementFilter>,
+): LabyrinthBattleFilterObservation? = plan.missingTargetFilters
+    .asSequence()
+    .filterNot { it == observation.currentFilter || it in exhaustedFilters }
+    .mapNotNull { candidate -> observation.filters.firstOrNull { it.filter == candidate } }
+    .firstOrNull()
+
+internal fun labyrinthBattleRosterFilterRecoveryStep(
+    plan: LabyrinthBattleTeamSelectionPlan,
+    observation: LabyrinthBattleTeamObservation,
+    exhaustedFilters: Set<LabyrinthBattleElementFilter>,
+): LabyrinthBattleTeamExecutionStep? {
+    val target = labyrinthBattleRosterFilterRecoveryTarget(plan, observation, exhaustedFilters) ?: return null
+    val missing = plan.notCurrentlyVisibleIds.joinToString("、") {
+        plan.recommendedNames[it] ?: plan.currentlySelectedNames[it] ?: it
+    }
+    return LabyrinthBattleTeamExecutionStep(
+        kind = LabyrinthBattleTeamExecutionKind.SELECT_FILTER,
+        key = "filter-recovery:${target.filter.name}:${observation.viewportRevision}",
+        label = "${observation.currentFilter.label}筛选已扫到底仍未找到$missing；切换${target.filter.label}继续查找",
+        action = AutomationAction.Tap(
+            ScreenPoint(
+                target.screenRect.left + target.screenRect.width / 2f,
+                target.screenRect.top + target.screenRect.height / 2f,
+            ),
+        ),
+    )
+}
+
 internal fun labyrinthBattleRosterScrollStep(
     observation: LabyrinthBattleTeamObservation,
     frameWidth: Int,
@@ -494,10 +543,16 @@ class LabyrinthBattleTeamSelectionPlanner(
         require(minimumCharacterConfidence in 0.0..1.0)
     }
 
+    /**
+     * @param exhaustedFilters tabs already scanned to their end for this recommendation without
+     * finding the still-missing roles. They are skipped when choosing the next tab so the search
+     * walks each attribute tab once and then 全部, instead of bouncing back to a covered tab.
+     */
     fun plan(
         sessionId: AutomationSessionId,
         recommendation: LabyrinthBattleTeamRecommendation,
         observation: LabyrinthBattleTeamObservation,
+        exhaustedFilters: Set<LabyrinthBattleElementFilter> = emptySet(),
     ): LabyrinthBattleTeamSelectionPlan {
         val recommendedIds = recommendation.members.map { canonicalLabyrinthRoleId(it.characterId) }
         val recommendedNames = recommendation.members.associate { member ->
@@ -570,12 +625,15 @@ class LabyrinthBattleTeamSelectionPlanner(
             }
         }
 
+        val missingTargetFilters = missingTargetFilters(notCurrentlyVisibleIds)
         val recommendedNextFilter = recommendNextFilter(
             // Element filters and roster scrolling exist only to find characters that still need
             // to be added. Characters that need removal are handled from the current-member strip.
             needSelectIds = needSelectIds,
             visibleSelectIds = visibleSelectTargets.map(LabyrinthBattleTeamSelectionTarget::characterId).toSet(),
             notCurrentlyVisibleIds = notCurrentlyVisibleIds,
+            missingTargetFilters = missingTargetFilters,
+            exhaustedFilters = exhaustedFilters,
             observation = observation,
         )
         val recommendedFilterTarget = recommendedNextFilter
@@ -639,6 +697,7 @@ class LabyrinthBattleTeamSelectionPlanner(
             currentFilter = observation.currentFilter,
             recommendedNextFilter = recommendedNextFilter,
             recommendedFilterTarget = recommendedFilterTarget,
+            missingTargetFilters = missingTargetFilters,
             scrollRequired = scrollRequired,
             viewportRevision = observation.viewportRevision,
             readyToExecute = readyToExecute,
@@ -652,6 +711,8 @@ class LabyrinthBattleTeamSelectionPlanner(
         needSelectIds: List<String>,
         visibleSelectIds: Set<String>,
         notCurrentlyVisibleIds: List<String>,
+        missingTargetFilters: List<LabyrinthBattleElementFilter>,
+        exhaustedFilters: Set<LabyrinthBattleElementFilter>,
         observation: LabyrinthBattleTeamObservation,
     ): LabyrinthBattleElementFilter? {
         if (needSelectIds.isEmpty()) return null
@@ -661,36 +722,45 @@ class LabyrinthBattleTeamSelectionPlanner(
         ) {
             return current
         }
-        // Unknown attributes cannot choose a specific tab, but the All list can still be searched.
-        if (notCurrentlyVisibleIds.any { profiles[it]?.attribute == null }) return LabyrinthBattleElementFilter.ALL
-        val counts = needSelectIds.mapNotNull { id -> profiles[id]?.attribute?.toBattleFilter() }
+        // Prefer grouping the search by the attribute of the roles that still have to be found.
+        // A single-attribute tab is usually one or two rows, so it removes the multi-row ambiguity
+        // of the 全部 list; only an unknown attribute forces 全部.
+        val searchIds = notCurrentlyVisibleIds.ifEmpty { needSelectIds }
+        if (searchIds.any { profiles[it]?.attribute == null }) return LabyrinthBattleElementFilter.ALL
+        val candidates = if (notCurrentlyVisibleIds.isNotEmpty()) {
+            missingTargetFilters
+        } else {
+            missingTargetFilters(needSelectIds)
+        }
+        // Stay on the current attribute tab while it can still hold a missing role and has not
+        // already been scanned to its end; otherwise take the next unexhausted candidate, ending
+        // with 全部. When every candidate is exhausted, fall back to 全部 so the caller can report
+        // the full scan instead of deadlocking on an empty choice.
+        val next = when {
+            current in ELEMENT_FILTERS && current in candidates && current !in exhaustedFilters -> current
+            else -> candidates.firstOrNull { it !in exhaustedFilters } ?: LabyrinthBattleElementFilter.ALL
+        }
+        return next.takeUnless { it == LabyrinthBattleElementFilter.EFFECTIVE_EFFECT }
+            ?: LabyrinthBattleElementFilter.ALL
+    }
+
+    /**
+     * Ordered recovery tabs for roles that were not found on the current tab:每个缺失角色的属性页
+     * first (most missing roles first), then全部 as the last resort.
+     */
+    private fun missingTargetFilters(notCurrentlyVisibleIds: List<String>): List<LabyrinthBattleElementFilter> {
+        val attributeTabs = notCurrentlyVisibleIds
+            .mapNotNull { id -> profiles[id]?.attribute?.toBattleFilter() }
+            .filter { it in ELEMENT_FILTERS }
             .groupingBy { it }
             .eachCount()
-        val bestSpecific = counts.entries
+            .entries
             .sortedWith(
                 compareByDescending<Map.Entry<LabyrinthBattleElementFilter, Int>> { it.value }
                     .thenBy { it.key.ordinal },
             )
-            .firstOrNull()
-            ?.key
-        var next = when {
-            current in ELEMENT_FILTERS && counts.containsKey(current) -> current
-            current == LabyrinthBattleElementFilter.ALL &&
-                (counts.values.maxOrNull() ?: 0) < 2 && observation.scrollbar.canScroll -> current
-            else -> bestSpecific ?: LabyrinthBattleElementFilter.ALL
-        }
-        if (!observation.scrollbar.canScroll &&
-            notCurrentlyVisibleIds.isNotEmpty() &&
-            next == current
-        ) {
-            next = if (current == LabyrinthBattleElementFilter.ALL) {
-                bestSpecific ?: LabyrinthBattleElementFilter.ALL
-            } else {
-                LabyrinthBattleElementFilter.ALL
-            }
-        }
-        return next.takeUnless { it == LabyrinthBattleElementFilter.EFFECTIVE_EFFECT }
-            ?: LabyrinthBattleElementFilter.ALL
+            .map { it.key }
+        return (attributeTabs + LabyrinthBattleElementFilter.ALL).distinct()
     }
 
     private fun currentFilterMayContain(filter: LabyrinthBattleElementFilter, characterId: String): Boolean = when (filter) {

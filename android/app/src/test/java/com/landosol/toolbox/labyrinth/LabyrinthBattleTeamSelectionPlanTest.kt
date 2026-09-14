@@ -737,6 +737,67 @@ class LabyrinthBattleTeamSelectionPlanTest {
         assertNull(plan.blockedReason)
     }
 
+    @Test
+    fun `missing roles are searched on their own attribute tab before the all tab`() {
+        // 全部 shows several rows at once; a single-attribute tab is one or two rows, so it is the
+        // preferred place to look for a role that was not found on the current page.
+        val profiles = mapOf(
+            "A" to profile("A", LabyrinthCharacterAttribute.FIRE),
+            "B" to profile("B", LabyrinthCharacterAttribute.FIRE),
+            "C" to profile("C", LabyrinthCharacterAttribute.FIRE),
+            "D" to profile("D", LabyrinthCharacterAttribute.FIRE),
+            "E" to profile("E", LabyrinthCharacterAttribute.DARK),
+        )
+        val selector = LabyrinthBattleTeamSelectionPlanner(profiles)
+        val recommendation = recommendation("A", "B", "C", "D", "E")
+        val selected = listOf("A", "B", "C", "D").mapIndexed { index, id -> match("selected-$index", id, selected = true) }
+        val onAll = observation(currentFilter = LabyrinthBattleElementFilter.ALL, selected = selected, canScroll = true)
+
+        val plan = selector.plan(sessionId, recommendation, onAll)
+
+        assertEquals(listOf("E"), plan.notCurrentlyVisibleIds)
+        assertEquals(LabyrinthBattleElementFilter.DARK, plan.recommendedNextFilter)
+        assertEquals(LabyrinthBattleElementFilter.DARK, plan.recommendedFilterTarget?.filter)
+        assertEquals(listOf(LabyrinthBattleElementFilter.DARK, LabyrinthBattleElementFilter.ALL), plan.missingTargetFilters)
+        assertFalse(plan.scrollRequired)
+        assertTrue(plan.readyToExecute)
+        assertEquals(
+            LabyrinthBattleTeamExecutionKind.SELECT_FILTER,
+            labyrinthBattleTeamExecutionStep(plan, sessionId, recommendation, onAll, null, 1920, 1080)?.kind,
+        )
+    }
+
+    @Test
+    fun `exhausted attribute tab falls back to all and never bounces back`() {
+        val ids = listOf("A", "B", "C", "D", "E")
+        val selector = planner(ids)
+        val recommendation = recommendation(*ids.toTypedArray())
+        val selected = listOf("A", "B", "C", "D").mapIndexed { index, id -> match("selected-$index", id, selected = true) }
+        val onFire = observation(currentFilter = LabyrinthBattleElementFilter.FIRE, selected = selected, canScroll = true)
+
+        val fresh = selector.plan(sessionId, recommendation, onFire)
+        assertEquals(LabyrinthBattleElementFilter.FIRE, fresh.recommendedNextFilter)
+        assertTrue(fresh.scrollRequired)
+
+        val fireExhausted = setOf(LabyrinthBattleElementFilter.FIRE)
+        val recovery = requireNotNull(labyrinthBattleRosterFilterRecoveryStep(fresh, onFire, fireExhausted))
+        assertEquals(LabyrinthBattleTeamExecutionKind.SELECT_FILTER, recovery.kind)
+        assertTrue(recovery.key.startsWith("filter-recovery:ALL:"))
+        assertTrue(recovery.label, recovery.label.contains("切换全部"))
+
+        val afterFire = selector.plan(sessionId, recommendation, onFire, exhaustedFilters = fireExhausted)
+        assertEquals(LabyrinthBattleElementFilter.ALL, afterFire.recommendedNextFilter)
+        assertFalse(afterFire.scrollRequired)
+
+        val onAll = onFire.copy(currentFilter = LabyrinthBattleElementFilter.ALL, viewportRevision = 9L)
+        val scanningAll = selector.plan(sessionId, recommendation, onAll, exhaustedFilters = fireExhausted)
+        assertEquals(LabyrinthBattleElementFilter.ALL, scanningAll.recommendedNextFilter)
+        assertTrue(scanningAll.scrollRequired)
+
+        val everything = fireExhausted + LabyrinthBattleElementFilter.ALL
+        assertNull(labyrinthBattleRosterFilterRecoveryStep(scanningAll, onAll, everything))
+    }
+
     private fun planner(
         ids: List<String>,
         attribute: LabyrinthCharacterAttribute = LabyrinthCharacterAttribute.FIRE,
