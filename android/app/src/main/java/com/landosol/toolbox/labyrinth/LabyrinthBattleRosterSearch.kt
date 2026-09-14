@@ -27,18 +27,28 @@ internal class LabyrinthBattleRosterSearch {
     private var context: Context? = null
     private var topObserved = false
     private var pendingScroll: PendingScroll? = null
+    private var lastVisibleSignature: String? = null
+    private var unchangedProbeDirection: LabyrinthBattleRosterScrollDirection? = null
+    private var unchangedProbes = 0
+    private var probing = false
 
     private data class PendingScroll(
         val direction: LabyrinthBattleRosterScrollDirection,
         val originPosition: Double,
         val observations: Int = 0,
         val samePositionStableObservations: Int = 0,
+        val originVisibleSignature: String? = null,
+        val isProbe: Boolean = false,
     )
 
     fun reset() {
         context = null
         topObserved = false
         pendingScroll = null
+        lastVisibleSignature = null
+        unchangedProbeDirection = null
+        unchangedProbes = 0
+        probing = false
     }
 
     /**
@@ -50,8 +60,9 @@ internal class LabyrinthBattleRosterSearch {
         direction: LabyrinthBattleRosterScrollDirection,
         originPosition: Double,
     ) {
-        if (!originPosition.isFinite() || originPosition !in 0.0..1.0) return
-        pendingScroll = PendingScroll(direction, originPosition)
+        pendingScroll = PendingScroll(direction, originPosition.takeIf { it.isFinite() && it in 0.0..1.0 } ?: 0.0,
+            originVisibleSignature = lastVisibleSignature, isProbe = probing)
+        probing = false
     }
 
     fun observe(
@@ -71,6 +82,15 @@ internal class LabyrinthBattleRosterSearch {
             context = stableContext
             topObserved = false
             pendingScroll = null
+            unchangedProbes = 0
+            unchangedProbeDirection = null
+            probing = false
+        }
+        lastVisibleSignature = observation.takeIf {
+            it.recognitionState == LabyrinthBattleTeamRecognitionState.STABLE && it.visibleCharacters.isNotEmpty() &&
+                it.visibleCharacters.all { role -> role.trusted && role.characterId != null }
+        }?.visibleCharacters?.joinToString("|") {
+            "${it.characterId ?: it.suspectedCharacterId}:${it.screenRect.left / 4}:${it.screenRect.top / 4}:${it.screenRect.width / 4}"
         }
 
         pendingScroll?.let { pending ->
@@ -83,17 +103,21 @@ internal class LabyrinthBattleRosterSearch {
             ) {
                 if (nextPending.observations >= MAX_SCROLL_SETTLE_OBSERVATIONS) {
                     pendingScroll = null
-                    return LabyrinthBattleRosterSearchDecision.UNAVAILABLE
+                    return probe(observation, nextPending)
                 }
                 return LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE
             }
             val scrollbar = observation.scrollbar
-            if (!scrollbar.visible || scrollbar.thumbRect == null ||
-                !scrollbar.position.isFinite() || scrollbar.position !in 0.0..1.0
-            ) {
-                if (nextPending.observations >= MAX_SCROLL_SETTLE_OBSERVATIONS) {
+            if (!scrollbar.isTrustedForBoundaryEvidence()) {
+                // Without a trustworthy thumb, changed stable content is the only positive proof
+                // that the gesture moved the list. It cannot be a stale pre-swipe capture, so do
+                // not burn the whole settle budget before continuing in the same direction.
+                val contentMoved = lastVisibleSignature != null &&
+                    pending.originVisibleSignature != null &&
+                    lastVisibleSignature != pending.originVisibleSignature
+                if (contentMoved || nextPending.observations >= MAX_SCROLL_SETTLE_OBSERVATIONS) {
                     pendingScroll = null
-                    return LabyrinthBattleRosterSearchDecision.UNAVAILABLE
+                    return probe(observation, nextPending)
                 }
                 return LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE
             }
@@ -139,33 +163,66 @@ internal class LabyrinthBattleRosterSearch {
                 }
                 if (nextPending.observations >= MAX_SCROLL_SETTLE_OBSERVATIONS) {
                     pendingScroll = null
-                    return LabyrinthBattleRosterSearchDecision.UNAVAILABLE
+                    return probe(observation, nextPending)
                 }
                 return LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE
             }
 
             if (nextPending.observations >= MAX_SCROLL_SETTLE_OBSERVATIONS) {
                 pendingScroll = null
-                return LabyrinthBattleRosterSearchDecision.UNAVAILABLE
+                return probe(observation, nextPending)
             }
             return LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE
         }
 
         if (observation.recognitionState != LabyrinthBattleTeamRecognitionState.STABLE ||
             observation.currentFilter == LabyrinthBattleElementFilter.UNKNOWN
-        ) return LabyrinthBattleRosterSearchDecision.UNAVAILABLE
+        ) return probe(observation, null)
         val scrollbar = observation.scrollbar
-        if (!scrollbar.visible || scrollbar.thumbRect == null ||
-            !scrollbar.position.isFinite() || scrollbar.position !in 0.0..1.0
-        ) return LabyrinthBattleRosterSearchDecision.UNAVAILABLE
+        // A roster page without a trustworthy thumb is still scrollable. `canScroll == false` and
+        // the 0.0 position that comes with it are an absent measurement, never a confirmed single
+        // page, so they must fall through to a real swipe probe instead of ending the search.
+        if (!scrollbar.isTrustedForBoundaryEvidence()) return probe(observation, null)
 
         // Only visual evidence can finish rewinding. A dispatched gesture is not confirmation.
         if (scrollbar.position <= TOP_POSITION_THRESHOLD) topObserved = true
         return normalDecision(scrollbar)
     }
 
+    /**
+     * The blue thumb is boundary evidence only when it was actually measured. A missing thumb, a
+     * full-height thumb (`canScroll == false`) or an out-of-range position carries no information
+     * about where the list stands, and `position` is then reported as a placeholder 0.0.
+     */
+    private fun com.landosol.toolbox.labyrinth.vision.LabyrinthBattleScrollbarObservation.isTrustedForBoundaryEvidence(): Boolean =
+        visible && thumbRect != null && canScroll && position.isFinite() && position in 0.0..1.0
+
+    private fun probe(observation: LabyrinthBattleTeamObservation, pending: PendingScroll?): LabyrinthBattleRosterSearchDecision {
+        if (observation.currentFilter == LabyrinthBattleElementFilter.UNKNOWN) return LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE
+        val direction = pending?.direction ?: if (topObserved) LabyrinthBattleRosterScrollDirection.NEXT_PAGE
+            else LabyrinthBattleRosterScrollDirection.TO_TOP
+        if (pending?.isProbe == true && lastVisibleSignature != null && lastVisibleSignature == pending.originVisibleSignature) {
+            unchangedProbes = if (unchangedProbeDirection == direction) unchangedProbes + 1 else 1
+            unchangedProbeDirection = direction
+            if (unchangedProbes >= 2) {
+                unchangedProbes = 0
+                if (direction == LabyrinthBattleRosterScrollDirection.TO_TOP) {
+                    topObserved = true
+                    probing = true
+                    return LabyrinthBattleRosterSearchDecision.NEXT_PAGE
+                }
+                return LabyrinthBattleRosterSearchDecision.EXHAUSTED
+            }
+        } else if (pending != null) {
+            unchangedProbes = 0
+            unchangedProbeDirection = null
+        }
+        probing = true
+        return if (direction == LabyrinthBattleRosterScrollDirection.TO_TOP) LabyrinthBattleRosterSearchDecision.TO_TOP
+            else LabyrinthBattleRosterSearchDecision.NEXT_PAGE
+    }
+
     private fun normalDecision(scrollbar: com.landosol.toolbox.labyrinth.vision.LabyrinthBattleScrollbarObservation): LabyrinthBattleRosterSearchDecision = when {
-        !scrollbar.canScroll -> LabyrinthBattleRosterSearchDecision.EXHAUSTED
         !topObserved -> LabyrinthBattleRosterSearchDecision.TO_TOP
         scrollbar.contentEndVisible -> LabyrinthBattleRosterSearchDecision.EXHAUSTED
         scrollbar.position >= BOTTOM_POSITION_THRESHOLD -> LabyrinthBattleRosterSearchDecision.EXHAUSTED

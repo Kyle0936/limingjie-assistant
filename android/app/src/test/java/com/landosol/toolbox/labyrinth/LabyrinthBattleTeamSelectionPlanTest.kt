@@ -573,6 +573,39 @@ class LabyrinthBattleTeamSelectionPlanTest {
     }
 
     @Test
+    fun `missing scrollbar does not block a safe roster scroll on a stable team page`() {
+        val ids = listOf("A", "B", "C", "D", "E")
+        val recommendation = recommendation(*ids.toTypedArray())
+        val selected = listOf("A", "B", "C", "D").mapIndexed { index, id ->
+            match("selected-$index", id, selected = true)
+        }
+        val observation = observation(
+            currentFilter = LabyrinthBattleElementFilter.FIRE,
+            selected = selected,
+            canScroll = false,
+            viewportRevision = 3L,
+        )
+        val plan = planner(ids).plan(sessionId, recommendation, observation)
+        val step = requireNotNull(
+            labyrinthBattleTeamExecutionStep(
+                plan,
+                sessionId,
+                recommendation,
+                observation,
+                null,
+                1920,
+                1080,
+            ),
+        )
+
+        assertTrue(plan.scrollRequired)
+        assertTrue(plan.readyToExecute)
+        assertEquals(LabyrinthBattleTeamExecutionKind.SCROLL_CHARACTERS, step.kind)
+        assertTrue(step.action is AutomationAction.Swipe)
+        assertEquals(0.0, step.scrollOriginPosition ?: Double.NaN, 0.0001)
+    }
+
+    @Test
     fun `moving character list is blocked until observation is stable`() {
         val plan = planner(listOf("A", "B", "C", "D", "E")).plan(
             sessionId,

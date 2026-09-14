@@ -10,6 +10,54 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class LabyrinthBattleRosterSearchTest {
+    @Test fun `missing scrollbar permits probes and repeated unchanged portraits establish boundaries`() {
+        val search = LabyrinthBattleRosterSearch()
+        val frame = observation(0.5).let { it.copy(scrollbar = it.scrollbar.copy(visible = false, thumbRect = null)) }
+        assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, search.observe(session, frame, listOf("A")))
+        fun swipe(direction: LabyrinthBattleRosterScrollDirection): LabyrinthBattleRosterSearchDecision {
+            search.recordExecutedScroll(direction, 0.5)
+            var decision = LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE
+            repeat(12) { decision = search.observe(session, frame, listOf("A")) }
+            return decision
+        }
+        assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, swipe(LabyrinthBattleRosterScrollDirection.TO_TOP))
+        assertEquals(LabyrinthBattleRosterSearchDecision.NEXT_PAGE, swipe(LabyrinthBattleRosterScrollDirection.TO_TOP))
+        assertEquals(LabyrinthBattleRosterSearchDecision.NEXT_PAGE, swipe(LabyrinthBattleRosterScrollDirection.NEXT_PAGE))
+        assertEquals(LabyrinthBattleRosterSearchDecision.EXHAUSTED, swipe(LabyrinthBattleRosterScrollDirection.NEXT_PAGE))
+    }
+
+    @Test fun `blank unstable frames never prove an end or exhaust a finite probe budget`() {
+        val search = LabyrinthBattleRosterSearch()
+        val blank = observation(0.5).copy(
+            visibleCharacters = emptyList(),
+            recognitionState = LabyrinthBattleTeamRecognitionState.WAITING_FOR_STABILITY,
+        )
+        repeat(30) {
+            assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, search.observe(session, blank, listOf("A")))
+        }
+        repeat(12) {
+            search.recordExecutedScroll(LabyrinthBattleRosterScrollDirection.TO_TOP, 0.5)
+            var decision = LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE
+            repeat(12) { decision = search.observe(session, blank, listOf("A")) }
+            assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, decision)
+        }
+    }
+
+    @Test fun `changed portraits after probes do not falsely confirm a boundary`() {
+        val search = LabyrinthBattleRosterSearch()
+        fun frame(id: String) = observation(0.5).let {
+            it.copy(visibleCharacters = listOf(character().copy(characterId = id)),
+                scrollbar = it.scrollbar.copy(visible = false, thumbRect = null))
+        }
+        search.observe(session, frame("a"), listOf("A"))
+        for (id in listOf("b", "c", "d")) {
+            search.recordExecutedScroll(LabyrinthBattleRosterScrollDirection.TO_TOP, 0.5)
+            var decision = LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE
+            repeat(12) { decision = search.observe(session, frame(id), listOf("A")) }
+            assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, decision)
+        }
+    }
+
     private val session = AutomationSessionId(1L)
 
     @Test fun `visible end of short roster finishes only after top was observed`() {
@@ -89,9 +137,9 @@ class LabyrinthBattleRosterSearchTest {
     @Test fun `unstable top and missing scrollbar do not confirm a rewind`() {
         val search = LabyrinthBattleRosterSearch()
         val unstable = observation(0.0).copy(recognitionState = LabyrinthBattleTeamRecognitionState.WAITING_FOR_STABILITY)
-        assertEquals(LabyrinthBattleRosterSearchDecision.UNAVAILABLE, search.observe(session, unstable, listOf("A")))
+        assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, search.observe(session, unstable, listOf("A")))
         val absent = observation(0.0).let { it.copy(scrollbar = it.scrollbar.copy(thumbRect = null)) }
-        assertEquals(LabyrinthBattleRosterSearchDecision.UNAVAILABLE, search.observe(session, absent, listOf("A")))
+        assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, search.observe(session, absent, listOf("A")))
         assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, search.observe(session, observation(0.6), listOf("A")))
         search.observe(session, observation(0.0), listOf("A"))
         search.reset()
@@ -176,6 +224,41 @@ class LabyrinthBattleRosterSearchTest {
             LabyrinthBattleRosterSearchDecision.NEXT_PAGE,
             search.observe(session, effectiveTop, listOf("effective-scan")),
         )
+    }
+
+    @Test fun `full height thumb is not a single page and still probes with real swipes`() {
+        // Reported 2026-09-14: the whole grey-blue track passed the loose blue rule, so the
+        // recognizer reported a full-height thumb (canScroll=false, position=0.0). The search
+        // then returned EXHAUSTED without a single swipe. An unmeasured thumb must probe instead.
+        val search = LabyrinthBattleRosterSearch()
+        val fullThumb = observation(0.0).let {
+            it.copy(scrollbar = it.scrollbar.copy(
+                thumbRect = EntryPixelRect(1825, 377, 28, 349), canScroll = false, position = 0.0,
+            ))
+        }
+        assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, search.observe(session, fullThumb, listOf("A")))
+        search.recordExecutedScroll(LabyrinthBattleRosterScrollDirection.TO_TOP, 0.0)
+        var decision = LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE
+        repeat(12) { decision = search.observe(session, fullThumb, listOf("A")) }
+        assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, decision)
+        search.recordExecutedScroll(LabyrinthBattleRosterScrollDirection.TO_TOP, 0.0)
+        repeat(12) { decision = search.observe(session, fullThumb, listOf("A")) }
+        // Two unchanged rewind probes prove the top; the search then moves downward.
+        assertEquals(LabyrinthBattleRosterSearchDecision.NEXT_PAGE, decision)
+    }
+
+    @Test fun `changed portraits end an unmeasured scrollbar wait before the settle budget`() {
+        val search = LabyrinthBattleRosterSearch()
+        fun frame(id: String) = observation(0.0).let {
+            it.copy(visibleCharacters = listOf(character().copy(characterId = id)),
+                scrollbar = it.scrollbar.copy(visible = false, thumbRect = null, canScroll = false))
+        }
+        assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, search.observe(session, frame("a"), listOf("A")))
+        search.recordExecutedScroll(LabyrinthBattleRosterScrollDirection.TO_TOP, 0.0)
+        // Stale pre-swipe capture keeps waiting; the first genuinely different stable page
+        // already proves the gesture moved the list and continues the search immediately.
+        assertEquals(LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE, search.observe(session, frame("a"), listOf("A")))
+        assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, search.observe(session, frame("b"), listOf("A")))
     }
 
     @Test fun `tall filtered thumb confirms bottom from physical edge after rebound`() {

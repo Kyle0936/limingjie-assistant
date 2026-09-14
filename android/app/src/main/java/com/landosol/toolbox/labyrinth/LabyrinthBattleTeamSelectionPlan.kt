@@ -406,8 +406,7 @@ internal fun labyrinthBattleRosterScrollStep(
 ): LabyrinthBattleTeamExecutionStep? {
     if (frameWidth <= 0 || frameHeight <= 0 ||
         observation.recognitionState != LabyrinthBattleTeamRecognitionState.STABLE ||
-        !observation.scrollbar.visible || observation.scrollbar.thumbRect == null ||
-        !observation.scrollbar.position.isFinite()
+        observation.currentFilter == LabyrinthBattleElementFilter.UNKNOWN
     ) return null
     // Keep at least one card-height of overlap, particularly in the short Boss viewport.
     // Returning to the top reverses the same in-roster gesture; neither end crosses tabs.
@@ -427,7 +426,7 @@ internal fun labyrinthBattleRosterScrollStep(
             durationMillis = BATTLE_TEAM_SCROLL_DURATION_MILLIS,
         ),
         scrollDirection = direction,
-        scrollOriginPosition = observation.scrollbar.position,
+        scrollOriginPosition = observation.scrollbar.position.takeIf { it.isFinite() && it in 0.0..1.0 } ?: 0.5,
     )
 }
 
@@ -582,8 +581,9 @@ class LabyrinthBattleTeamSelectionPlanner(
         val recommendedFilterTarget = recommendedNextFilter
             ?.takeIf { it != observation.currentFilter }
             ?.let { target -> observation.filters.firstOrNull { it.filter == target } }
-        val scrollRequired = observation.scrollbar.canScroll &&
-            recommendedNextFilter == observation.currentFilter &&
+        // A confirmed roster page is scroll-capable even when the blue scrollbar is not detected.
+        // Treat the scrollbar as boundary evidence, not as permission to issue the gesture.
+        val scrollRequired = recommendedNextFilter == observation.currentFilter &&
             notCurrentlyVisibleIds.any { id -> currentFilterMayContain(observation.currentFilter, id) }
 
         val blockReasons = buildList {

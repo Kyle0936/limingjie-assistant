@@ -904,8 +904,6 @@ class LabyrinthEntryRecognitionSession(
     @Volatile
     private var effectiveCharacterScanScrollActions = 0
     @Volatile
-    private var effectiveCharacterScanNoScrollStableFrames = 0
-    @Volatile
     private var lastEffectiveCharacterScanActionAt = Long.MIN_VALUE
     @Volatile
     private var effectiveCharacterUnsafeStartedAt = Long.MIN_VALUE
@@ -2249,7 +2247,6 @@ class LabyrinthEntryRecognitionSession(
             synchronized(effectiveExCharacterIds) { effectiveExCharacterIds.clear() }
             effectiveRosterSearch.reset()
             effectiveCharacterScanScrollActions = 0
-            effectiveCharacterScanNoScrollStableFrames = 0
             effectiveCharacterUnsafeStartedAt = Long.MIN_VALUE
             effectiveCharacterScanSkippedUnsafe = false
             effectiveCharacterScanStage = LabyrinthEffectiveCharacterScanStage.SWITCH_TO_EFFECTIVE
@@ -2270,7 +2267,6 @@ class LabyrinthEntryRecognitionSession(
             LabyrinthEffectiveCharacterScanStage.SWITCH_TO_EFFECTIVE -> {
                 if (observation.currentFilter == LabyrinthBattleElementFilter.EFFECTIVE_EFFECT) {
                     effectiveRosterSearch.reset()
-                    effectiveCharacterScanNoScrollStableFrames = 0
                     effectiveCharacterScanStage = LabyrinthEffectiveCharacterScanStage.SCANNING
                     _state.value = _state.value.copy(message = "有效效果扫描：已进入筛选，开始从顶部完整扫描")
                     return
@@ -2331,22 +2327,6 @@ class LabyrinthEntryRecognitionSession(
                     effectiveCharacterUnsafeStartedAt = Long.MIN_VALUE
                 }
 
-                if (!observation.scrollbar.canScroll) {
-                    effectiveCharacterScanNoScrollStableFrames++
-                    if (effectiveCharacterScanNoScrollStableFrames >= EFFECTIVE_SCAN_END_STABLE_FRAMES) {
-                        effectiveCharacterScanStage = LabyrinthEffectiveCharacterScanStage.RETURN_TO_ALL
-                        _state.value = _state.value.copy(
-                            message = "有效效果扫描：列表无需滚动，已记录" +
-                                synchronized(effectiveExCharacterIds) { effectiveExCharacterIds.size } +
-                                "名角色" +
-                                if (effectiveCharacterScanSkippedUnsafe) "；未可靠身份已跳过；准备恢复全部筛选"
-                                else "；准备恢复全部筛选",
-                        )
-                    }
-                    return
-                }
-                effectiveCharacterScanNoScrollStableFrames = 0
-
                 val searchDecision = effectiveRosterSearch.observe(
                     sessionId = sessionId,
                     observation = observation,
@@ -2367,13 +2347,18 @@ class LabyrinthEntryRecognitionSession(
                         )
                     }
                     LabyrinthBattleRosterSearchDecision.UNAVAILABLE -> {
-                        finishFromPlanner(sessionId, "有效效果扫描无法可靠确认滚动条位置；停止而不盲目滑动")
+                        effectiveRosterSearch.reset()
+                        effectiveCharacterScanScrollActions = 0
+                        _state.value = _state.value.copy(message = "有效效果扫描暂时无法确认列表反馈；保持编组页并重新从顶部建立扫描")
+                        return
                     }
                     LabyrinthBattleRosterSearchDecision.TO_TOP,
                     LabyrinthBattleRosterSearchDecision.NEXT_PAGE,
                     -> {
                         if (effectiveCharacterScanScrollActions >= MAX_EFFECTIVE_SCAN_SCROLL_ACTIONS) {
-                            finishFromPlanner(sessionId, "有效效果扫描滚动达到上限，未能可靠遍历完整列表")
+                            effectiveRosterSearch.reset()
+                            effectiveCharacterScanScrollActions = 0
+                            _state.value = _state.value.copy(message = "有效效果扫描达到单轮滚动上限；保持编组页并重新从顶部复扫")
                             return
                         }
                         val toTop = searchDecision == LabyrinthBattleRosterSearchDecision.TO_TOP
@@ -2403,7 +2388,8 @@ class LabyrinthEntryRecognitionSession(
                             } else {
                                 LabyrinthBattleRosterScrollDirection.NEXT_PAGE
                             },
-                            scrollOriginPosition = observation.scrollbar.position,
+                            scrollOriginPosition = observation.scrollbar.position
+                                .takeIf { it.isFinite() && it in 0.0..1.0 } ?: 0.5,
                         )
                     }
                 }
@@ -4337,23 +4323,34 @@ class LabyrinthEntryRecognitionSession(
         val isCharacterToggle = step.kind == LabyrinthBattleTeamExecutionKind.SELECT_CHARACTER ||
             step.kind == LabyrinthBattleTeamExecutionKind.DESELECT_CHARACTER ||
             step.kind == LabyrinthBattleTeamExecutionKind.RESET_BOSS_DESELECT_CHARACTER
-        val maximumAttempts = if (isCharacterToggle) 1 else MAX_BATTLE_TEAM_STEP_ATTEMPTS
+        val maximumAttempts = when {
+            isCharacterToggle -> 1
+            step.kind == LabyrinthBattleTeamExecutionKind.SCROLL_CHARACTERS -> MAX_BATTLE_TEAM_SCROLL_ACTIONS
+            else -> MAX_BATTLE_TEAM_STEP_ATTEMPTS
+        }
         if (battleTeamExecutionAttempts >= maximumAttempts) {
-            // A blind retry can undo a successful select/deselect when the recognition frame is
-            // late. Wait for visual confirmation and stop safely instead of toggling the card.
+            // Never blindly repeat a character toggle. If visual feedback is still absent after
+            // the grace period, discard the executable plan and let the next frame rebuild it
+            // from the current roster state instead of terminating automation.
             if (
                 isCharacterToggle &&
                 timestampMillis - lastBattleTeamActionAt < BATTLE_TEAM_CHARACTER_FEEDBACK_TIMEOUT_MILLIS
             ) {
                 return
             }
-            finishFromPlanner(sessionId, "自动编组动作无视觉反馈：${step.label}")
+            resetBattleTeamExecutionTracking()
+            lastBattleTeamSelectionPlanLog = null
+            _state.value = _state.value.copy(
+                battleTeamSelectionPlan = null,
+                message = "自动编组动作反馈未确认：${step.label}；保持编组页并重新识别后规划",
+            )
             return
         }
         if (step.kind == LabyrinthBattleTeamExecutionKind.SCROLL_CHARACTERS &&
             battleTeamScrollActions >= MAX_BATTLE_TEAM_SCROLL_ACTIONS
         ) {
-            finishFromPlanner(sessionId, "自动编组滚动达到上限，仍未找到推荐角色")
+            resetBattleTeamExecutionTracking()
+            _state.value = _state.value.copy(message = "自动编组达到单轮滚动上限；保持编组页并重新从顶部扫描")
             return
         }
         if (lastBattleTeamActionAt != Long.MIN_VALUE &&
@@ -4451,7 +4448,6 @@ class LabyrinthEntryRecognitionSession(
         effectiveRosterSearch.reset()
         effectiveCharacterScanStage = LabyrinthEffectiveCharacterScanStage.IDLE
         effectiveCharacterScanScrollActions = 0
-        effectiveCharacterScanNoScrollStableFrames = 0
         effectiveCharacterUnsafeStartedAt = Long.MIN_VALUE
         effectiveCharacterScanSkippedUnsafe = false
         lastEffectiveCharacterScanActionAt = Long.MIN_VALUE
@@ -6973,7 +6969,6 @@ class LabyrinthEntryRecognitionSession(
         const val MAX_BATTLE_TEAM_SCROLL_ACTIONS = 48
         const val MAX_EFFECTIVE_SCAN_SCROLL_ACTIONS = 48
         const val EFFECTIVE_SCAN_SCROLL_DURATION_MILLIS = 360L
-        const val EFFECTIVE_SCAN_END_STABLE_FRAMES = 2
         const val EFFECTIVE_SCAN_UNSAFE_SETTLE_MILLIS = 1_500L
         val EFFECTIVE_SCAN_CONTEXT_IDS = listOf("__effective-effect-scan__")
         const val EX_ENCOUNTER_OPEN_DETAIL_TIMEOUT_MILLIS = 5_000L
