@@ -130,7 +130,7 @@ fun LabyrinthStrategySettingsScreen(
                     ) { draft = draft.copy(preferPureBossDamageSystem = it) }
                     StrategySwitch(
                         "单队Boss失败后切换多队",
-                        "仅单队编组生效。达到下面设置的重新挑战次数后仍失败，不直接重刷开局，而是返回编组并临时切换为多队模式；随后按当前角色池自动使用可安全组成的3/2/1队。不会永久修改你的Boss编组设置。",
+                        "仅单队编组生效。达到下面设置的重新挑战次数后仍失败，不直接重刷开局，而是返回编组并临时切换为多队模式；随后把一号位生存线从55分放宽到40分，按当前角色池尽量组成3/2/1队。不会永久修改你的Boss编组设置。",
                         draft.singleBossFallbackToMultiAfterThreeFailures,
                         !saving,
                     ) { draft = draft.copy(singleBossFallbackToMultiAfterThreeFailures = it) }

@@ -57,6 +57,63 @@ class LabyrinthRoleDecisionDataTest {
     }
 
     @Test
+    fun `production single boss fallback relaxes the vanguard gate into a real multi team plan`() {
+        val asset = listOf(
+            File("app/src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+            File("src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+        ).first { it.isFile }
+        val parsed = when (val result = LabyrinthRoleDecisionDataParser.parse(asset.readText())) {
+            is LabyrinthRoleDecisionDataResult.Ready -> result
+            is LabyrinthRoleDecisionDataResult.Unavailable -> error(result.reason)
+        }
+        // 2026-09-14 debug bundle: 19 owned roles, 冰霜魔狼, only 圣诞咲恋 passes the strict gate.
+        // The single team wiped three times and the temporary multi-team mode still planned 1 team.
+        val acquired = listOf(
+            "1213", "1077", "1145", "1344", "1266", "1272", "1295", "1285", "1277", "1065",
+            "1008", "1258", "1140", "1178", "1175", "1147", "1061", "1346", "1075",
+        )
+        val planner = parsed.runtime.battleTeamRecommendationPlanner
+        val strict = LabyrinthRoleDecisionContext(
+            defenseMarkStacks = 4,
+            targetCount = 3,
+            optimizeBossVanguardSynergy = true,
+            preferSingleDamageSystem = true,
+            encounterStrategy = LabyrinthBossEncounterCatalog.forUnitId(319604),
+        )
+        val strictPlan = planner.initialRecommendation(acquired, strict, requestedBossTeamCount = 3)
+            as LabyrinthBattleTeamRecommendationResult.Ready
+        assertEquals(1, strictPlan.recommendation.plannedBossTeamCount)
+        assertEquals("1145", strictPlan.recommendation.vanguard.characterId)
+
+        val relaxed = strict.copy(relaxedVanguardGate = true)
+        val failed = labyrinthBattleTeamSignature(strictPlan.recommendation.members.map { it.characterId })
+        val fallback = planner.retryRecommendation(
+            acquiredCharacterIds = acquired,
+            context = relaxed,
+            failedTeamSignatures = setOf(failed),
+            retryNumber = 1,
+            lastFailedTeamSignature = failed,
+            requestedBossTeamCount = 3,
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertTrue(
+            "planned=${fallback.recommendation.plannedBossTeamCount} reasons=${fallback.recommendation.reasons}",
+            fallback.recommendation.plannedBossTeamCount >= 2,
+        )
+        assertTrue(fallback.recommendation.reasons.any { it.contains("放宽一号位生存线") })
+        val first = fallback.recommendation.members.map { it.characterId }
+        assertEquals(5, first.size)
+        assertFalse(labyrinthBattleTeamSignature(first) == failed)
+        // The follow-up team for the second tab must also be plannable from the remaining roster.
+        val second = planner.initialRecommendation(
+            acquiredCharacterIds = acquired.filterNot(first::contains),
+            context = relaxed.copy(optimizeBossVanguardSynergy = false),
+            requestedBossTeamCount = 2,
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertEquals(5, second.recommendation.members.size)
+        assertTrue(second.recommendation.members.none { it.characterId in first })
+    }
+
+    @Test
     fun `production boss multi team degrades to two safe teams when only two vanguards are owned`() {
         val asset = listOf(
             File("app/src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),

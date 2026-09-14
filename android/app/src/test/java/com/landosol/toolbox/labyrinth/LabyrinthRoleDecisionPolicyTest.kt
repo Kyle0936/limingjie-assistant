@@ -759,6 +759,48 @@ class LabyrinthRoleDecisionPolicyTest {
     }
 
     @Test
+    fun `relaxed vanguard gate lets boss fallback field a second team behind a near miss front`() {
+        // Reported 2026-09-14: the single team wiped three times, the session switched to
+        // multi-team, but the roster had exactly one strict-gate tank so the planner kept
+        // returning one team. Under the fallback gate a 40+ frontliner may lead the second team.
+        val roster = listOf(
+            physical("t1", "唯一坦", position = 1, reliableVanguard = 100.0, roleClass = "掩护者", damage = 15.0),
+            physical("t2", "半坦", position = 2, reliableVanguard = 60.0, roleClass = "攻击者", damage = 40.0),
+            physical("d1", "输出一", position = 3, damage = 100.0),
+            physical("d2", "输出二", position = 4, damage = 98.0),
+            physical("d3", "输出三", position = 5, damage = 96.0),
+            physical("d4", "输出四", position = 6, damage = 94.0),
+            physical("d5", "输出五", position = 7, damage = 92.0),
+            physical("d6", "输出六", position = 8, damage = 90.0),
+            physical("d7", "输出七", position = 9, damage = 88.0),
+            physical("d8", "输出八", position = 10, damage = 86.0),
+        )
+        val strict = LabyrinthRoleDecisionContext(defenseMarkStacks = 4)
+        val relaxed = strict.copy(relaxedVanguardGate = true)
+        // 60 * 0.75 = 45: below the strict 55 gate, above the relaxed 40 gate.
+        assertFalse(roster[1].isEligibleBattleVanguard(strict))
+        assertTrue(roster[1].isEligibleBattleVanguard(relaxed))
+        val searcher = LabyrinthTeamPlanSearcher(
+            optimizer,
+            LabyrinthTeamPlanSearchConfig(
+                oneTeamKillScore = 0.0, mainTeamScore = 0.0, cleanupTeamScore = 0.0,
+                mainPlusCleanupCombinedScore = 0.0, stableTeamScore = 0.0, fallbackTeamScore = 0.0,
+                threeTeamCombinedScore = 0.0, multiTeamBeamWidth = 300,
+            ),
+        )
+
+        val strictPlan = searcher.bossMultiTeamSearch(roster, strict, requestedTeams = 3)
+        assertEquals(1, strictPlan.teams.size)
+
+        val relaxedPlan = searcher.bossMultiTeamSearch(roster, relaxed, requestedTeams = 3, survivalRecovery = true)
+        assertEquals(2, relaxedPlan.teams.size)
+        assertEquals(setOf("t1", "t2"), relaxedPlan.teams.map { it.vanguardCharacterId }.toSet())
+        assertTrue(relaxedPlan.reason, relaxedPlan.reason.contains("放宽一号位生存线至40.00"))
+        val firstIds = relaxedPlan.teams[0].members.map(LabyrinthRoleProfile::characterId).toSet()
+        assertTrue(relaxedPlan.teams[1].members.none { it.characterId in firstIds })
+    }
+
+    @Test
     fun `boss multi team downgrades to one when only one safe vanguard exists`() {
         val roster = listOf(
             physical("t1", "唯一坦", position = 1, reliableVanguard = 100.0, roleClass = "掩护者", damage = 15.0),

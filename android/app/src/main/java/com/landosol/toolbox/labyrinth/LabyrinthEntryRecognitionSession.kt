@@ -753,6 +753,12 @@ class LabyrinthEntryRecognitionSession(
     private var singleBossFallbackToMultiAfterThreeFailures: Boolean = false
     private var singleBossRetryCountBeforeMulti: Int = 2
     private var pendingSingleBossFallbackToMulti: Boolean = false
+    /**
+     * True once the single-team Boss attempts were exhausted and the editor was switched to the
+     * temporary multi-team mode. Every team recommendation for this Boss then uses the relaxed
+     * vanguard gate; otherwise a roster with one real tank silently plans one team again.
+     */
+    private var bossFallbackMultiTeamActive: Boolean = false
     private var rerollAfterThreeBattleFailures: Boolean = false
     @Volatile
     private var lastObservedPageState: LabyrinthEntryPageState? = null
@@ -991,6 +997,7 @@ class LabyrinthEntryRecognitionSession(
         singleBossFallbackToMultiAfterThreeFailures = false
         singleBossRetryCountBeforeMulti = 2
         pendingSingleBossFallbackToMulti = false
+        bossFallbackMultiTeamActive = false
         strategySnapshot?.let { snapshot ->
             configuredBossTeamMode = snapshot.settings.bossTeamMode
             bossTeamMode = configuredBossTeamMode
@@ -2596,6 +2603,8 @@ class LabyrinthEntryRecognitionSession(
             append(currentCombatContext?.teamIndex ?: 1)
             append("|bossMode=")
             append(bossTeamMode.name)
+            append("|fallbackMulti=")
+            append(bossFallbackMultiTeamActive)
             append("|requestedBossTeams=")
             append(requestedBossTeamCount)
             append("|bossTarget=")
@@ -2653,6 +2662,8 @@ class LabyrinthEntryRecognitionSession(
                     effectiveCharacterIds = synchronized(effectiveExCharacterIds) {
                         effectiveExCharacterIds.toSet()
                     },
+                    relaxedVanguardGate = currentCombatContext?.kind == LabyrinthCombatKind.BOSS &&
+                        bossFallbackMultiTeamActive,
                 )
                 if (battleRetryCount > 0) {
                     val failedSignatures = synchronized(failedBattleTeamSignatures) {
@@ -4626,6 +4637,7 @@ class LabyrinthEntryRecognitionSession(
                             }
                             if (pendingSingleBossFallbackToMulti) {
                                 bossTeamMode = LabyrinthBossTeamMode.MULTI_TEAM
+                                bossFallbackMultiTeamActive = true
                                 pendingSingleBossFallbackToMulti = false
                                 battleRetryCount = 0
                                 synchronized(failedBattleTeamSignatures) { failedBattleTeamSignatures.clear() }
@@ -5417,6 +5429,7 @@ class LabyrinthEntryRecognitionSession(
         if (blockType == LabyrinthNodeTypes.BOSS) {
             bossTeamMode = configuredBossTeamMode
             pendingSingleBossFallbackToMulti = false
+            bossFallbackMultiTeamActive = false
         }
         synchronized(committedBattleCharacterIds) { committedBattleCharacterIds.clear() }
         resetBattleRetryTracking()

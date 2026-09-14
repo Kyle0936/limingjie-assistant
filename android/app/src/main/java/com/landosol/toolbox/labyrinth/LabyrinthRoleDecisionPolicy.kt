@@ -367,6 +367,13 @@ data class LabyrinthRoleDecisionContext(
     val encounterStrategy: LabyrinthExEncounterStrategy? = null,
     /** Official “有效效果” intersection with the currently owned roster. Empty means not scanned/none. */
     val effectiveCharacterIds: Set<String> = emptySet(),
+    /**
+     * Boss fallback after the configured single-team retries were exhausted. The strongest single
+     * team has already wiped, so every additional team is a net gain: accept frontliners down to
+     * [LabyrinthTeamScoringConfig.relaxedMinimumReliableVanguard] instead of the strict gate.
+     * Scoring still prefers a genuinely reliable front; only the hard eligibility gate relaxes.
+     */
+    val relaxedVanguardGate: Boolean = false,
 ) {
     init {
         require(defenseMarkStacks >= 0)
@@ -383,6 +390,8 @@ data class LabyrinthTeamScoringConfig(
     val defenseBaselineStacks: Int = 4,
     val teamTypeThreshold: Double = 0.70,
     val minimumReliableVanguard: Double = 55.0,
+    /** Hard vanguard gate used only when [LabyrinthRoleDecisionContext.relaxedVanguardGate] is set. */
+    val relaxedMinimumReliableVanguard: Double = DEFAULT_RELAXED_MINIMUM_BATTLE_VANGUARD,
     val minimumEffectiveSustain: Double = 35.0,
     val minimumAoe: Double = 35.0,
     val minimumSingleTarget: Double = 35.0,
@@ -460,6 +469,7 @@ data class LabyrinthTeamScoringConfig(
         require(teamTypeThreshold in 0.5..1.0)
         listOf(
             minimumReliableVanguard,
+            relaxedMinimumReliableVanguard,
             minimumEffectiveSustain,
             minimumAoe,
             minimumSingleTarget,
@@ -522,6 +532,10 @@ data class LabyrinthTeamScoringConfig(
         listOf(lowestDefenseDuplicateMultiplier, lowDefenseDuplicateMultiplier,
             survivalRecoveryDuplicateMultiplier).forEach { require(it in 0.0..1.0) }
     }
+
+    /** The hard first-position gate for this context: strict by default, relaxed for Boss fallback. */
+    fun vanguardGate(context: LabyrinthRoleDecisionContext): Double =
+        if (context.relaxedVanguardGate) relaxedMinimumReliableVanguard else minimumReliableVanguard
 }
 
 data class LabyrinthTeamEvaluation(
@@ -1049,6 +1063,7 @@ internal val LabyrinthRoleProfile.isLabyrinthBattleTank: Boolean
     get() = roleClass == "掩护者"
 
 private const val DEFAULT_MINIMUM_BATTLE_VANGUARD = 55.0
+internal const val DEFAULT_RELAXED_MINIMUM_BATTLE_VANGUARD = 40.0
 
 /**
  * Actual first-position survival is a combat job, not a synonym for the “掩护者” class.
@@ -1112,14 +1127,22 @@ internal fun LabyrinthRoleProfile.labyrinthVanguardStrength(context: LabyrinthRo
     return mechanismAdjusted.coerceIn(0.0, 100.0)
 }
 
+/** Null [minimum] resolves the default gate for the context (strict, or relaxed for Boss fallback). */
 internal fun LabyrinthRoleProfile.isEligibleBattleVanguard(
     context: LabyrinthRoleDecisionContext,
-    minimum: Double = DEFAULT_MINIMUM_BATTLE_VANGUARD,
-): Boolean = position != null && labyrinthVanguardStrength(context) >= minimum
+    minimum: Double? = null,
+): Boolean {
+    val gate = minimum ?: if (context.relaxedVanguardGate) {
+        DEFAULT_RELAXED_MINIMUM_BATTLE_VANGUARD
+    } else {
+        DEFAULT_MINIMUM_BATTLE_VANGUARD
+    }
+    return position != null && labyrinthVanguardStrength(context) >= gate
+}
 
 internal fun List<LabyrinthRoleProfile>.hasEligibleVanguardAtActualFront(
     context: LabyrinthRoleDecisionContext,
-    minimum: Double = DEFAULT_MINIMUM_BATTLE_VANGUARD,
+    minimum: Double? = null,
 ): Boolean {
     if (any { it.position == null }) return false
     val frontPosition = mapNotNull(LabyrinthRoleProfile::position).minOrNull() ?: return false
@@ -1222,7 +1245,7 @@ class LabyrinthTeamOptimizer(
         if (unique.isEmpty()) return emptyList()
         if (requiredCharacterId != null && unique.none { it.characterId == requiredCharacterId }) return emptyList()
         if (requireFrontmostTank && unique.none {
-                it.isEligibleBattleVanguard(context, scorer.config.minimumReliableVanguard)
+                it.isEligibleBattleVanguard(context, scorer.config.vanguardGate(context))
             }) {
             return emptyList()
         }
@@ -1251,7 +1274,7 @@ class LabyrinthTeamOptimizer(
             if (
                 (requiredCharacterId == null || team.any { it.characterId == requiredCharacterId }) &&
                 (!requireFrontmostTank ||
-                    team.hasEligibleVanguardAtActualFront(context, scorer.config.minimumReliableVanguard))
+                    team.hasEligibleVanguardAtActualFront(context, scorer.config.vanguardGate(context)))
             ) {
                 val evaluation = scorer.evaluateForSearch(team, context)
                 if (
@@ -1286,9 +1309,10 @@ class LabyrinthTeamOptimizer(
     ): List<LabyrinthRoleProfile> {
         val limit = scorer.config.exhaustiveRosterLimit
         val teamSize = minOf(TEAM_SIZE, unique.size)
+        val gate = scorer.config.vanguardGate(context)
         val frontmostTank = unique
             .asSequence()
-            .filter { it.isEligibleBattleVanguard(context, scorer.config.minimumReliableVanguard) }
+            .filter { it.isEligibleBattleVanguard(context, gate) }
             .minWithOrNull(compareBy<LabyrinthRoleProfile> { it.position }.thenBy { it.characterId })
             ?: return emptyList()
         val tankPosition = requireNotNull(frontmostTank.position)
@@ -1297,7 +1321,7 @@ class LabyrinthTeamOptimizer(
             .filter { role ->
                 role.characterId != frontmostTank.characterId &&
                     role.position != null &&
-                    (role.isEligibleBattleVanguard(context, scorer.config.minimumReliableVanguard) ||
+                    (role.isEligibleBattleVanguard(context, gate) ||
                         requireNotNull(role.position) > tankPosition)
             }
             .sortedByDescending { individualSearchPriority(it, context) }
@@ -1738,8 +1762,14 @@ class LabyrinthTeamPlanSearcher(
             )
         }
 
+        val vanguardGate = optimizer.scoringConfig.vanguardGate(searchContext)
         val qualifiedVanguards = unique.count {
-            it.isEligibleBattleVanguard(searchContext, optimizer.scoringConfig.minimumReliableVanguard)
+            it.isEligibleBattleVanguard(searchContext, vanguardGate)
+        }
+        val gateNote = if (searchContext.relaxedVanguardGate) {
+            "；失败后放宽一号位生存线至${formatScore(vanguardGate)}"
+        } else {
+            ""
         }
         val fullTeamCapacity = unique.size / TEAM_SIZE
         val safeCapacity = minOf(requestedTeams, qualifiedVanguards, fullTeamCapacity)
@@ -1771,7 +1801,7 @@ class LabyrinthTeamPlanSearcher(
             return LabyrinthTeamPlan(
                 kind,
                 teams,
-                "Boss多队安全容量${targetTeams}队（请求${requestedTeams}队；可靠一号位${qualifiedVanguards}名；完整队伍容量${fullTeamCapacity}），" +
+                "Boss多队安全容量${targetTeams}队（请求${requestedTeams}队；可靠一号位${qualifiedVanguards}名；完整队伍容量${fullTeamCapacity}$gateNote），" +
                     "按${targetTeams}队总评分优化，总分${formatScore(combined)}",
             )
         }
@@ -1788,7 +1818,7 @@ class LabyrinthTeamPlanSearcher(
         return LabyrinthTeamPlan(
             LabyrinthTeamPlanKind.FIRST_ATTEMPT_ONE_TEAM,
             listOf(single),
-            "Boss仅能安全组成1队，按单队评分优化，评分${formatScore(single.score)}",
+            "Boss仅能安全组成1队（可靠一号位${qualifiedVanguards}名$gateNote），按单队评分优化，评分${formatScore(single.score)}",
         )
     }
 
