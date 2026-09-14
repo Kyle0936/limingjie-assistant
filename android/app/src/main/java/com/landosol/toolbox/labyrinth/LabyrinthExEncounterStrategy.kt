@@ -295,17 +295,17 @@ object LabyrinthExEncounterCatalog {
     val all: List<LabyrinthExEncounterStrategy> = singleTarget + multiTarget + specialDualTarget
 
     fun matchObservedName(text: String?): LabyrinthExEncounterStrategy? {
-        val observed = normalizeEncounterName(text ?: return null)
-        if (observed.isBlank()) return null
-        val observedVariants = encounterObservedNameVariants(observed)
+        val observedVariants = encounterObservedNameVariants(text ?: return null)
+        if (observedVariants.isEmpty()) return null
         return all
             .filterNot { it.identityName.startsWith("？？？") }
             .map { strategy ->
                 val names = sequenceOf(strategy.identityName) + strategy.identityAliases.asSequence()
                 strategy to names.maxOf { name ->
-                    val expected = normalizeEncounterName(name)
-                    observedVariants.maxOf { candidate ->
-                        encounterNameSimilarity(expected, candidate)
+                    encounterIdentityNameVariants(name).maxOf { expected ->
+                        observedVariants.maxOf { candidate ->
+                            encounterNameSimilarity(expected, candidate)
+                        }
                     }
                 }
             }
@@ -321,26 +321,56 @@ object LabyrinthExEncounterCatalog {
     private fun normalizeEncounterName(value: String): String = value
         .replace('·', '・')
         .replace('•', '・')
-        .replace(" ", "")
-        .replace("\n", "")
         .replace("的暗影", "暗影")
         .replace('（', '(')
         .replace('）', ')')
+        .map { character -> ENCOUNTER_OCR_EQUIVALENTS[character] ?: character }
+        .filterNot(Char::isWhitespace)
+        .joinToString("")
         .lowercase()
 
     /**
+     * ML Kit returns all text blocks in the crop joined with newlines. Score each row separately so
+     * a nearby level/weakness label does not lengthen the actual name and make a valid read fail.
+     * Do not split arbitrary text within one row: accepting a known substring from a description
+     * would make unrelated detail text look like encounter identity evidence.
+     *
      * Monster-detail titles have a decorative blue curl immediately to the left of the name.
      * Android OCR can consistently turn a clipped piece of that curl into one ASCII glyph (the
      * live 爆炸・遗物 sample produced "C爆炸・遗物").  Repair only one non-CJK edge glyph; never
      * use arbitrary substring containment as an OCR shortcut.
      */
-    private fun encounterObservedNameVariants(observed: String): Set<String> = buildSet {
-        add(observed)
-        if (observed.length >= 4 && observed.first().isEncounterEdgeNoise()) {
-            add(observed.drop(1))
+    private fun encounterObservedNameVariants(text: String): Set<String> = buildSet {
+        text.lineSequence().forEach { line ->
+            val observed = normalizeEncounterName(line)
+            if (observed.isBlank()) return@forEach
+            add(observed)
+            addShadowBaseVariant(observed)
+            if (observed.length >= 4 && observed.first().isEncounterEdgeNoise()) {
+                observed.drop(1).also {
+                    add(it)
+                    addShadowBaseVariant(it)
+                }
+            }
+            if (observed.length >= 4 && observed.last().isEncounterEdgeNoise()) {
+                observed.dropLast(1).also {
+                    add(it)
+                    addShadowBaseVariant(it)
+                }
+            }
         }
-        if (observed.length >= 4 && observed.last().isEncounterEdgeNoise()) {
-            add(observed.dropLast(1))
+    }
+
+    /** The common "的暗影" suffix carries no identity and is often omitted by a narrow OCR row. */
+    private fun encounterIdentityNameVariants(name: String): Set<String> = buildSet {
+        val normalized = normalizeEncounterName(name)
+        add(normalized)
+        addShadowBaseVariant(normalized)
+    }
+
+    private fun MutableSet<String>.addShadowBaseVariant(value: String) {
+        if (value.endsWith(SHADOW_SUFFIX) && value.length > SHADOW_SUFFIX.length + 1) {
+            add(value.removeSuffix(SHADOW_SUFFIX))
         }
     }
 
@@ -378,6 +408,23 @@ object LabyrinthExEncounterCatalog {
 
     private const val MIN_NAME_SCORE = 0.72
     private const val MIN_NAME_MARGIN = 0.08
+    private const val SHADOW_SUFFIX = "暗影"
+
+    /** Traditional glyphs that commonly appear in CN OCR output for names in this catalogue. */
+    private val ENCOUNTER_OCR_EQUIVALENTS = mapOf(
+        '凱' to '凯',
+        '島' to '岛',
+        '鯨' to '鲸',
+        '靈' to '灵',
+        '領' to '领',
+        '質' to '质',
+        '獸' to '兽',
+        '魚' to '鱼',
+        '龍' to '龙',
+        '黃' to '黄',
+        '遺' to '遗',
+        '壞' to '坏',
+    )
 }
 
 internal data class LabyrinthEncounterRequirementStatus(

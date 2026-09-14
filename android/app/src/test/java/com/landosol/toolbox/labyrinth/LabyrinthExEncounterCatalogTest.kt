@@ -55,6 +55,37 @@ class LabyrinthExEncounterCatalogTest {
     }
 
     @Test
+    fun `name row is matched independently from unrelated OCR rows`() {
+        val strategy = requireNotNull(
+            LabyrinthExEncounterCatalog.matchObservedName("Lv.370\n凯露（新）的暗影\n弱点 魔法"),
+        )
+
+        assertEquals("multi_ny_karyl_shadow", strategy.id)
+    }
+
+    @Test
+    fun `new year karyl remains unique when OCR omits shadow suffix and one variant glyph`() {
+        val strategy = requireNotNull(LabyrinthExEncounterCatalog.matchObservedName("凯露（新）"))
+
+        assertEquals("multi_ny_karyl_shadow", strategy.id)
+    }
+
+    @Test
+    fun `traditional whale glyph from OCR resolves island whale`() {
+        val strategy = requireNotNull(LabyrinthExEncounterCatalog.matchObservedName("岛鯨"))
+
+        assertEquals("island_whale", strategy.id)
+        assertEquals("岛鲸", strategy.identityName)
+    }
+
+    @Test
+    fun `one similar character error in a longer name remains recoverable`() {
+        val strategy = requireNotNull(LabyrinthExEncounterCatalog.matchObservedName("反物貭兽"))
+
+        assertEquals("antimatter_beast", strategy.id)
+    }
+
+    @Test
     fun `single target boss name resolves directly from challenge page OCR`() {
         val strategy = requireNotNull(LabyrinthExEncounterCatalog.matchObservedName("幽灵领主"))
 
