@@ -570,7 +570,7 @@ private fun EntryRecognitionCard(
                 Text(
                     "编组筛选：${team.currentFilter.label} · 可见角色 ${team.visibleCharacters.size} · " +
                         "已识别 ${team.recognizedCharacterCount} · " +
-                        if (team.scrollbar.canScroll) "需要时可滚动" else "当前无需滚动",
+                        if (team.scrollbar.canScroll) "需要时可滚动" else "滚动条未测得，仍可滑动",
                     style = MaterialTheme.typography.bodySmall,
                 )
                 team.selectedCharacters

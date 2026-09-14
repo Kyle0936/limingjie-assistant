@@ -1120,7 +1120,7 @@ class LabyrinthBattleTeamRecognizer(
                 var samples = 0
                 var x = track.left
                 while (x < track.left + track.width) {
-                    if (isBlue(frame[x, track.top + row])) blue++
+                    if (isScrollbarThumbBlue(frame[x, track.top + row])) blue++
                     samples++
                     x += 2
                 }
@@ -1336,6 +1336,23 @@ class LabyrinthBattleTeamRecognizer(
         val green = channel(color, 1)
         val blue = channel(color, 2)
         return blue >= 120 && blue - red >= 24 && green - red >= 8
+    }
+
+    /**
+     * The scrollbar thumb is a saturated sky blue (roughly r 85-136, g 133-201, b 240-255), but the
+     * empty track behind it is a grey-blue (roughly 148,154,170) that sits within one or two units
+     * of the generic [isBlue] rule. Live captures crossed that rule on the whole track, which turned
+     * the entire track into a full-height "thumb" and made a scrollable roster look like a single
+     * page. Require a clearly saturated blue for thumb rows; the filter-tab coverage keeps the
+     * looser rule.
+     */
+    private fun isScrollbarThumbBlue(color: Int): Boolean {
+        val red = channel(color, 0)
+        val green = channel(color, 1)
+        val blue = channel(color, 2)
+        return blue >= SCROLLBAR_THUMB_MIN_BLUE &&
+            blue - red >= SCROLLBAR_THUMB_MIN_BLUE_MINUS_RED &&
+            green - red >= SCROLLBAR_THUMB_MIN_GREEN_MINUS_RED
     }
 
     private fun longestRun(values: BooleanArray): Pair<Int, Int>? {
@@ -1582,6 +1599,9 @@ class LabyrinthBattleTeamRecognizer(
         const val CHECKMARK_WHITE_FULL = 0.120
         const val SCROLLBAR_ROW_BLUE_MIN = 0.25
         const val SCROLLBAR_FULL_HEIGHT_RATIO = 0.92
+        const val SCROLLBAR_THUMB_MIN_BLUE = 140
+        const val SCROLLBAR_THUMB_MIN_BLUE_MINUS_RED = 45
+        const val SCROLLBAR_THUMB_MIN_GREEN_MINUS_RED = 15
         const val ICON_CARD_INSET_LEFT = 6
         const val ICON_CARD_INSET_TOP = 6
         const val ICON_CARD_HORIZONTAL_INSET = 14

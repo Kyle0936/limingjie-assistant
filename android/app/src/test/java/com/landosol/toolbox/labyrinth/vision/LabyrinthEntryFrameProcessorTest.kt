@@ -132,6 +132,24 @@ class LabyrinthEntryFrameProcessorTest {
     }
 
     @Test
+    fun `reported boss roster frame measures a mid list scrollbar thumb`() {
+        // 2026-09-14 debug bundle: the automation reported 无需滚动 / EXHAUSTED on this frame and
+        // never swiped, because the grey-blue empty track matched the loose blue rule and became a
+        // full-height thumb. The real thumb sits at roughly 28% of the Boss track.
+        val frame = readImage(File(projectRoot, "android/app/src/test/resources/labyrinth/battle-team-roster-20260914.jpg"))
+        val recognizer = LabyrinthBattleTeamRecognizer(templates = loadBattleTeamTemplates(), requiredStableFrames = 1)
+        val observation = recognizer.recognize(frame)
+        val scrollbar = observation.scrollbar
+        assertEquals(1, observation.bossTeamIndex)
+        assertEquals(LabyrinthBattleElementFilter.ALL, observation.currentFilter)
+        assertTrue("scrollbar=$scrollbar", scrollbar.visible && scrollbar.canScroll)
+        assertTrue("scrollbar=$scrollbar", scrollbar.position in 0.20..0.40)
+        val thumb = requireNotNull(scrollbar.thumbRect)
+        assertTrue("thumb=$thumb", thumb.height in 150..220)
+        assertTrue("thumb=$thumb", thumb.top in 410..440)
+    }
+
+    @Test
     fun `effective effect sparse tail exposes only the real eight plus one cards`() {
         val frame = readImage(
             File(

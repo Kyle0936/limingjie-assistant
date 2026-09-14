@@ -6249,7 +6249,7 @@ class LabyrinthEntryRecognitionSession(
                         val total = team.visibleCharacters.size + team.selectedCharacters.size
                         add(
                             "编组：${team.currentFilter.label} · 角色 $recognized/$total · " +
-                                if (team.scrollbar.canScroll) "可滚动" else "无需滚动",
+                                if (team.scrollbar.canScroll) "可滚动" else "滚动条未测得",
                         )
                         team.selectedCharacters
                             .mapNotNull { it.displayName }
