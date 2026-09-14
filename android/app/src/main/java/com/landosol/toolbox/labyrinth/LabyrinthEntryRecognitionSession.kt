@@ -213,6 +213,20 @@ internal fun labyrinthShouldRerollAfterBattleFailure(
     battleRetryCount: Int,
 ): Boolean = rerollAfterThreeFailures && battleRetryCount >= 2
 
+/**
+ * Pages of the final settlement chain. When the entry planner reports one of them as "complete"
+ * but no route executor is configured, the session must wait rather than stop: the game is still
+ * inside a run and a stopped session would strand it on the score page.
+ */
+internal fun labyrinthCompletionWaitsWithoutRoute(state: LabyrinthEntryPageState): Boolean = state in setOf(
+    LabyrinthEntryPageState.RUN_CLEAR_RESULT,
+    LabyrinthEntryPageState.RUN_CLEAR_CONGRATULATIONS,
+    LabyrinthEntryPageState.RUN_CLEAR_CHARACTER_SUMMARY,
+    LabyrinthEntryPageState.RUN_CLEAR_REWARD_ANIMATION,
+    LabyrinthEntryPageState.RUN_CLEAR_CHEST_ANIMATION,
+    LabyrinthEntryPageState.RUN_CLEAR_CHEST_RESULT,
+)
+
 internal fun labyrinthBattleKindLabel(kind: LabyrinthCombatKind): String = when (kind) {
     LabyrinthCombatKind.NORMAL -> "普通战"
     LabyrinthCombatKind.EX -> "EX战"
@@ -2818,7 +2832,14 @@ class LabyrinthEntryRecognitionSession(
             }
             is LabyrinthEntryActionDecision.Execute -> dispatchAction(sessionId, decision)
             is LabyrinthEntryActionDecision.Complete ->
-                if (nodeExecutionConfigured() && shouldHandOffToRouteExecution(decision.state)) {
+                if (!nodeExecutionConfigured() && labyrinthCompletionWaitsWithoutRoute(decision.state)) {
+                    // The run-clear settlement chain is owned by route execution. Without a
+                    // configured route there is nobody to drive it, but stopping on the score
+                    // page abandons a finished run mid-settlement. Stay put and say so.
+                    _state.value = _state.value.copy(
+                        message = "已到达通关结算页 ${decision.state.name}；未配置路线，保持在当前页不自动点击",
+                    )
+                } else if (nodeExecutionConfigured() && shouldHandOffToRouteExecution(decision.state)) {
                     // A live session can be started on the map or on a route-owned page. Hand it
                     // to the route executor instead of treating the entry planner as finished.
                     entryPhaseComplete = true

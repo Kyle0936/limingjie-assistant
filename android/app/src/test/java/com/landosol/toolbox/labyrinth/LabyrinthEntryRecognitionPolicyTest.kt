@@ -126,6 +126,23 @@ class LabyrinthEntryRecognitionPolicyTest {
     }
 
     @Test
+    fun `final settlement pages wait instead of stopping when no route is configured`() {
+        listOf(
+            LabyrinthEntryPageState.RUN_CLEAR_RESULT,
+            LabyrinthEntryPageState.RUN_CLEAR_CONGRATULATIONS,
+            LabyrinthEntryPageState.RUN_CLEAR_CHARACTER_SUMMARY,
+            LabyrinthEntryPageState.RUN_CLEAR_REWARD_ANIMATION,
+            LabyrinthEntryPageState.RUN_CLEAR_CHEST_ANIMATION,
+            LabyrinthEntryPageState.RUN_CLEAR_CHEST_RESULT,
+        ).forEach { assertTrue(it.name, labyrinthCompletionWaitsWithoutRoute(it)) }
+        listOf(
+            LabyrinthEntryPageState.NODE_SELECTION,
+            LabyrinthEntryPageState.BATTLE_RESULT,
+            LabyrinthEntryPageState.DAWN_REALM_HOME_IDLE,
+            LabyrinthEntryPageState.UNKNOWN,
+        ).forEach { assertTrue(it.name, !labyrinthCompletionWaitsWithoutRoute(it)) }
+
+    @Test
     fun `event unknown fallback alternates between left and right edge-safe points`() {
         assertEquals(160 to 780, labyrinthEventUnknownFallbackPoint(0))
         assertEquals(1760 to 780, labyrinthEventUnknownFallbackPoint(1))
