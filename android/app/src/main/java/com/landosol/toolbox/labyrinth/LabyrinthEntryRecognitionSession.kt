@@ -280,10 +280,13 @@ internal fun shouldArmCharacterAcquisitionFallback(
  * misclassification can advance generic animation/portrait frames without silently selecting
  * a central event option.
  */
-internal fun labyrinthEventUnknownFallbackPoint(attempt: Int): Pair<Int, Int> {
+internal fun labyrinthEventUnknownFallbackTap(attempt: Int): LabyrinthFallbackTap {
     require(attempt >= 0)
-    return if (attempt % 2 == 0) 160 to 780 else 1760 to 780
+    return if (attempt % 2 == 0) LabyrinthFallbackTap.EVENT_LEFT else LabyrinthFallbackTap.EVENT_RIGHT
 }
+
+internal fun labyrinthEventUnknownFallbackPoint(attempt: Int): Pair<Int, Int> =
+    labyrinthEventUnknownFallbackTap(attempt).let { it.x to it.y }
 
 /**
  * Some event nodes open the same full-roster shell used by the initial 3-character selector, but
@@ -3839,19 +3842,19 @@ class LabyrinthEntryRecognitionSession(
                 "关闭角色加入结果" to (
                     anchorRect(result, EntryAnchorId.JOINED_CLOSE)
                         ?: anchorRect(result, EntryAnchorId.JOINED_CLOSE_STANDARD)
-                        ?: referenceRect(960, 870, frameWidth, frameHeight)
+                        ?: LabyrinthFallbackTap.MODAL_CLOSE.rect(frameWidth, frameHeight)
                     )
 
             LabyrinthEntryPageState.ITEM_REWARD -> when {
                 postBossStage == LabyrinthPostBossStage.FINAL_ITEM_REWARD ->
                     "关闭最终获得道具" to (
                         anchorRect(result, EntryAnchorId.ITEM_REWARD_CLOSE)
-                            ?: referenceRect(960, 870, frameWidth, frameHeight)
+                            ?: LabyrinthFallbackTap.MODAL_CLOSE.rect(frameWidth, frameHeight)
                     )
                 else ->
                     "关闭获得道具界面" to (
                         anchorRect(result, EntryAnchorId.ITEM_REWARD_CLOSE)
-                            ?: referenceRect(960, 870, frameWidth, frameHeight)
+                            ?: LabyrinthFallbackTap.MODAL_CLOSE.rect(frameWidth, frameHeight)
                     )
             }
 
@@ -3872,13 +3875,12 @@ class LabyrinthEntryRecognitionSession(
                         ),
                     )
                 characterAcquisitionActive -> {
-                    val rect = if (activeNodeType == LabyrinthNodeTypes.EVENT) {
-                        val (x, y) = labyrinthEventUnknownFallbackPoint(characterAcquisitionClicks)
-                        referenceRect(x, y, frameWidth, frameHeight)
+                    val tap = if (activeNodeType == LabyrinthNodeTypes.EVENT) {
+                        labyrinthEventUnknownFallbackTap(characterAcquisitionClicks)
                     } else {
-                        referenceRect(960, 780, frameWidth, frameHeight)
+                        LabyrinthFallbackTap.CENTER
                     }
-                    "推进角色获得动画" to rect
+                    "推进角色获得动画" to tap.rect(frameWidth, frameHeight)
                 }
                 finalAnimationActive && finalAnimationPage ->
                     "推进最终结算动画" to finalSettlementFallbackRect(
@@ -3888,17 +3890,17 @@ class LabyrinthEntryRecognitionSession(
                         frameHeight = frameHeight,
                     )
                 portraitRecovery.canAttempt(timestampMillis, labyrinthPortraitRecoveryBlocked(result)) ->
-                    "尝试收起角色立绘" to referenceRect(960, 780, frameWidth, frameHeight)
+                    "尝试收起角色立绘" to LabyrinthFallbackTap.CENTER.rect(frameWidth, frameHeight)
                 else -> null
             }
 
             LabyrinthEntryPageState.EVENT_ANIMATION -> when {
                 labyrinthHasBattleControls(result) -> null
                 characterAcquisitionActive ->
-                    "推进角色获得动画" to referenceRect(960, 780, frameWidth, frameHeight)
+                    "推进角色获得动画" to LabyrinthFallbackTap.CENTER.rect(frameWidth, frameHeight)
                 else -> (
                     anchorRect(result, EntryAnchorId.EVENT_ANIMATION_SKIP)
-                        ?: referenceRect(960, 780, frameWidth, frameHeight)
+                        ?: LabyrinthFallbackTap.CENTER.rect(frameWidth, frameHeight)
                     ).let { "推进事件动画" to it }
             }
 
@@ -3922,7 +3924,7 @@ class LabyrinthEntryRecognitionSession(
                 if (postBossStage == LabyrinthPostBossStage.SCORE_RESULT) {
                     "关闭最终分数结果" to (
                         anchorRect(result, EntryAnchorId.RUN_RESULT_CLOSE_BUTTON)
-                            ?: referenceRect(960, 1000, frameWidth, frameHeight)
+                            ?: LabyrinthFallbackTap.BOTTOM_CENTER.rect(frameWidth, frameHeight)
                     )
                 } else {
                     null
@@ -4078,7 +4080,7 @@ class LabyrinthEntryRecognitionSession(
                     // Purchase-complete is a single-button standard modal; dismissing it returns
                     // to SHOP, where all visible slots are recognized again. This is what makes
                     // the game-side "后面的商品补位" naturally enter the next decision cycle.
-                    "关闭购买完成" to referenceRect(960, 746, frameWidth, frameHeight)
+                    "关闭购买完成" to LabyrinthFallbackTap.SHOP_PURCHASE_COMPLETE_CLOSE.rect(frameWidth, frameHeight)
                 } else {
                     shopWaitReason = "人工购买完成弹窗保持人工控制"
                     null
@@ -4087,7 +4089,7 @@ class LabyrinthEntryRecognitionSession(
             LabyrinthEntryPageState.SHOP_EXIT_CONFIRMATION ->
                 "确认退出商店" to (
                     anchorRect(result, EntryAnchorId.SHOP_EXIT_CONFIRM_BUTTON)
-                        ?: referenceRect(1180, 745, frameWidth, frameHeight)
+                        ?: LabyrinthFallbackTap.SHOP_EXIT_CONFIRM.rect(frameWidth, frameHeight)
                 )
 
             LabyrinthEntryPageState.BATTLE_TEAM_SELECTION -> null
@@ -4112,7 +4114,7 @@ class LabyrinthEntryRecognitionSession(
                 ) {
                     "发起挑战" to (
                         anchorRect(result, EntryAnchorId.BATTLE_CHALLENGE_BUTTON)
-                            ?: referenceRect(1640, 920, frameWidth, frameHeight)
+                            ?: LabyrinthFallbackTap.CHALLENGE_START.rect(frameWidth, frameHeight)
                     )
                 } else {
                     null
@@ -4121,7 +4123,7 @@ class LabyrinthEntryRecognitionSession(
             LabyrinthEntryPageState.BATTLE_RESULT ->
                 "战斗结算：下一步" to (
                     anchorRect(result, EntryAnchorId.BATTLE_RESULT_NEXT_BUTTON)
-                        ?: referenceRect(1640, 990, frameWidth, frameHeight)
+                        ?: LabyrinthFallbackTap.BOTTOM_RIGHT.rect(frameWidth, frameHeight)
                 )
 
             LabyrinthEntryPageState.BATTLE_IN_PROGRESS,
@@ -4536,9 +4538,9 @@ class LabyrinthEntryRecognitionSession(
         frameWidth: Int,
         frameHeight: Int,
     ): EntryPixelRect {
-        val center = { referenceRect(960, 780, frameWidth, frameHeight) }
-        val bottomCenter = { referenceRect(960, 1000, frameWidth, frameHeight) }
-        val bottomRight = { referenceRect(1640, 990, frameWidth, frameHeight) }
+        val center = { LabyrinthFallbackTap.CENTER.rect(frameWidth, frameHeight) }
+        val bottomCenter = { LabyrinthFallbackTap.BOTTOM_CENTER.rect(frameWidth, frameHeight) }
+        val bottomRight = { LabyrinthFallbackTap.BOTTOM_RIGHT.rect(frameWidth, frameHeight) }
         return when (pageState) {
             LabyrinthEntryPageState.RUN_CLEAR_CHARACTER_SUMMARY ->
                 anchorRect(result, EntryAnchorId.RUN_CLEAR_NEXT_BUTTON)
@@ -4778,12 +4780,6 @@ class LabyrinthEntryRecognitionSession(
             ?.rect
 
     /** 把 1920x1080 参考坐标按当前帧尺寸换算成一个小点击框。 */
-    private fun referenceRect(x: Int, y: Int, frameWidth: Int, frameHeight: Int): EntryPixelRect {
-        val px = (x / 1920f * frameWidth).toInt().coerceIn(1, frameWidth - 2)
-        val py = (y / 1080f * frameHeight).toInt().coerceIn(1, frameHeight - 2)
-        return EntryPixelRect(left = px - 1, top = py - 1, width = 2, height = 2)
-    }
-
     private fun resetNodeExecutionState() {
         battleWait.reset()
         portraitRecovery.reset()

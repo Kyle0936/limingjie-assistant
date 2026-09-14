@@ -550,7 +550,7 @@ class LabyrinthEntryFrameProcessor(
         )
     }
 
-    private companion object {
+    internal companion object {
         const val MATCHED_FEATURE_MIN_SCORE = 0.45
         val WIDE_REFERENCE = EntryReferenceSize(2780, 1264)
         val STANDARD_REFERENCE = EntryReferenceSize(1920, 1080)
