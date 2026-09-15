@@ -17,6 +17,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
@@ -30,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import com.landosol.toolbox.account.AccountEditorState
 import com.landosol.toolbox.account.AccountListItem
 import com.landosol.toolbox.account.AccountUiState
+import com.landosol.toolbox.protocol.bilibili.GameServer
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -194,13 +196,28 @@ private fun AccountEditorDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                OutlinedTextField(
-                    value = "国服 Bilibili",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("服务器") },
-                    modifier = Modifier.fillMaxWidth(),
-                )
+                Text("服务器", style = MaterialTheme.typography.labelMedium)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GameServer.entries.forEach { server ->
+                        if (editor.server == server) {
+                            Button(
+                                onClick = {},
+                                enabled = !editor.isEditing,
+                            ) { Text(server.displayName) }
+                        } else {
+                            OutlinedButton(
+                                onClick = { onChange { it.copy(server = server) } },
+                                enabled = !editor.isEditing,
+                            ) { Text(server.displayName) }
+                        }
+                    }
+                }
+                if (editor.server == GameServer.CN_CHANNEL) {
+                    Text(
+                        "渠道服测试模式：填写已登录客户端提取出的 login_id 与 token；不使用渠道 SDK 账号密码。",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
                 OutlinedTextField(
                     value = editor.alias,
                     onValueChange = { value -> onChange { it.copy(alias = value) } },
@@ -211,14 +228,25 @@ private fun AccountEditorDialog(
                 OutlinedTextField(
                     value = editor.loginId,
                     onValueChange = { value -> onChange { it.copy(loginId = value) } },
-                    label = { Text("登录账号") },
+                    label = {
+                        Text(if (editor.server == GameServer.CN_CHANNEL) "login_id / uid" else "登录账号")
+                    },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = editor.password,
                     onValueChange = { value -> onChange { it.copy(password = value) } },
-                    label = { Text(if (editor.isEditing) "新密码（留空则不修改）" else "密码") },
+                    label = {
+                        Text(
+                            when {
+                                editor.server == GameServer.CN_CHANNEL && editor.isEditing -> "新 token（留空则不修改）"
+                                editor.server == GameServer.CN_CHANNEL -> "token / access_key"
+                                editor.isEditing -> "新密码（留空则不修改）"
+                                else -> "密码"
+                            },
+                        )
+                    },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),

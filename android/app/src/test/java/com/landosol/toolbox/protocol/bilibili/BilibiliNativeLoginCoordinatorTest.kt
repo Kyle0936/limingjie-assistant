@@ -75,6 +75,38 @@ class BilibiliNativeLoginCoordinatorTest {
         assertEquals("challenge", gameGateway.lastCaptcha?.challenge)
     }
 
+    @Test
+    fun `channel account bypasses bilibili sdk and uses stored token directly`() = runTest {
+        val channelMaterial = AccountLoginMaterial(
+            accountId = 8L,
+            credentialKey = "channel-key",
+            loginId = "1234567890123456789012",
+            password = "channel-access-key",
+            server = GameServer.CN_CHANNEL,
+        )
+        val store = InMemorySdkSessionStore()
+        val sdkGateway = FakeSdkGateway()
+        val gameGateway = FakeGameGateway(
+            results = ArrayDeque(listOf(success(789L, "渠道玩家", 30))),
+        )
+        val coordinator = BilibiliNativeLoginCoordinator(
+            BilibiliLoginCoordinator(sdkGateway, store),
+            sdkGateway,
+            store,
+            gameGateway,
+            InMemoryGameSessionRegistry(),
+        )
+
+        val result = coordinator.start(channelMaterial)
+
+        assertTrue(result is NativeLoginResult.Success)
+        assertEquals(0, sdkGateway.loginCount)
+        assertEquals(1, gameGateway.loginCount)
+        assertEquals("1234567890123456789012", gameGateway.lastSession?.uid)
+        assertEquals("channel-access-key", gameGateway.lastSession?.accessKey)
+        assertEquals(GameServer.CN_CHANNEL, gameGateway.lastSession?.server)
+    }
+
     private class FakeSdkGateway(
         private val loginResults: ArrayDeque<SdkLoginResult> = ArrayDeque(),
         private val captchaResults: ArrayDeque<SdkCaptchaResult> = ArrayDeque(),
@@ -95,6 +127,7 @@ class BilibiliNativeLoginCoordinatorTest {
     ) : BilibiliGameGateway {
         var loginCount = 0
         var lastCaptcha: CaptchaSolution? = null
+        var lastSession: SdkSession? = null
 
         override suspend fun loginAndLoadProfile(
             sdkSession: SdkSession,
@@ -103,6 +136,7 @@ class BilibiliNativeLoginCoordinatorTest {
         ): GameLoginResult {
             loginCount++
             lastCaptcha = captcha
+            lastSession = sdkSession
             return results.removeFirst()
         }
     }

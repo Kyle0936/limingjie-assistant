@@ -18,10 +18,12 @@ object BilibiliGameGatewayFactory {
         return BilibiliGameProtocolGateway(
             client = client,
             bootstrapEndpoint = BOOTSTRAP_ENDPOINT.toHttpUrl(),
+            channelBootstrapEndpoint = CHANNEL_BOOTSTRAP_ENDPOINT.toHttpUrl(),
             profile = AndroidGameProtocolProfileFactory(context.applicationContext).create(),
             json = Json { ignoreUnknownKeys = true },
         )
     }
 
     private const val BOOTSTRAP_ENDPOINT = "https://l3-prod-all-gs-gzlj.bilibiligame.net/"
+    private const val CHANNEL_BOOTSTRAP_ENDPOINT = "https://l1-prod-uo-gs-gzlj.bilibiligame.net/"
 }

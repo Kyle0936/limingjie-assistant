@@ -24,6 +24,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 class BilibiliGameProtocolGateway(
     private val client: OkHttpClient,
     private val bootstrapEndpoint: HttpUrl,
+    private val channelBootstrapEndpoint: HttpUrl = bootstrapEndpoint,
     private val profile: GameProtocolProfile,
     private val codec: MessagePackCodec = MessagePackCodec(),
     private val crypto: GameProtocolCrypto = GameProtocolCrypto(),
@@ -35,9 +36,14 @@ class BilibiliGameProtocolGateway(
         deviceSeed: String,
         captcha: CaptchaSolution?,
     ): GameLoginResult = withContext(Dispatchers.IO) {
+        val server = sdkSession.server
         val state = ClientState(
-            server = bootstrapEndpoint,
-            headers = profile.headers.toMutableMap().apply { put("DEVICE-ID", md5Hex(deviceSeed)) },
+            server = if (server == GameServer.CN_CHANNEL) channelBootstrapEndpoint else bootstrapEndpoint,
+            headers = profile.headers.toMutableMap().apply {
+                put("DEVICE-ID", md5Hex(deviceSeed))
+                put("PLATFORM-ID", server.protocolPlatform)
+                if (server == GameServer.CN_CHANNEL) put("RES-KEY", CHANNEL_RES_KEY)
+            },
         )
         try {
             discoverServer(state)
@@ -49,7 +55,7 @@ class BilibiliGameProtocolGateway(
                 fields = linkedMapOf(
                     "uid" to sdkSession.uid,
                     "access_key" to sdkSession.accessKey,
-                    "platform" to "2",
+                    "platform" to server.protocolPlatform,
                     "channel_id" to "1",
                     "challenge" to captcha?.challenge,
                     "validate" to captcha?.validate,
@@ -122,6 +128,9 @@ class BilibiliGameProtocolGateway(
         )
         envelope.data.string("required_manifest_ver")?.takeIf(String::isNotBlank)?.let {
             state.headers["MANIFEST-VER"] = it
+        }
+        envelope.data.string("res_key")?.takeIf(String::isNotBlank)?.let {
+            state.headers["RES-KEY"] = it
         }
         envelope.data.string("res_ver")?.takeIf(String::isNotBlank)?.let {
             state.headers["RES-VER"] = it
@@ -257,6 +266,7 @@ class BilibiliGameProtocolGateway(
         val BINARY_MEDIA_TYPE = "application/octet-stream".toMediaType()
         const val MAX_MESSAGE_LENGTH = 200
         const val MAX_NETWORK_DETAIL_LENGTH = 80
+        const val CHANNEL_RES_KEY = "d145b29050641dac2f8b19df0afe0e59"
     }
 }
 

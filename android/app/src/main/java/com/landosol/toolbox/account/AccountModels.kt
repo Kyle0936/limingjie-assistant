@@ -1,10 +1,13 @@
 package com.landosol.toolbox.account
 
+import com.landosol.toolbox.protocol.bilibili.GameServer
+
 data class NormalizedAccountInput(
     val alias: String,
     val loginId: String,
     val password: String,
     val gameUid: String?,
+    val server: GameServer = GameServer.CN_BILIBILI,
 )
 
 sealed interface AccountValidationResult {
@@ -19,6 +22,7 @@ object AccountInputValidator {
         password: String,
         gameUid: String,
         passwordRequired: Boolean,
+        server: GameServer = GameServer.CN_BILIBILI,
     ): AccountValidationResult {
         val normalizedAlias = alias.trim()
         val normalizedLoginId = loginId.trim()
@@ -41,6 +45,7 @@ object AccountInputValidator {
                     loginId = normalizedLoginId,
                     password = password,
                     gameUid = normalizedUid,
+                    server = server,
                 ),
             )
         }
