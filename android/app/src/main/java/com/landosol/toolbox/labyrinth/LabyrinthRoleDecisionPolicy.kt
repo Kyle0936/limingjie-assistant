@@ -1048,6 +1048,12 @@ class LabyrinthTeamScorer(
 
     private companion object {
         const val TEAM_SIZE = 5
+
+        /**
+         * Distinct-vanguard first teams tried when the beam holds no disjoint set. Each seed costs
+         * one bounded search per follow-up team, so this stays small enough for on-device planning.
+         */
+        const val MAX_RESIDUAL_FIRST_TEAM_SEEDS = 6
     }
 }
 
@@ -1429,6 +1435,12 @@ class LabyrinthTeamOptimizer(
 
     private companion object {
         const val TEAM_SIZE = 5
+
+        /**
+         * Distinct-vanguard first teams tried when the beam holds no disjoint set. Each seed costs
+         * one bounded search per follow-up team, so this stays small enough for on-device planning.
+         */
+        const val MAX_RESIDUAL_FIRST_TEAM_SEEDS = 6
     }
 }
 
@@ -1636,6 +1648,12 @@ class LabyrinthRoleChoicePolicy(
 
     private companion object {
         const val TEAM_SIZE = 5
+
+        /**
+         * Distinct-vanguard first teams tried when the beam holds no disjoint set. Each seed costs
+         * one bounded search per follow-up team, so this stays small enough for on-device planning.
+         */
+        const val MAX_RESIDUAL_FIRST_TEAM_SEEDS = 6
     }
 }
 
@@ -1747,13 +1765,7 @@ class LabyrinthTeamPlanSearcher(
         }
         val searchContext = if (survivalRecovery) context.copy(survivalRecovery = true) else context
         val ranked = optimizer.rankedBattleFormations(unique, searchContext)
-            .filterNot { evaluation ->
-                evaluation.members
-                    .map(LabyrinthRoleProfile::characterId)
-                    .map(::canonicalLabyrinthRoleId)
-                    .sorted()
-                    .joinToString(",") in excludedTeamSignatures
-            }
+            .filterNot { evaluation -> evaluation.teamSignature() in excludedTeamSignatures }
         if (ranked.isEmpty()) {
             return LabyrinthTeamPlan(
                 LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
@@ -1781,17 +1793,26 @@ class LabyrinthTeamPlanSearcher(
             )
         }
 
-        // rankedBattleFormations is already bounded by the scorer's search beam. Do not apply a
-        // second, narrower cut here: on multi-target Bosses the top formations often reuse the
-        // same AOE/DOT core, which can hide a perfectly valid disjoint second team just below the
-        // first few dozen candidates and incorrectly degrade 2-team capacity to 1.
+        // The beam holds the globally best formations, so pairing inside it gives the best answer
+        // whenever a disjoint pair exists there. It often does not: on multi-target Bosses the top
+        // formations reuse one AOE/DOT core, so every beam entry overlaps. Falling back to a
+        // residual-pool search then still finds real multi-team plans, and it keeps only one
+        // evaluation per follow-up team instead of widening the beam, which matters on device.
         val beam = ranked
         for (targetTeams in safeCapacity downTo 2) {
             val teams = when (targetTeams) {
                 3 -> bestDisjointTriple(beam, enforceThresholds = false)
                 2 -> bestDisjointPair(beam) { _, _ -> true }
                 else -> null
-            } ?: continue
+            }
+                ?: residualPoolTeams(
+                    beam = beam,
+                    unique = unique,
+                    context = searchContext,
+                    targetTeams = targetTeams,
+                    excludedTeamSignatures = excludedTeamSignatures,
+                )
+                ?: continue
             val combined = teams.sumOf(LabyrinthTeamEvaluation::score)
             val kind = if (targetTeams == 3) {
                 LabyrinthTeamPlanKind.THREE_TEAM_FALLBACK
@@ -1898,6 +1919,49 @@ class LabyrinthTeamPlanSearcher(
         )
     }
 
+    /**
+     * Builds [targetTeams] disjoint teams by fixing a first team and re-searching the remaining
+     * roster, used only when no disjoint set exists inside the ranked beam.
+     *
+     * First-team candidates are taken from the beam but deduplicated by vanguard, because a beam
+     * whose entries all overlap is usually a beam that reuses one frontliner. Each follow-up team
+     * is a fresh bounded search over the leftover pool that retains a single evaluation, so this
+     * costs a few extra searches rather than a wider beam held in memory.
+     */
+    private fun residualPoolTeams(
+        beam: List<LabyrinthTeamEvaluation>,
+        unique: List<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        targetTeams: Int,
+        excludedTeamSignatures: Set<String>,
+    ): List<LabyrinthTeamEvaluation>? {
+        if (unique.size < targetTeams * TEAM_SIZE) return null
+        val seeds = beam
+            .distinctBy(LabyrinthTeamEvaluation::vanguardCharacterId)
+            .take(MAX_RESIDUAL_FIRST_TEAM_SEEDS)
+        var best: List<LabyrinthTeamEvaluation>? = null
+        var bestScore = Double.NEGATIVE_INFINITY
+        seeds.forEach { seed ->
+            val teams = mutableListOf(seed)
+            val used = seed.members.mapTo(hashSetOf(), LabyrinthRoleProfile::characterId)
+            while (teams.size < targetTeams) {
+                val remaining = unique.filterNot { it.characterId in used }
+                val next = optimizer.bestBattleFormation(remaining, context)
+                    ?.takeUnless { it.teamSignature() in excludedTeamSignatures }
+                    ?: break
+                teams += next
+                next.members.forEach { used += it.characterId }
+            }
+            if (teams.size < targetTeams) return@forEach
+            val score = teams.sumOf(LabyrinthTeamEvaluation::score)
+            if (score > bestScore) {
+                best = teams.toList()
+                bestScore = score
+            }
+        }
+        return best
+    }
+
     private fun bestDisjointPair(
         teams: List<LabyrinthTeamEvaluation>,
         accepted: (LabyrinthTeamEvaluation, LabyrinthTeamEvaluation) -> Boolean,
@@ -1945,8 +2009,20 @@ class LabyrinthTeamPlanSearcher(
 
     private companion object {
         const val TEAM_SIZE = 5
+
+        /**
+         * Distinct-vanguard first teams tried when the beam holds no disjoint set. Each seed costs
+         * one bounded search per follow-up team, so this stays small enough for on-device planning.
+         */
+        const val MAX_RESIDUAL_FIRST_TEAM_SEEDS = 6
     }
 }
+
+private fun LabyrinthTeamEvaluation.teamSignature(): String = members
+    .map(LabyrinthRoleProfile::characterId)
+    .map(::canonicalLabyrinthRoleId)
+    .sorted()
+    .joinToString(",")
 
 private fun LabyrinthTeamDamageType.label(): String = when (this) {
     LabyrinthTeamDamageType.PHYSICAL -> "物理"
