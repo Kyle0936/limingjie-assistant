@@ -1176,6 +1176,35 @@ class LabyrinthTeamOptimizer(
      * Battle-only formation search. Reward/event marginal-value calculations deliberately keep
      * using [bestFormation], so this hard tank rule does not rewrite acquisition preferences.
      */
+    /**
+     * Best battle formation that contains every id in [requiredIds]. The bounded search pool
+     * keeps the required roles in, and only combinations holding all of them are scored, so a
+     * guide-mandated or official effective-effect role cannot be out-scored by a generic
+     * high-rated pick. Returns null when no valid formation includes them (no compatible tank,
+     * position clash).
+     */
+    fun bestBattleFormationIncluding(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        requiredIds: Set<String>,
+    ): LabyrinthTeamEvaluation? {
+        if (requiredIds.isEmpty()) return bestBattleFormation(roster, context)
+        val unique = roster.distinctBy(LabyrinthRoleProfile::characterId)
+        if (!requiredIds.all { id -> unique.any { it.characterId == id } }) return null
+        if (context.preferSingleDamageSystem) {
+            val cohesive = rankedFormationsInternal(
+                roster = unique, context = context, requiredCharacterId = null, systemOnly = false,
+                limit = 1, requireFrontmostTank = true, forbidMixedDamageSystem = true,
+                requiredCharacterIds = requiredIds,
+            ).firstOrNull()
+            if (cohesive != null) return cohesive
+        }
+        return rankedFormationsInternal(
+            roster = unique, context = context, requiredCharacterId = null, systemOnly = false,
+            limit = 1, requireFrontmostTank = true, requiredCharacterIds = requiredIds,
+        ).firstOrNull()
+    }
+
     fun bestBattleFormation(
         roster: Collection<LabyrinthRoleProfile>,
         context: LabyrinthRoleDecisionContext,
@@ -1246,6 +1275,7 @@ class LabyrinthTeamOptimizer(
         limit: Int = scorer.config.teamSearchBeamWidth,
         requireFrontmostTank: Boolean,
         forbidMixedDamageSystem: Boolean = false,
+        requiredCharacterIds: Set<String> = emptySet(),
     ): List<LabyrinthTeamEvaluation> {
         val unique = roster.distinctBy(LabyrinthRoleProfile::characterId)
         if (unique.isEmpty()) return emptyList()
@@ -1258,7 +1288,7 @@ class LabyrinthTeamOptimizer(
         val searchPool = if (unique.size <= scorer.config.exhaustiveRosterLimit) {
             unique
         } else if (requireFrontmostTank) {
-            battleSearchPool(unique, context)
+            battleSearchPool(unique, context, reservedIds = requiredCharacterIds)
         } else {
             unique.sortedByDescending { individualSearchPriority(it, context) }
                 .take(scorer.config.exhaustiveRosterLimit)
@@ -1279,6 +1309,7 @@ class LabyrinthTeamOptimizer(
         visitCombinations(searchPool, size) { team ->
             if (
                 (requiredCharacterId == null || team.any { it.characterId == requiredCharacterId }) &&
+                (requiredCharacterIds.isEmpty() || requiredCharacterIds.all { id -> team.any { it.characterId == id } }) &&
                 (!requireFrontmostTank ||
                     team.hasEligibleVanguardAtActualFront(context, scorer.config.vanguardGate(context)))
             ) {
@@ -1312,6 +1343,7 @@ class LabyrinthTeamOptimizer(
     internal fun battleSearchPool(
         unique: List<LabyrinthRoleProfile>,
         context: LabyrinthRoleDecisionContext,
+        reservedIds: Set<String> = emptySet(),
     ): List<LabyrinthRoleProfile> {
         val limit = scorer.config.exhaustiveRosterLimit
         val teamSize = minOf(TEAM_SIZE, unique.size)
@@ -1336,16 +1368,18 @@ class LabyrinthTeamOptimizer(
         if (compatible.size != teamSize - 1) return emptyList()
 
         val structuralCohort = listOf(frontmostTank) + compatible
-        val forcedIds = structuralCohort.mapTo(hashSetOf(), LabyrinthRoleProfile::characterId)
-        // Effective Effect is intentionally not force-reserved. It contributes only through the
-        // role's weighted individual score below; if a low player/system score still leaves that
-        // role outside the bounded pool, the prefilter is allowed to trim it normally.
+        // Explicitly reserved roles (a guide core the caller decided to build the team around)
+        // always enter the pool. The generic Effective Effect hint alone does not: it contributes
+        // only through the role's weighted individual score, so a low score can still leave that
+        // role outside the bounded pool unless the caller reserves it.
+        val reserved = unique.filter { it.characterId in reservedIds && it.characterId != frontmostTank.characterId }
+        val forcedIds = (structuralCohort + reserved).mapTo(hashSetOf(), LabyrinthRoleProfile::characterId)
         val remainder = unique
             .asSequence()
             .filterNot { it.characterId in forcedIds }
             .sortedByDescending { individualSearchPriority(it, context) }
             .toList()
-        return (structuralCohort + remainder).take(limit)
+        return (structuralCohort + reserved + remainder).distinctBy { it.characterId }.take(limit)
     }
 
     private data class RankedCandidate(
@@ -1726,19 +1760,29 @@ class LabyrinthTeamPlanSearcher(
                 "没有可用于编组的可靠角色",
             )
         }
-        val first = optimizer.bestBattleFormation(roster, context) ?: return LabyrinthTeamPlan(
+        val guideCore = labyrinthEncounterGuideCore(roster, context)
+        val coreFirst = if (guideCore.isEmpty()) null else optimizer.bestBattleFormationIncluding(roster, context, guideCore)
+        val first = coreFirst ?: optimizer.bestBattleFormation(roster, context) ?: return LabyrinthTeamPlan(
             LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
             emptyList(),
             "自动战斗要求实际一号位满足生存资格；当前角色池无法组成满足条件的队伍",
         )
+        val coreNames = guideCore.joinToString("、") { id ->
+            roster.firstOrNull { it.characterId == id }?.displayName ?: id
+        }
+        val coreNote = when {
+            guideCore.isEmpty() -> ""
+            coreFirst != null -> "；已按攻略锁定核心角色：$coreNames"
+            else -> "；攻略核心角色无法与合格一号位同队，退回普通最佳队"
+        }
         return LabyrinthTeamPlan(
             LabyrinthTeamPlanKind.FIRST_ATTEMPT_ONE_TEAM,
             listOf(first),
-            if (context.optimizeBossVanguardSynergy) {
+            (if (context.optimizeBossVanguardSynergy) {
                 "Boss主力队先要求一号位通过生存线，再将T的物理/法术队伍增益与其余四人联合优化，评分${formatScore(first.score)}"
             } else {
                 "首次挑战使用满足“一号位生存资格”硬约束的当前最佳队伍，评分${formatScore(first.score)}；实际失败后才启用后续队伍"
-            },
+            }) + coreNote,
         )
     }
 
@@ -2017,6 +2061,49 @@ class LabyrinthTeamPlanSearcher(
         const val MAX_RESIDUAL_FIRST_TEAM_SEEDS = 6
     }
 }
+
+/**
+ * Roles the first EX/Boss attempt is built around rather than merely nudged toward.
+ *
+ * The in-game effective-effect list is the game's own statement of what works against this
+ * enemy, and a hard requirement such as "at least two DOT dealers" is the guide's stated win
+ * condition. Both used to be small scoring bonuses (+8 system side at 30 percent weight, +3 per
+ * requirement), so a roster of highly rated generic attackers out-scored them every time and the
+ * automatic team ignored the guide (2026-09-16 00:26 bundle: the only DOT dealer owned was
+ * confirmed as effective and never fielded). Reserve them and let the search fill the rest.
+ *
+ * Bounded to leave a tank slot and at least one free slot, and skips a role that would have to
+ * stand in front of every eligible vanguard.
+ */
+internal fun labyrinthEncounterGuideCore(
+    roster: Collection<LabyrinthRoleProfile>,
+    context: LabyrinthRoleDecisionContext,
+): Set<String> {
+    val strategy = context.encounterStrategy ?: return emptySet()
+    val unique = roster.distinctBy(LabyrinthRoleProfile::characterId)
+    val core = linkedSetOf<String>()
+    if (strategy.preferEffectiveCharacters) {
+        unique.filter { canonicalLabyrinthRoleId(it.characterId) in context.effectiveCharacterIds }
+            .sortedByDescending { it.effectiveUserScore ?: 0.0 }
+            .forEach { core += it.characterId }
+    }
+    strategy.requirements.filter { it.hard }.forEach { requirement ->
+        fun covers(role: LabyrinthRoleProfile) = evaluateEncounterRequirement(listOf(role), requirement).matchedCount > 0
+        val already = unique.count { it.characterId in core && covers(it) }
+        unique.filter { it.characterId !in core && covers(it) }
+            .sortedByDescending { role -> requirement.anyOf.maxOf { role.encounterCapabilityScore(it) ?: 0.0 } }
+            .take((requirement.minimumCount - already).coerceAtLeast(0))
+            .forEach { core += it.characterId }
+    }
+    val eligibleTanks = unique.filter { it.isEligibleBattleVanguard(context) }
+    return core.filter { id ->
+        val role = unique.first { it.characterId == id }
+        val position = role.position ?: return@filter false
+        eligibleTanks.any { tank -> tank.characterId == id || (tank.position ?: Int.MAX_VALUE) <= position }
+    }.take(ENCOUNTER_GUIDE_CORE_MAX).toSet()
+}
+
+private const val ENCOUNTER_GUIDE_CORE_MAX = 3
 
 private fun LabyrinthTeamEvaluation.teamSignature(): String = members
     .map(LabyrinthRoleProfile::characterId)
