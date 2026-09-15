@@ -81,6 +81,23 @@ class LabyrinthPageRuntimePolicyTest {
         assertFalse(decide(attempts = 1, lastAt = 9_000))
         assertTrue(decide(attempts = 1, lastAt = 7_000))
         assertFalse(decide(page = LabyrinthEntryPageState.SHOP_EXIT_CONFIRMATION))
+        // Shop exit dialog hides the shop title so the page reads UNKNOWN, but the shop chrome
+        // around it is still visible. That is the shop handler's dialog, never an orphan.
+        assertFalse(
+            labyrinthShouldDismissOrphanNodeMoveConfirmation(
+                pageState = LabyrinthEntryPageState.UNKNOWN, hasPendingNodeTransition = false,
+                canRecover = false, stableFrames = 2, dismissAttempts = 0,
+                lastDismissAt = Long.MIN_VALUE, now = 10_000, shopBackgroundVisible = true,
+            ),
+        )
+    }
+
+    @Test fun `shop background is two or more fixed shop anchors regardless of page state`() {
+        val exitDialog = result(LabyrinthEntryPageState.UNKNOWN, anchorScores = mapOf(
+            EntryAnchorId.SHOP_REFRESH_BUTTON to 0.9, EntryAnchorId.SHOP_CLOSE to 0.8))
+        assertTrue(labyrinthShopBackgroundVisible(exitDialog))
+        val map = result(LabyrinthEntryPageState.NODE_SELECTION, anchorScores = mapOf(EntryAnchorId.SHOP_CLOSE to 0.9))
+        assertFalse(labyrinthShopBackgroundVisible(map))
     }
 
     @Test

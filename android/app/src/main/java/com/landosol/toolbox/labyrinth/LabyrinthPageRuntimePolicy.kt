@@ -62,8 +62,13 @@ internal fun labyrinthShouldDismissOrphanNodeMoveConfirmation(
     dismissAttempts: Int,
     lastDismissAt: Long,
     now: Long,
+    shopBackgroundVisible: Boolean = false,
 ): Boolean {
     if (hasPendingNodeTransition || canRecover) return false
+    // The shop exit dialog has the same blue-title/white-body/two-button chrome and hides the
+    // shop title, so the page can classify as UNKNOWN. The shop chrome around it is still
+    // visible; that dialog belongs to the shop handler, never to map recovery.
+    if (shopBackgroundVisible) return false
     if (pageState !in setOf(
             LabyrinthEntryPageState.NODE_SELECTION,
             LabyrinthEntryPageState.NODE_MAP_VIEW,
@@ -365,6 +370,12 @@ internal fun labyrinthKeepsRoleRewardBatchOnPage(
  * the opening invitation flow. Keep this deliberately narrow so a fresh run still retains the
  * original CHARACTER_JOINED opening-safety check.
  */
+/** Two or more fixed shop chrome anchors still visible: a dialog is open on top of the shop. */
+internal fun labyrinthShopBackgroundVisible(result: LabyrinthEntryFrameResult): Boolean =
+    listOf(EntryAnchorId.SHOP_TITLE, EntryAnchorId.SHOP_INSTRUCTION,
+        EntryAnchorId.SHOP_REFRESH_BUTTON, EntryAnchorId.SHOP_CLOSE)
+        .count { result.observation.anchorScores[it] >= 0.65 } >= 2
+
 internal fun labyrinthShopJoinedRewardOwnsRoute(
     result: LabyrinthEntryFrameResult,
     purchaseConfirmedAt: Long,
@@ -372,10 +383,7 @@ internal fun labyrinthShopJoinedRewardOwnsRoute(
 ): Boolean {
     if (result.observation.state != LabyrinthEntryPageState.CHARACTER_JOINED) return false
     val recentPurchase = purchaseConfirmedAt != Long.MIN_VALUE && now - purchaseConfirmedAt in 0..120_000
-    val shopBackground = listOf(EntryAnchorId.SHOP_TITLE, EntryAnchorId.SHOP_INSTRUCTION,
-        EntryAnchorId.SHOP_REFRESH_BUTTON, EntryAnchorId.SHOP_CLOSE)
-        .count { result.observation.anchorScores[it] >= 0.65 } >= 2
-    return recentPurchase || shopBackground
+    return recentPurchase || labyrinthShopBackgroundVisible(result)
 }
 
 internal fun labyrinthResumedRunRewardPageOwnsRoute(

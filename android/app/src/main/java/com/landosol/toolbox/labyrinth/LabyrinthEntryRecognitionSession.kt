@@ -900,6 +900,8 @@ class LabyrinthEntryRecognitionSession(
     @Volatile
     private var lastNodeMoveConfirmationRect: EntryPixelRect? = null
     @Volatile
+    private var nodeEntryMismatchFrames = 0
+    @Volatile
     private var orphanMoveConfirmationStableFrames = 0
     @Volatile
     private var orphanMoveConfirmationDismissAttempts = 0
@@ -1581,12 +1583,19 @@ class LabyrinthEntryRecognitionSession(
                     timestampMillis = timestampMillis,
                     confidence = result.nodeMoveConfirmation.confidence,
                 )
-            } else if (nodeSession != null) {
+            } else if (nodeSession != null && entryPhaseComplete) {
                 // A modal nobody asked for and nobody can adopt (a stray tap while the route has
                 // several reachable successors). Every map gesture would land on the dialog, so
                 // the node search below must not run; press the dialog's cancel button instead.
-                orphanMoveConfirmationStableFrames++
-                if (labyrinthShouldDismissOrphanNodeMoveConfirmation(
+                // The shop exit dialog shares this chrome; while shop controls are visible the
+                // dialog is the shop handler's and must be left alone.
+                val shopBackground = labyrinthShopBackgroundVisible(result)
+                if (shopBackground) {
+                    orphanMoveConfirmationStableFrames = 0
+                } else {
+                    orphanMoveConfirmationStableFrames++
+                }
+                if (!shopBackground && labyrinthShouldDismissOrphanNodeMoveConfirmation(
                         pageState = pageState,
                         hasPendingNodeTransition = false,
                         canRecover = false,
@@ -1594,6 +1603,7 @@ class LabyrinthEntryRecognitionSession(
                         dismissAttempts = orphanMoveConfirmationDismissAttempts,
                         lastDismissAt = lastOrphanMoveConfirmationDismissAt,
                         now = timestampMillis,
+                        shopBackgroundVisible = false,
                     )
                 ) {
                     dismissOrphanNodeMoveConfirmation(
@@ -1601,12 +1611,16 @@ class LabyrinthEntryRecognitionSession(
                         cancelRect = result.nodeMoveConfirmation.cancelButtonRect,
                         timestampMillis = timestampMillis,
                     )
+                } else if (shopBackground) {
+                    // Fall through: the shop / shop-exit handlers own this frame.
                 } else if (orphanMoveConfirmationDismissAttempts >= MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS) {
                     publishNodeMoveConfirmationMessage(sessionId, "移动确认弹窗多次取消无效，请手动关闭后继续")
+                    return
                 } else {
                     publishNodeMoveConfirmationMessage(sessionId, "检测到非自动触发的移动确认弹窗，准备点击取消")
+                    return
                 }
-                return
+                if (!shopBackground) return
             }
         } else if (result.nodeMoveConfirmation == null) {
             orphanMoveConfirmationStableFrames = 0
@@ -1852,6 +1866,7 @@ class LabyrinthEntryRecognitionSession(
         resetPendingNodeClickStability()
         pendingNodeTransition = null
         nodeTapAttempts = 0
+        nodeEntryMismatchFrames = 0
         resetNodeMoveConfirmationTracking()
         resetOrphanMoveConfirmationTracking()
         nodeScrollAttempts = 0
@@ -5666,6 +5681,7 @@ class LabyrinthEntryRecognitionSession(
 
     private fun prepareNodeTransitionContext(blockType: Int, area: Int?) {
         resetNodeMoveConfirmationTracking()
+        nodeEntryMismatchFrames = 0
         eventFreeRoleSelectedCharacterId = null
         activeNodeType = blockType
         activeNodeArea = area
@@ -6004,17 +6020,34 @@ class LabyrinthEntryRecognitionSession(
             )
         }
         if (!labyrinthNodeEntryMatchesExpectedType(pending.blockType, pageState)) {
+            // Link and relic pages share their title and remaining-count anchors and differ by a
+            // few glyphs in the instruction line; the first frame after entry can classify as the
+            // wrong one of the pair (2026-09-15 23:55 bundle: link#20602 read as RELIC_CHOICE for
+            // one frame, then LINK_CHOICE). Stopping on that frame left the route cursor behind
+            // and the restarted session hunted the already-cleared node. Require agreement
+            // across frames before treating a mismatch as real.
+            nodeEntryMismatchFrames++
             nodeLog(
                 "node-entry-mismatch target=${pending.label} expected=" +
-                    "${LabyrinthNodeTypes.labelOf(pending.blockType)} actual=${pageState.name}",
+                    "${LabyrinthNodeTypes.labelOf(pending.blockType)} actual=${pageState.name} " +
+                    "frames=$nodeEntryMismatchFrames/$NODE_ENTRY_MISMATCH_STABLE_FRAMES",
                 warning = true,
             )
+            if (nodeEntryMismatchFrames < NODE_ENTRY_MISMATCH_STABLE_FRAMES) {
+                if (activeSessionId == sessionId) {
+                    _state.value = _state.value.copy(
+                        message = "节点${pending.label}进入页面识别为${pageState.name}，等待后续帧确认",
+                    )
+                }
+                return
+            }
             finishFromPlanner(
                 sessionId,
                 "节点${pending.label}进入页面不匹配：识别为${pageState.name}，已停止并保留诊断状态",
             )
             return
         }
+        nodeEntryMismatchFrames = 0
         nodeLog(
             "node-entry-confirmed target=${pending.label} page=${pageState.name} " +
                 "confirmationAttempts=${pending.confirmationAttempts} tapAttempts=$nodeTapAttempts",
@@ -7306,6 +7339,8 @@ class LabyrinthEntryRecognitionSession(
         const val NODE_MOVE_CONFIRMATION_APPEAR_TIMEOUT_MILLIS = 6_000L
         const val NODE_MOVE_CONFIRMATION_RETRY_INTERVAL_MILLIS = 2_000L
         const val NODE_MOVE_CONFIRMATION_STABLE_FRAMES = 2
+        /** Consecutive destination frames that must disagree with the clicked type before stopping. */
+        const val NODE_ENTRY_MISMATCH_STABLE_FRAMES = 3
         const val MAX_NODE_MOVE_CONFIRMATION_ATTEMPTS = 3
         const val MAX_NODE_TAP_ATTEMPTS = 3
         const val MAX_NODE_SCROLL_ATTEMPTS = 6
