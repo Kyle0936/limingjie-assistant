@@ -36,6 +36,7 @@ data class LabyrinthNodeViewportSnapshot(
     val viewportWorldLeft: Double?,
     val columnSpacingResidual: Double?,
     val geometryReliable: Boolean,
+    val geometryInferred: Boolean = false,
 )
 
 data class LabyrinthNodeScanPlan(
@@ -55,15 +56,20 @@ class LabyrinthNodeViewportScanner {
         val direction: LabyrinthMapScanDirection,
         val sourceSignature: String,
         val unchangedObservations: Int = 0,
+        val uncertainObservations: Int = 0,
+        val sourcePixels: NodeViewportPixels? = null,
     )
 
     private var area: Int? = null
     private var frameWidth: Int = 0
     private var frameHeight: Int = 0
     private var currentSignature: String = ""
+    private var currentPixels: NodeViewportPixels? = null
+    private val uncertainSwipes = mutableMapOf<LabyrinthMapScanDirection, Int>()
     private var activeTargetBlockId: Long? = null
     private var pendingSwipe: PendingSwipe? = null
     private var lastDirection: LabyrinthMapScanDirection? = null
+    private var consecutiveInferredGeometryFrames: Int = 0
     private val snapshots = linkedMapOf<String, LabyrinthNodeViewportSnapshot>()
     private val globalNodesByBlockId = linkedMapOf<Long, MutableList<LabyrinthGlobalNodeCoordinate>>()
     private val boundarySignatures = mutableMapOf(
@@ -77,9 +83,11 @@ class LabyrinthNodeViewportScanner {
         frameWidth = 0
         frameHeight = 0
         currentSignature = ""
+        currentPixels = null
         activeTargetBlockId = null
         pendingSwipe = null
         lastDirection = null
+        consecutiveInferredGeometryFrames = 0
         snapshots.clear()
         globalNodesByBlockId.clear()
         resetTargetTraversal()
@@ -88,9 +96,10 @@ class LabyrinthNodeViewportScanner {
     private fun viewportMovedAfterSwipe(
         source: LabyrinthNodeViewportSnapshot?,
         current: LabyrinthNodeViewportSnapshot,
-        signatureChanged: Boolean,
-    ): Boolean {
-        if (source == null) return signatureChanged
+        sourcePixels: NodeViewportPixels?,
+        pixels: NodeViewportPixels?,
+    ): NodeViewportMotion {
+        if (source == null) return pixels?.let { now -> sourcePixels?.let(now::motionFrom) } ?: NodeViewportMotion.UNKNOWN
 
         val sourceWorldLeft = source.viewportWorldLeft
         val currentWorldLeft = current.viewportWorldLeft
@@ -98,7 +107,7 @@ class LabyrinthNodeViewportScanner {
             sourceWorldLeft != null && currentWorldLeft != null
         ) {
             val threshold = labyrinthReferenceColumnPitch(frameHeight) * MIN_CAMERA_MOVE_PITCH_RATIO
-            return abs(currentWorldLeft - sourceWorldLeft) >= threshold
+            return if (abs(currentWorldLeft - sourceWorldLeft) >= threshold) NodeViewportMotion.MOVED else NodeViewportMotion.UNCHANGED
         }
 
         val sourceById = source.globalNodes.associateBy(LabyrinthGlobalNodeCoordinate::blockId)
@@ -112,13 +121,11 @@ class LabyrinthNodeViewportScanner {
         if (commonDeltas.isNotEmpty()) {
             val medianDelta = commonDeltas.medianOrNull() ?: 0.0
             val threshold = labyrinthReferenceColumnPitch(frameHeight) * MIN_CAMERA_MOVE_PITCH_RATIO
-            return medianDelta >= threshold
+            return if (medianDelta >= threshold) NodeViewportMotion.MOVED else NodeViewportMotion.UNCHANGED
         }
 
-        // With no shared geometric evidence, a coarse signature change is the only remaining
-        // signal. This preserves the old behavior without letting ordinary classifier jitter
-        // override reliable camera geometry when geometry exists.
-        return signatureChanged
+        // A different hash is not evidence of translation: animation changes hashes too.
+        return pixels?.let { now -> sourcePixels?.let(now::motionFrom) } ?: NodeViewportMotion.UNKNOWN
     }
 
     fun observe(
@@ -127,6 +134,7 @@ class LabyrinthNodeViewportScanner {
         frameWidth: Int,
         frameHeight: Int,
         matchResult: NodeMatchResult,
+        viewportPixels: NodeViewportPixels? = null,
     ): LabyrinthNodeViewportSnapshot? {
         if (viewportSignature.isBlank() || frameWidth <= 0 || frameHeight <= 0) return null
         if (this.area != area) {
@@ -137,9 +145,62 @@ class LabyrinthNodeViewportScanner {
         this.frameHeight = frameHeight
 
         val pitch = labyrinthReferenceColumnPitch(frameHeight)
-        val topology = matchResult.topologyMappings
+        val rawTopology = matchResult.topologyMappings
+        val topology = rawTopology
             .filter { it.topologyConfidence >= MIN_TOPOLOGY_CONFIDENCE_FOR_GLOBAL_COORDINATE }
-        val globalNodes = topology.map { mapping ->
+        val screenCenterByLogicalColumn = topology
+            .groupBy(NodeTopologyMapping::logicalColumn)
+            .mapValues { (_, nodes) ->
+                nodes.map { it.screenRect.left + it.screenRect.width / 2.0 }.average()
+            }
+        val cameraOffsets = screenCenterByLogicalColumn.map { (logicalColumn, screenCenterX) ->
+            logicalColumn * pitch - screenCenterX
+        }
+        val directlyFittedWorldLeft = cameraOffsets.medianOrNull()
+        val residual = directlyFittedWorldLeft?.let { fitted ->
+            cameraOffsets.map { offset -> abs(offset - fitted) }.medianOrNull()
+        }
+        val residualLimit = topology
+            .map(NodeTopologyMapping::screenRect)
+            .map(EntryPixelRect::width)
+            .average()
+            .takeIf { !it.isNaN() }
+            ?.times(MAX_COLUMN_SPACING_RESIDUAL_NODE_WIDTH_RATIO)
+            ?: 0.0
+        val directlyReliable = directlyFittedWorldLeft != null &&
+            (screenCenterByLogicalColumn.size == 1 || (residual ?: Double.MAX_VALUE) <= residualLimit)
+        var geometryInferred = false
+        var viewportWorldLeft = directlyFittedWorldLeft?.takeIf { directlyReliable }
+        var geometryReliable = directlyReliable
+        if (directlyReliable) {
+            consecutiveInferredGeometryFrames = 0
+        } else if (consecutiveInferredGeometryFrames < MAX_CONSECUTIVE_INFERRED_GEOMETRY_FRAMES) {
+            val previous = snapshots[currentSignature]
+            val previousWorldLeft = previous?.viewportWorldLeft
+            if (previous?.geometryReliable == true && previousWorldLeft != null) {
+                val previousById = previous.globalNodes.associateBy(LabyrinthGlobalNodeCoordinate::blockId)
+                val signedDeltas = rawTopology.mapNotNull { mapping ->
+                    val old = previousById[mapping.blockId] ?: return@mapNotNull null
+                    val oldCenter = old.screenRect.left + old.screenRect.width / 2.0
+                    val newCenter = mapping.screenRect.left + mapping.screenRect.width / 2.0
+                    newCenter - oldCenter
+                }
+                val medianScreenDelta = signedDeltas.medianOrNull()
+                if (medianScreenDelta != null) {
+                    // worldLeft = worldX - screenX, therefore a rightward screen translation
+                    // decreases the fitted camera origin by the same amount.
+                    viewportWorldLeft = previousWorldLeft - medianScreenDelta
+                    geometryReliable = true
+                    geometryInferred = true
+                    consecutiveInferredGeometryFrames++
+                }
+            }
+        }
+        // Once the three-frame inference budget is exhausted, require a direct reliable fit to
+        // re-arm it. Otherwise a long low-confidence sequence would oscillate between inferred
+        // and unreliable forever.
+        val snapshotTopology = if (geometryInferred) rawTopology else topology
+        val snapshotGlobalNodes = snapshotTopology.map { mapping ->
             LabyrinthGlobalNodeCoordinate(
                 blockId = mapping.blockId,
                 area = area,
@@ -150,35 +211,15 @@ class LabyrinthNodeViewportScanner {
                 viewportSignature = viewportSignature,
             )
         }
-        val screenCenterByLogicalColumn = topology
-            .groupBy(NodeTopologyMapping::logicalColumn)
-            .mapValues { (_, nodes) ->
-                nodes.map { it.screenRect.left + it.screenRect.width / 2.0 }.average()
-            }
-        val cameraOffsets = screenCenterByLogicalColumn.map { (logicalColumn, screenCenterX) ->
-            logicalColumn * pitch - screenCenterX
-        }
-        val viewportWorldLeft = cameraOffsets.medianOrNull()
-        val residual = viewportWorldLeft?.let { fitted ->
-            cameraOffsets.map { offset -> abs(offset - fitted) }.medianOrNull()
-        }
-        val residualLimit = topology
-            .map(NodeTopologyMapping::screenRect)
-            .map(EntryPixelRect::width)
-            .average()
-            .takeIf { !it.isNaN() }
-            ?.times(MAX_COLUMN_SPACING_RESIDUAL_NODE_WIDTH_RATIO)
-            ?: 0.0
-        val geometryReliable = viewportWorldLeft != null &&
-            (screenCenterByLogicalColumn.size == 1 || (residual ?: Double.MAX_VALUE) <= residualLimit)
         val snapshot = LabyrinthNodeViewportSnapshot(
             area = area,
             signature = viewportSignature,
-            mappedLogicalColumns = topology.mapTo(sortedSetOf(), NodeTopologyMapping::logicalColumn),
-            globalNodes = globalNodes,
-            viewportWorldLeft = viewportWorldLeft?.takeIf { geometryReliable },
+            mappedLogicalColumns = snapshotTopology.mapTo(sortedSetOf(), NodeTopologyMapping::logicalColumn),
+            globalNodes = snapshotGlobalNodes,
+            viewportWorldLeft = viewportWorldLeft,
             columnSpacingResidual = residual,
             geometryReliable = geometryReliable,
+            geometryInferred = geometryInferred,
         )
 
         // A map edge is a camera fact, not a classification-string fact. Node type/confidence can
@@ -188,9 +229,19 @@ class LabyrinthNodeViewportScanner {
         // of the swipe animation are never mistaken for an edge.
         pendingSwipe?.let { swipe ->
             val source = snapshots[swipe.sourceSignature]
-            val moved = viewportMovedAfterSwipe(source, snapshot, swipe.sourceSignature != viewportSignature)
-            if (moved) {
+            val motion = viewportMovedAfterSwipe(source, snapshot, swipe.sourcePixels, viewportPixels)
+            if (motion == NodeViewportMotion.MOVED) {
                 pendingSwipe = null
+                uncertainSwipes.remove(swipe.direction)
+            } else if (motion == NodeViewportMotion.UNKNOWN) {
+                val observations = swipe.uncertainObservations + 1
+                if (observations >= MAX_UNCERTAIN_OBSERVATIONS) {
+                    // Permit another bounded probe without claiming movement or a map edge.
+                    uncertainSwipes[swipe.direction] = (uncertainSwipes[swipe.direction] ?: 0) + 1
+                    pendingSwipe = null
+                } else {
+                    pendingSwipe = swipe.copy(uncertainObservations = observations, unchangedObservations = 0)
+                }
             } else {
                 val unchangedObservations = swipe.unchangedObservations + 1
                 if (unchangedObservations >= MIN_UNCHANGED_OBSERVATIONS_FOR_BOUNDARY) {
@@ -198,18 +249,19 @@ class LabyrinthNodeViewportScanner {
                     reachedBoundaries += swipe.direction
                     pendingSwipe = null
                 } else {
-                    pendingSwipe = swipe.copy(unchangedObservations = unchangedObservations)
+                    pendingSwipe = swipe.copy(unchangedObservations = unchangedObservations, uncertainObservations = 0)
                 }
             }
         }
 
         snapshots[viewportSignature] = snapshot
-        globalNodes.forEach { coordinate ->
+        snapshotGlobalNodes.forEach { coordinate ->
             val observations = globalNodesByBlockId.getOrPut(coordinate.blockId) { mutableListOf() }
             observations.removeAll { it.viewportSignature == viewportSignature }
             observations += coordinate
         }
         currentSignature = viewportSignature
+        currentPixels = viewportPixels
         return snapshot
     }
 
@@ -222,12 +274,12 @@ class LabyrinthNodeViewportScanner {
         val preferred = preferredDirection(snapshot, targetLogicalColumn)
         val opposite = preferred.opposite()
         val selected = when {
-            preferred !in reachedBoundaries -> preferred
-            opposite !in reachedBoundaries -> opposite
+            preferred !in reachedBoundaries && (uncertainSwipes[preferred] ?: 0) < MAX_UNCERTAIN_SWIPES_PER_DIRECTION -> preferred
+            opposite !in reachedBoundaries && (uncertainSwipes[opposite] ?: 0) < MAX_UNCERTAIN_SWIPES_PER_DIRECTION -> opposite
             else -> return null
         }
         val reason = buildString {
-            append(if (selected == preferred) "target-global-column" else "reverse-after-boundary")
+            append(if (selected == preferred) "target-global-column" else "reverse-after-boundary-or-probe-limit")
             append(" targetColumn=").append(targetLogicalColumn)
             append(" mapped=").append(snapshot.mappedLogicalColumns.joinToString(","))
             snapshot.viewportWorldLeft?.let { worldLeft ->
@@ -240,12 +292,21 @@ class LabyrinthNodeViewportScanner {
     }
 
     fun recordSwipe(direction: LabyrinthMapScanDirection, sourceSignature: String) {
-        pendingSwipe = PendingSwipe(direction, sourceSignature)
+        pendingSwipe = PendingSwipe(direction, sourceSignature, sourcePixels = currentPixels)
         lastDirection = direction
     }
 
     /** Do not dispatch another swipe until the previous one has produced movement or an edge. */
     fun awaitingSwipeOutcome(): Boolean = pendingSwipe != null
+
+    /** Signature of the most recently observed viewport; the key [recordSwipe] should be given. */
+    fun currentSignature(): String = currentSignature
+
+    fun exhaustionReason(): String = if (uncertainSwipes.values.any { it >= MAX_UNCERTAIN_SWIPES_PER_DIRECTION }) {
+        "map-motion-probes-exhausted"
+    } else {
+        "both-map-boundaries-scanned"
+    }
 
     /**
      * True only when reliable current-view geometry says the target column should already be well
@@ -275,7 +336,8 @@ class LabyrinthNodeViewportScanner {
         val current = snapshots[currentSignature]
         return "segments=${snapshots.size} globalNodes=${globalNodesByBlockId.size} " +
             "targetSegments=$targetSegments boundaries=[$boundaries] " +
-            "geometryReliable=${current?.geometryReliable ?: false} " +
+            "uncertainSwipes=$uncertainSwipes geometryReliable=${current?.geometryReliable ?: false} " +
+            "geometryInferred=${current?.geometryInferred ?: false} " +
             "spacingResidual=${current?.columnSpacingResidual?.let { "%.1f".format(it) } ?: "n/a"}"
     }
 
@@ -300,8 +362,8 @@ class LabyrinthNodeViewportScanner {
         val preferred = lastDirection ?: LabyrinthMapScanDirection.FORWARD
         val opposite = preferred.opposite()
         val selected = when {
-            preferred !in reachedBoundaries -> preferred
-            opposite !in reachedBoundaries -> opposite
+            preferred !in reachedBoundaries && (uncertainSwipes[preferred] ?: 0) < MAX_UNCERTAIN_SWIPES_PER_DIRECTION -> preferred
+            opposite !in reachedBoundaries && (uncertainSwipes[opposite] ?: 0) < MAX_UNCERTAIN_SWIPES_PER_DIRECTION -> opposite
             else -> return null
         }
         lastDirection = selected
@@ -339,6 +401,7 @@ class LabyrinthNodeViewportScanner {
         pendingSwipe = null
         lastDirection = null
         reachedBoundaries.clear()
+        uncertainSwipes.clear()
         boundarySignatures.values.forEach { it.clear() }
     }
 
@@ -359,6 +422,9 @@ class LabyrinthNodeViewportScanner {
         const val MIN_UNCHANGED_OBSERVATIONS_FOR_BOUNDARY = 3
         const val MIN_CAMERA_MOVE_PITCH_RATIO = 0.16
         const val TARGET_VISIBLE_EDGE_MARGIN_RATIO = 0.08
+        const val MAX_CONSECUTIVE_INFERRED_GEOMETRY_FRAMES = 3
+        const val MAX_UNCERTAIN_OBSERVATIONS = 6
+        const val MAX_UNCERTAIN_SWIPES_PER_DIRECTION = 2
     }
 }
 

@@ -17,6 +17,9 @@ class LabyrinthNodeMoveConfirmationDetectorTest {
 
         assertEquals(EntryPixelRect(975, 690, 415, 105), observation.confirmButtonRect)
         assertTrue(observation.confidence >= 0.80)
+        // Cancel is the only control that closes this modal without moving, and swipes cannot
+        // close it at all, so its rect has to be reported alongside confirm.
+        assertEquals(EntryPixelRect(545, 690, 415, 105), observation.cancelButtonRect)
     }
 
     @Test

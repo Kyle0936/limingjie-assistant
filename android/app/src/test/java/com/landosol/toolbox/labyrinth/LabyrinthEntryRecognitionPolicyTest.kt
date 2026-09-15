@@ -141,6 +141,7 @@ class LabyrinthEntryRecognitionPolicyTest {
             LabyrinthEntryPageState.DAWN_REALM_HOME_IDLE,
             LabyrinthEntryPageState.UNKNOWN,
         ).forEach { assertTrue(it.name, !labyrinthCompletionWaitsWithoutRoute(it)) }
+    }
 
     @Test
     fun `event unknown fallback alternates between left and right edge-safe points`() {
@@ -401,6 +402,7 @@ class LabyrinthEntryRecognitionPolicyTest {
             nodeMoveConfirmation = LabyrinthNodeMoveConfirmationObservation(
                 confidence = 0.895,
                 confirmButtonRect = confirmRect,
+                cancelButtonRect = EntryPixelRect(left = 545, top = 690, width = 415, height = 105),
             ),
         )
 

@@ -27,6 +27,7 @@ import com.landosol.toolbox.labyrinth.vision.EntryPixelRect
 import com.landosol.toolbox.labyrinth.vision.LABYRINTH_BATTLE_CHARACTER_SAFE_CONFIDENCE
 import com.landosol.toolbox.labyrinth.vision.LabyrinthBattleElementFilter
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryFrameResult
+import com.landosol.toolbox.labyrinth.vision.LabyrinthCharacterMatch
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageState
 import com.landosol.toolbox.labyrinth.vision.LabyrinthBattleTeamRecognitionState
 import com.landosol.toolbox.labyrinth.vision.LabyrinthRelicMatch
@@ -39,6 +40,7 @@ import com.landosol.toolbox.labyrinth.node.LabyrinthMapScanDirection
 import com.landosol.toolbox.labyrinth.node.LabyrinthNodeScanPlan
 import com.landosol.toolbox.labyrinth.node.LabyrinthNodeViewportScanner
 import com.landosol.toolbox.labyrinth.node.LabyrinthNodeTypes
+import com.landosol.toolbox.labyrinth.node.NodeSearchHint
 import com.landosol.toolbox.labyrinth.node.finalBossPlatformClickRect
 import com.landosol.toolbox.labyrinth.node.NodeAction
 import com.landosol.toolbox.labyrinth.node.NodeClassification
@@ -723,6 +725,31 @@ class LabyrinthEntryRecognitionSession(
     private val _state = MutableStateFlow(LabyrinthEntryRecognitionSessionState())
     val state: StateFlow<LabyrinthEntryRecognitionSessionState> = _state.asStateFlow()
 
+    /**
+     * Supplies the frame processor with route-aware search bounds without letting the vision layer
+     * read mutable session internals directly. A missing viewport fit deliberately keeps the full
+     * scan so the first reliable topology fit can be established instead of inventing coordinates.
+     */
+    /**
+     * The map scan is only worth running once a route session can consume it. The first map frame
+     * after entry only starts asynchronous route/template loading and returns; scanning it burns
+     * the whole 16-anchor full sweep for nothing.
+     */
+    fun nodeScanRequested(): Boolean = nodeSession != null
+
+    fun currentNodeSearchHint(): NodeSearchHint? {
+        val session = nodeSession ?: return null
+        val target = session.currentRouteTarget() ?: return null
+        val expectedCenterX = nodeViewportScanner.expectedScreenCenterX(target.column)?.toInt()
+        return NodeSearchHint(
+            targetBlockId = target.blockId,
+            expectedCenterX = expectedCenterX,
+            expectedTypes = session.searchTypesNearTarget(target),
+            reachableColumns = (target.column - 1).coerceAtLeast(1)..(target.column + 1),
+            matchedTargetBlockId = session.matchedRouteTargetId(),
+        )
+    }
+
     @Volatile
     private var activeSessionId: AutomationSessionId? = null
     @Volatile
@@ -790,11 +817,17 @@ class LabyrinthEntryRecognitionSession(
      */
     private val pendingAcquiredCharacterIds = linkedSetOf<String>()
     @Volatile
+    var skipRoleRewardJoinedRecognition: Boolean = false
+        private set
+    private var roleRewardDecisionCacheKey: String? = null
+    @Volatile
     private var pendingShopPurchase: LabyrinthRelicMatch? = null
     @Volatile
     private var plannedShopPurchaseRelicId: String? = null
     @Volatile
     private var plannedShopRoleImprintLabel: String? = null
+    @Volatile
+    private var shopImprintRewardConfirmedAt = Long.MIN_VALUE
     @Volatile
     private var plannedShopPurchaseStartedAt = Long.MIN_VALUE
     @Volatile
@@ -866,6 +899,12 @@ class LabyrinthEntryRecognitionSession(
     private var nodeMoveConfirmationStableFrames = 0
     @Volatile
     private var lastNodeMoveConfirmationRect: EntryPixelRect? = null
+    @Volatile
+    private var orphanMoveConfirmationStableFrames = 0
+    @Volatile
+    private var orphanMoveConfirmationDismissAttempts = 0
+    @Volatile
+    private var lastOrphanMoveConfirmationDismissAt = Long.MIN_VALUE
     @Volatile
     private var lastNodeScrollSourceSignature: String? = null
     @Volatile
@@ -1070,6 +1109,7 @@ class LabyrinthEntryRecognitionSession(
         lease = (registration as CaptureFrameRegistrationResult.Registered).lease
         activeSessionId = session.id
         activeRunAccountId = accountId
+        shopImprintRewardConfirmedAt = Long.MIN_VALUE
         confirmedNodeEntryReceipt = null
         validatedRoute = executionRoute
         lastProcessedAt = Long.MIN_VALUE
@@ -1083,6 +1123,7 @@ class LabyrinthEntryRecognitionSession(
         lastObservedPageState = null
         pendingAcquiredCharacterId = null
         synchronized(pendingAcquiredCharacterIds) { pendingAcquiredCharacterIds.clear() }
+        skipRoleRewardJoinedRecognition = false
         roleRewardBatchActive = false
         committedRoleRewardSelectionSignature = null
         roleRewardJoinedSequenceStarted = false
@@ -1211,6 +1252,7 @@ class LabyrinthEntryRecognitionSession(
         lastObservedPageState = null
         pendingAcquiredCharacterId = null
         synchronized(pendingAcquiredCharacterIds) { pendingAcquiredCharacterIds.clear() }
+        skipRoleRewardJoinedRecognition = false
         roleRewardBatchActive = false
         committedRoleRewardSelectionSignature = null
         roleRewardJoinedSequenceStarted = false
@@ -1396,10 +1438,13 @@ class LabyrinthEntryRecognitionSession(
             return
         }
         val pageState = result.observation.state
+        if (skipRoleRewardJoinedRecognition &&
+            !labyrinthKeepsRoleRewardBatchOnPage(pageState, labyrinthIsRoleRewardPage(result))
+        ) skipRoleRewardJoinedRecognition = false
+        val shopJoinedReward = labyrinthShopJoinedRewardOwnsRoute(result, shopImprintRewardConfirmedAt, timestampMillis)
         if (!current.dryRun &&
             !entryPhaseComplete &&
-            existingRunResumeHandoffArmed &&
-            labyrinthResumedRunRewardPageOwnsRoute(result)
+            (shopJoinedReward || (existingRunResumeHandoffArmed && labyrinthResumedRunRewardPageOwnsRoute(result)))
         ) {
             // Resuming an existing run can restore directly into an unfinished reward batch.
             // Do not let the opening invitation planner interpret that CHARACTER_JOINED page.
@@ -1415,7 +1460,8 @@ class LabyrinthEntryRecognitionSession(
             }
             _state.value = _state.value.copy(
                 message = if (pageState == LabyrinthEntryPageState.CHARACTER_JOINED) {
-                    "继续挑战后恢复到角色加入奖励，已交接连续奖励链"
+                    if (shopJoinedReward) "商店印记触发角色加入，已交接奖励流程"
+                    else "继续挑战后恢复到角色加入奖励，已交接连续奖励链"
                 } else {
                     "继续挑战后恢复到角色奖励选择，已交接连续奖励链"
                 },
@@ -1519,13 +1565,13 @@ class LabyrinthEntryRecognitionSession(
         }
         if (!current.dryRun && result.nodeMoveConfirmation != null && pendingNodeTransition == null) {
             val recoverableTarget = nodeSession?.uniqueReachableRouteTarget()
-            if (
+            val canRecover = recoverableTarget != null &&
                 labyrinthCanRecoverOrphanNodeMoveConfirmation(
                     pageState = pageState,
                     confirmationConfidence = result.nodeMoveConfirmation.confidence,
-                    hasUniqueReachableRouteTarget = recoverableTarget != null,
-                ) && recoverableTarget != null
-            ) {
+                    hasUniqueReachableRouteTarget = true,
+                )
+            if (canRecover && recoverableTarget != null) {
                 recoverPendingNodeTransitionFromMoveConfirmation(
                     sessionId = sessionId,
                     session = requireNotNull(nodeSession),
@@ -1535,7 +1581,35 @@ class LabyrinthEntryRecognitionSession(
                     timestampMillis = timestampMillis,
                     confidence = result.nodeMoveConfirmation.confidence,
                 )
+            } else if (nodeSession != null) {
+                // A modal nobody asked for and nobody can adopt (a stray tap while the route has
+                // several reachable successors). Every map gesture would land on the dialog, so
+                // the node search below must not run; press the dialog's cancel button instead.
+                orphanMoveConfirmationStableFrames++
+                if (labyrinthShouldDismissOrphanNodeMoveConfirmation(
+                        pageState = pageState,
+                        hasPendingNodeTransition = false,
+                        canRecover = false,
+                        stableFrames = orphanMoveConfirmationStableFrames,
+                        dismissAttempts = orphanMoveConfirmationDismissAttempts,
+                        lastDismissAt = lastOrphanMoveConfirmationDismissAt,
+                        now = timestampMillis,
+                    )
+                ) {
+                    dismissOrphanNodeMoveConfirmation(
+                        sessionId = sessionId,
+                        cancelRect = result.nodeMoveConfirmation.cancelButtonRect,
+                        timestampMillis = timestampMillis,
+                    )
+                } else if (orphanMoveConfirmationDismissAttempts >= MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS) {
+                    publishNodeMoveConfirmationMessage(sessionId, "移动确认弹窗多次取消无效，请手动关闭后继续")
+                } else {
+                    publishNodeMoveConfirmationMessage(sessionId, "检测到非自动触发的移动确认弹窗，准备点击取消")
+                }
+                return
             }
+        } else if (result.nodeMoveConfirmation == null) {
+            orphanMoveConfirmationStableFrames = 0
         }
         if (!current.dryRun && labyrinthNodeMoveConfirmationOwnsFrame(
                 pageState = pageState,
@@ -1571,6 +1645,8 @@ class LabyrinthEntryRecognitionSession(
         val nodeReplayActive = nodeExecutionConfigured() &&
             (if (current.dryRun) pageState == LabyrinthEntryPageState.NODE_SELECTION else entryPhaseComplete)
         when {
+            shopJoinedReward && !current.dryRun ->
+                handlePostEntryPage(sessionId, result, frameWidth, frameHeight, timestampMillis)
             nodeReplayActive && pageState == LabyrinthEntryPageState.NODE_SELECTION ->
                 handleNodeSelectionFrame(sessionId, result, frameWidth, frameHeight, timestampMillis)
 
@@ -1777,6 +1853,7 @@ class LabyrinthEntryRecognitionSession(
         pendingNodeTransition = null
         nodeTapAttempts = 0
         resetNodeMoveConfirmationTracking()
+        resetOrphanMoveConfirmationTracking()
         nodeScrollAttempts = 0
         resetNodeRecoveryNudgeTracking()
         lastNodeSwipeAvoidRects = emptyList()
@@ -1874,11 +1951,15 @@ class LabyrinthEntryRecognitionSession(
     ) {
         if (activeSessionId != sessionId) return
         if (!labyrinthIsRoleRewardPage(result)) {
+            roleRewardDecisionCacheKey = null
             if (_state.value.roleRewardChoiceDecision != null) {
                 _state.value = _state.value.copy(roleRewardChoiceDecision = null)
             }
             return
         }
+        if (committedRoleRewardSelectionSignature != null &&
+            labyrinthRoleRewardSelectionSignature(result) == committedRoleRewardSelectionSignature
+        ) return
         val planner = roleRewardChoicePlanner
         val decision = if (planner == null) {
             LabyrinthRoleRewardChoiceDecision.Wait(
@@ -1893,16 +1974,32 @@ class LabyrinthEntryRecognitionSession(
             val pendingSelectedIds = synchronized(pendingAcquiredCharacterIds) {
                 pendingAcquiredCharacterIds.toSet()
             }
+            val acquiredIds = _state.value.joinedCharacters.map(LabyrinthJoinedCharacter::characterId)
+                .plus(pendingSelectedIds).toSet()
+            val cacheKey = buildString {
+                append("$frameWidth/$frameHeight/$defenseStacks/")
+                append(acquiredIds.sorted().joinToString(","))
+                result.characterMatches.forEach {
+                    append("|${it.slotId}:${it.characterId}:${it.displayName}:${it.screenRect}:")
+                    append(labyrinthRoleRewardIdentityIsActionSafe(it))
+                }
+            }
+            if (cacheKey == roleRewardDecisionCacheKey &&
+                _state.value.roleRewardChoiceDecision is LabyrinthRoleRewardChoiceDecision.Select
+            ) return
+            roleRewardDecisionCacheKey = cacheKey
+            val decisionStarted = System.nanoTime()
             planner.decide(
                 candidates = result.characterMatches,
-                acquiredCharacterIds = _state.value.joinedCharacters
-                    .map(LabyrinthJoinedCharacter::characterId)
-                    .plus(pendingSelectedIds)
-                    .toSet(),
+                acquiredCharacterIds = acquiredIds,
                 context = LabyrinthRoleDecisionContext(defenseMarkStacks = defenseStacks),
                 frameWidth = frameWidth,
                 frameHeight = frameHeight,
-            )
+            ).also {
+                runCatching {
+                    Log.d("LabyrinthEntry", "roleRewardDecisionMillis=${(System.nanoTime() - decisionStarted) / 1_000_000}")
+                }
+            }
         }
         val message = when (decision) {
             is LabyrinthRoleRewardChoiceDecision.Select -> buildString {
@@ -3675,7 +3772,9 @@ class LabyrinthEntryRecognitionSession(
             }
         }
 
-        if (postEntryStableFrames < POST_ENTRY_STABLE_FRAMES) {
+        if (postEntryStableFrames < POST_ENTRY_STABLE_FRAMES && !roleRewardPage &&
+            !(pageState == LabyrinthEntryPageState.CHARACTER_JOINED && skipRoleRewardJoinedRecognition)
+        ) {
             traceReject("stable-frames:$postEntryStableFrames/$POST_ENTRY_STABLE_FRAMES")
             return
         }
@@ -3795,11 +3894,7 @@ class LabyrinthEntryRecognitionSession(
             postEntryIsRoleRewardPage(result) &&
             !roleRewardChoiceCommitted
         ) {
-            if (postEntryStableFrames < ROLE_REWARD_SELECTION_STABLE_FRAMES) {
-                roleRewardWaitReason =
-                    "角色三选一身份稳定中：$postEntryStableFrames/$ROLE_REWARD_SELECTION_STABLE_FRAMES"
-                null
-            } else when (val decision = _state.value.roleRewardChoiceDecision) {
+            when (val decision = _state.value.roleRewardChoiceDecision) {
                 is LabyrinthRoleRewardChoiceDecision.Select -> {
                     if (decision.actionSafe) {
                         "选择角色：${decision.displayName}；${decision.explanation.joinToString("；")}" to
@@ -4370,13 +4465,17 @@ class LabyrinthEntryRecognitionSession(
                         if (recoveryStep != null) {
                             rosterRecoveryStep = recoveryStep
                         } else {
+                            // Every candidate tab, 全部 included, was scanned end to end and the
+                            // roles are simply not in this editor. Clearing the exhausted set here
+                            // used to restart the identical sweep on the next frame (8 full
+                            // 火→光→全部 cycles, 66 swipes in the 2026-09-15 20:58 bundle). Keep
+                            // the set, drop the unfindable roles from the run roster so the next
+                            // recommendation is built from characters that actually exist, and
+                            // let the plan be rebuilt from that.
                             val scanned = exhaustedBattleRosterFilters.joinToString("、") { it.label }
-                            exhaustedBattleRosterFilters.clear()
-                            exhaustedBattleRosterFiltersKey = null
+                            val unfindable = plan.notCurrentlyVisibleIds.toSet()
                             resetBattleTeamExecutionTracking()
-                            _state.value = _state.value.copy(
-                                message = "已在${scanned}筛选均扫到底仍未识别推荐角色：$missing；保持编组页并从顶部重新建立角色扫描",
-                            )
+                            excludeUnfindableBattleCharacters(sessionId, unfindable, missing, scanned)
                             return
                         }
                     }
@@ -4529,6 +4628,44 @@ class LabyrinthEntryRecognitionSession(
         _state.value = current.copy(frameTrace = current.frameTrace.copy(actionLabel = label))
     }
 
+    /**
+     * The run roster can contain characters this editor cannot show: a stale roster restored
+     * from a previous run, or a recognition mistake at join time. Once every tab has been scanned
+     * they are provably absent, so remove them from the roster the recommendation is built from.
+     * Nothing is persisted: the store still holds the full list, this only shapes planning.
+     */
+    private fun excludeUnfindableBattleCharacters(
+        sessionId: AutomationSessionId,
+        unfindable: Set<String>,
+        missingLabel: String,
+        scannedLabel: String,
+    ) {
+        if (activeSessionId != sessionId) return
+        val current = _state.value
+        val remaining = labyrinthRosterAfterUnfindableExclusion(current.joinedCharacters, unfindable)
+        if (remaining == null) {
+            _state.value = current.copy(
+                battleTeamSelectionPlan = null,
+                message = "已在${scannedLabel}筛选均扫到底仍未识别推荐角色：$missingLabel；未能从角色库排除，保持编组页",
+            )
+            return
+        }
+        lastBattleTeamRecommendationKey = null
+        lastBattleTeamSelectionPlanLog = null
+        _state.value = current.copy(
+            joinedCharacters = remaining,
+            battleTeamRecommendation = null,
+            battleTeamSelectionPlan = null,
+            battleTeamRecommendationUnavailableReason = null,
+            message = "已在${scannedLabel}筛选均扫到底仍未识别推荐角色：$missingLabel；已从本局可用角色中排除，重新规划编组",
+        )
+        nodeLog(
+            "battle-roster-exclude unfindable=${unfindable.joinToString(",")} " +
+                "scanned=$scannedLabel remaining=${remaining.size}",
+            warning = true,
+        )
+    }
+
     private fun resetBattleTeamExecutionTracking() {
         battleRosterSearch.reset()
         lastBattleTeamExecutionKey = null
@@ -4611,6 +4748,11 @@ class LabyrinthEntryRecognitionSession(
         eventFreeRoleConfirm: Boolean = false,
     ) {
         if (!actionInFlight.compareAndSet(false, true)) return
+        val selectedReward = (_state.value.roleRewardChoiceDecision as? LabyrinthRoleRewardChoiceDecision.Select)
+            ?.takeIf { it.characterId == roleRewardSelectedCharacterId && it.actionSafe }
+        val selectedRewardAccountId = activeRunAccountId
+        val selectedRewardMatch = _state.value.lastResult?.characterMatches
+            ?.firstOrNull { it.characterId == selectedReward?.characterId && it.trusted }
         if (shopPurchaseRelicId != null || shopPurchaseRoleImprintLabel != null) {
             // This is semantic transaction context, not a page-local coordinate. It must survive
             // the brief UNKNOWN transition that can appear between the buy tap and confirmation.
@@ -4672,6 +4814,42 @@ class LabyrinthEntryRecognitionSession(
                                     pendingAcquiredCharacterId = pendingAcquiredCharacterIds.firstOrNull()
                                 }
                         }
+                        selectedReward?.let { selected ->
+                            val match = selectedRewardMatch ?: LabyrinthCharacterMatch(
+                                slotId = "role_reward_selected", characterId = selected.characterId,
+                                displayName = selected.displayName, confidence = ROLE_REWARD_STRONG_ICON_CONFIDENCE,
+                                screenRect = rect, trusted = true,
+                            )
+                            val persisted = runCatching {
+                                persistenceMutex.withLock {
+                                    runStateStore?.recordPage(
+                                        accountId = selectedRewardAccountId,
+                                        page = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION.name,
+                                        characters = listOf(match), nowMillis = clock(),
+                                    )
+                                }
+                            }.onFailure {
+                                val failure = it
+                                runCatching {
+                                    Log.e("LabyrinthEntry", "Selected role persistence failed; retain joined recognition", failure)
+                                }
+                            }
+                            if (activeSessionId == sessionId) {
+                                _state.value = _state.value.copy(
+                                    joinedCharacters = persisted.getOrNull()?.joinedCharacters ?: LabyrinthRosterMerger.merge(
+                                        _state.value.joinedCharacters, listOf(match), clock(),
+                                    ),
+                                )
+                                skipRoleRewardJoinedRecognition = persisted.isSuccess
+                                synchronized(pendingAcquiredCharacterIds) {
+                                    pendingAcquiredCharacterIds.remove(selected.characterId)
+                                    pendingAcquiredCharacterId = pendingAcquiredCharacterIds.firstOrNull()
+                                }
+                            }
+                        }
+                    }
+                    if (label.startsWith("确认购买印记：")) {
+                        shopImprintRewardConfirmedAt = clock()
                     }
                     when (label) {
                         "EX识别完成：关闭魔物详情" -> {
@@ -4880,6 +5058,8 @@ class LabyrinthEntryRecognitionSession(
     }
 
     private fun clearRoleRewardBatchTracking() {
+        skipRoleRewardJoinedRecognition = false
+        roleRewardDecisionCacheKey = null
         roleRewardBatchActive = false
         roleRewardChoiceCommitted = false
         committedRoleRewardSelectionSignature = null
@@ -4928,7 +5108,11 @@ class LabyrinthEntryRecognitionSession(
             return
         }
         val nodeState = session.getState()
+        // Two identities on purpose. The classification-bucketed signature is stable across the
+        // map's glow animation and gates "hold the camera N frames before scrolling"; the pixel
+        // hash keys the viewport tracker and stays available when no node can be classified.
         val viewportSignature = labyrinthNodeViewportSignature(result.nodeClassifications)
+        val trackerSignature = result.nodeViewportSignature.ifBlank { viewportSignature }
         nodeLog(
             "node-frame size=${frameWidth}x${frameHeight} " +
                 "area=${nodeState.currentArea} current=${nodeState.currentNodeId} " +
@@ -5015,10 +5199,11 @@ class LabyrinthEntryRecognitionSession(
         session.getLastMatchResult()?.let { match ->
             val snapshot = nodeViewportScanner.observe(
                 area = nodeState.currentArea,
-                viewportSignature = viewportSignature,
+                viewportSignature = trackerSignature,
                 frameWidth = frameWidth,
                 frameHeight = frameHeight,
                 matchResult = match,
+                viewportPixels = result.nodeViewportPixels,
             )
             val target = match.nextNode
             val current = _state.value
@@ -5712,6 +5897,65 @@ class LabyrinthEntryRecognitionSession(
         }
     }
 
+    private fun dismissOrphanNodeMoveConfirmation(
+        sessionId: AutomationSessionId,
+        cancelRect: EntryPixelRect,
+        timestampMillis: Long,
+    ) {
+        if (!actionInFlight.compareAndSet(false, true)) return
+        val attempt = orphanMoveConfirmationDismissAttempts + 1
+        lastOrphanMoveConfirmationDismissAt = timestampMillis
+        traceAction("取消误触的移动确认")
+        nodeLog(
+            "node-move-confirm-dismiss rect=$cancelRect attempt=$attempt/$MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS",
+            warning = true,
+        )
+        actionScope.launch {
+            val tap = AutomationAction.Tap(
+                ScreenPoint(
+                    x = cancelRect.left + cancelRect.width / 2f,
+                    y = cancelRect.top + cancelRect.height / 2f,
+                ),
+            )
+            val executor = actionExecutor
+            val result = if (executor == null) {
+                AutomationActionResult.Rejected(tap, "动作执行器不可用")
+            } else {
+                executor.execute(sessionId, tap)
+            }
+            when (result) {
+                is AutomationActionResult.Executed -> {
+                    orphanMoveConfirmationDismissAttempts = attempt
+                    orphanMoveConfirmationStableFrames = 0
+                    // The map behind the dialog is untouched, but the recovery counters that
+                    // accumulated while it was open describe a blocked screen, not the map.
+                    resetNodeScrollSearchGate()
+                    resetNodeRecoveryNudgeTracking()
+                    if (activeSessionId == sessionId) {
+                        val current = _state.value
+                        _state.value = current.copy(
+                            actionCount = current.actionCount + 1,
+                            lastActionLabel = "取消误触的移动确认",
+                            message = "已取消非自动触发的移动确认弹窗，继续寻找路线节点",
+                        )
+                        overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
+                    }
+                }
+                is AutomationActionResult.Rejected -> {
+                    if (result.reason == GAME_NOT_FOREGROUND_REASON) {
+                        publishWaitingForGameForeground(sessionId)
+                    } else {
+                        stop("取消移动确认被拒绝：${result.reason}")
+                    }
+                }
+                AutomationActionResult.StaleSession -> Unit
+                AutomationActionResult.Paused -> Unit
+                is AutomationActionResult.DryRun -> Unit
+            }
+            actionInFlight.set(false)
+        }
+    }
+
     private fun publishNodeMoveConfirmationMessage(sessionId: AutomationSessionId, message: String) {
         if (activeSessionId != sessionId || _state.value.message == message) return
         _state.value = _state.value.copy(message = message)
@@ -5721,6 +5965,12 @@ class LabyrinthEntryRecognitionSession(
     private fun resetNodeMoveConfirmationTracking() {
         nodeMoveConfirmationStableFrames = 0
         lastNodeMoveConfirmationRect = null
+    }
+
+    private fun resetOrphanMoveConfirmationTracking() {
+        orphanMoveConfirmationStableFrames = 0
+        orphanMoveConfirmationDismissAttempts = 0
+        lastOrphanMoveConfirmationDismissAt = Long.MIN_VALUE
     }
 
     private fun publishWaitingForGameForeground(sessionId: AutomationSessionId) {
@@ -6051,7 +6301,7 @@ class LabyrinthEntryRecognitionSession(
         if (scanPlan == null) {
             logNodeScrollTerminalDiagnostics(
                 label = label,
-                reason = "FULL_AREA_BOUNDARIES_SWITCH_TO_LOCAL_RECOVERY",
+                reason = "${nodeViewportScanner.exhaustionReason()}:switch-to-local-recovery",
                 frameWidth = frameWidth,
                 frameHeight = frameHeight,
                 viewportSignature = viewportSignature,
@@ -6065,7 +6315,7 @@ class LabyrinthEntryRecognitionSession(
                 timestampMillis = timestampMillis,
                 viewportSignature = viewportSignature,
                 avoidRects = avoidRects,
-                reason = "both-map-boundaries-scanned",
+                reason = nodeViewportScanner.exhaustionReason(),
             )
             return
         }
@@ -6099,7 +6349,7 @@ class LabyrinthEntryRecognitionSession(
             when (result) {
                 is AutomationActionResult.Executed -> {
                     if (hasVisualViewport) {
-                        nodeViewportScanner.recordSwipe(scanPlan.direction, viewportSignature)
+                        nodeViewportScanner.recordSwipe(scanPlan.direction, nodeViewportScanner.currentSignature())
                     }
                     if (activeSessionId == sessionId) {
                         val current = _state.value
@@ -7068,7 +7318,6 @@ class LabyrinthEntryRecognitionSession(
         const val NODE_TARGET_VISIBLE_MAX_WAIT_MILLIS = 6_000L
         const val MAX_NODE_ERROR_STREAK = 20
         const val POST_ENTRY_STABLE_FRAMES = 2
-        const val ROLE_REWARD_SELECTION_STABLE_FRAMES = 3
         const val POST_ENTRY_ACTION_INTERVAL_MILLIS = 1_500L
         const val SHOP_PURCHASE_TRANSITION_TIMEOUT_MILLIS = 8_000L
         const val SHOP_REFRESH_TRANSITION_TIMEOUT_MILLIS = 8_000L

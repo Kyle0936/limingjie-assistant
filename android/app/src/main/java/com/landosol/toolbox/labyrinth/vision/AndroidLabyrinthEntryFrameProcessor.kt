@@ -1,6 +1,7 @@
 package com.landosol.toolbox.labyrinth.vision
 
 import android.content.Context
+import com.landosol.toolbox.labyrinth.node.NodeSearchHint
 import com.landosol.toolbox.labyrinth.LabyrinthCharacterAttribute
 import android.graphics.BitmapFactory
 import com.landosol.toolbox.automation.capture.CapturedFrame
@@ -214,10 +215,15 @@ class AndroidLabyrinthEntryFrameProcessor private constructor(
     private val relicStackResolver: AndroidLabyrinthRelicStackResolver,
     private val nodeRelicStackResolver: AndroidLabyrinthNodeRelicStackResolver,
     private val relicDetailResolver: AndroidLabyrinthRelicDetailResolver,
+    private val skipJoinedCharacters: () -> Boolean,
 ) {
     fun process(frame: CapturedFrame): LabyrinthEntryFrameResult {
         val started = System.nanoTime()
-        val result = processor.process(AndroidPixelImageAdapter.from(frame.bitmap))
+        val result = processor.process(
+            AndroidPixelImageAdapter.from(frame.bitmap),
+            deferRoleRewardPortraits = true,
+            skipJoinedCharacters = skipJoinedCharacters(),
+        )
         val resolvedStarted = System.nanoTime()
         val exResolved = exEncounterResolver.resolve(frame.bitmap, result)
         val exResolvedAt = System.nanoTime()
@@ -249,16 +255,22 @@ class AndroidLabyrinthEntryFrameProcessor private constructor(
             context: Context,
             characterAttributes: Map<String, LabyrinthCharacterAttribute?> = emptyMap(),
             finalBossOnly: () -> Boolean = { false },
+            skipJoinedCharacters: () -> Boolean = { false },
+            nodeSearchHint: () -> NodeSearchHint? = { null },
+            nodeScanRequested: () -> Boolean = { true },
         ): AndroidLabyrinthEntryFrameProcessor {
             val relicTemplates = AndroidLabyrinthRelicTemplateLoader(context).load()
             val characterTemplates = AndroidLabyrinthBattleTeamTemplateLoader(context).load(characterAttributes)
             val characterIconMatcher = LabyrinthCharacterIconMatcher(characterTemplates)
+            val characterRecognizer = LabyrinthCharacterRecognizer(characterIconMatcher)
             return AndroidLabyrinthEntryFrameProcessor(
                 processor = LabyrinthEntryFrameProcessor(
                     templates = AndroidLabyrinthEntryTemplateLoader(context).load(),
                     nodeTemplates = AndroidLabyrinthNodeTemplateLoader(context).load(),
                     finalBossOnly = finalBossOnly,
-                    characterRecognizer = LabyrinthCharacterRecognizer(characterIconMatcher),
+                    nodeSearchHint = nodeSearchHint,
+                    nodeScanRequested = nodeScanRequested,
+                    characterRecognizer = characterRecognizer,
                     battleTeamRecognizer = LabyrinthBattleTeamRecognizer(
                         templates = characterTemplates,
                         iconMatcher = characterIconMatcher,
@@ -279,10 +291,18 @@ class AndroidLabyrinthEntryFrameProcessor private constructor(
                     )
                 }.getOrNull(),
                 shopItemResolver = AndroidLabyrinthShopItemResolver(),
-                roleRewardNameResolver = AndroidLabyrinthRoleRewardNameResolver(),
+                roleRewardNameResolver = AndroidLabyrinthRoleRewardNameResolver(
+                    names = characterTemplates.map {
+                        LabyrinthCharacterNameCandidate(it.characterId, it.displayName, it.aliases)
+                    }.distinctBy { it.characterId },
+                    recognizePortrait = { bitmap, slotId ->
+                        characterRecognizer.recognizeRoleRewardSlot(AndroidPixelImageAdapter.from(bitmap), slotId)
+                    },
+                ),
                 relicStackResolver = AndroidLabyrinthRelicStackResolver(),
                 nodeRelicStackResolver = AndroidLabyrinthNodeRelicStackResolver(),
                 relicDetailResolver = AndroidLabyrinthRelicDetailResolver(),
+                skipJoinedCharacters = skipJoinedCharacters,
             )
         }
     }

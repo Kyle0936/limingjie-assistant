@@ -61,6 +61,13 @@ class LabyrinthCharacterRecognitionTest {
         assertEquals("1310", matches.first().characterId)
         assertEquals("真步(梦想乐园)", matches.first().displayName)
         assertTrue(matches.first().trusted)
+        val deferred = recognizer.roleRewardSlots(PixelImage(1920, 1080, framePixels))
+        assertEquals(3, deferred.size)
+        assertTrue(deferred.all { it.characterId == null && !it.trusted })
+        assertEquals(matches.first().screenRect, deferred.first().screenRect)
+        assertEquals("1310", recognizer.recognizeRoleRewardSlot(
+            PixelImage(1920, 1080, framePixels), "role_reward_left",
+        ).characterId)
     }
 
     @Test

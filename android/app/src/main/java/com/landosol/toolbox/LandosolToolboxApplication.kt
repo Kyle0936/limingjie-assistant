@@ -126,7 +126,7 @@ class LandosolToolboxApplication : Application() {
             server.start()
         }
     }
-    val labyrinthEntryRecognitionSession by lazy {
+    val labyrinthEntryRecognitionSession: LabyrinthEntryRecognitionSession by lazy {
         // Start the debug endpoint with its initial waiting snapshot instead of waiting for the
         // first captured frame. That keeps first-frame capture failures observable in the browser.
         val debugDashboard = labyrinthDebugDashboard
@@ -157,6 +157,9 @@ class LandosolToolboxApplication : Application() {
                     context = this,
                     characterAttributes = characterAttributes,
                     finalBossOnly = finalBossOnly,
+                    skipJoinedCharacters = { labyrinthEntryRecognitionSession.skipRoleRewardJoinedRecognition },
+                    nodeSearchHint = { labyrinthEntryRecognitionSession.currentNodeSearchHint() },
+                    nodeScanRequested = { labyrinthEntryRecognitionSession.nodeScanRequested() },
                 )::process
             },
             captureStop = { MediaProjectionCaptureService.stop(this) },

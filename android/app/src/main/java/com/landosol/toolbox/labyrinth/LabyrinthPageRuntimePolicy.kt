@@ -48,6 +48,38 @@ internal fun labyrinthCanRecoverOrphanNodeMoveConfirmation(
 }
 
 /**
+ * An orphan movement modal that cannot be recovered (several reachable successors, or weak
+ * evidence) still blocks every map interaction: swipes and node taps land on the dialog and the
+ * search loop would otherwise nudge the map forever. The only safe automatic action is to press
+ * the dialog's own cancel button, which returns to the untouched map. Dismissal stays bounded so
+ * a misdetected dialog cannot turn into an endless tap loop.
+ */
+internal fun labyrinthShouldDismissOrphanNodeMoveConfirmation(
+    pageState: LabyrinthEntryPageState,
+    hasPendingNodeTransition: Boolean,
+    canRecover: Boolean,
+    stableFrames: Int,
+    dismissAttempts: Int,
+    lastDismissAt: Long,
+    now: Long,
+): Boolean {
+    if (hasPendingNodeTransition || canRecover) return false
+    if (pageState !in setOf(
+            LabyrinthEntryPageState.NODE_SELECTION,
+            LabyrinthEntryPageState.NODE_MAP_VIEW,
+            LabyrinthEntryPageState.UNKNOWN,
+        )
+    ) return false
+    if (stableFrames < ORPHAN_MOVE_CONFIRMATION_DISMISS_STABLE_FRAMES) return false
+    if (dismissAttempts >= MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS) return false
+    return lastDismissAt == Long.MIN_VALUE || now - lastDismissAt >= ORPHAN_MOVE_CONFIRMATION_DISMISS_INTERVAL_MILLIS
+}
+
+internal const val ORPHAN_MOVE_CONFIRMATION_DISMISS_STABLE_FRAMES = 2
+internal const val MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS = 3
+internal const val ORPHAN_MOVE_CONFIRMATION_DISMISS_INTERVAL_MILLIS = 2_000L
+
+/**
  * A one-choice event has no strategic ambiguity.  Two independent current-frame anchors are
  * required before exposing its sole button so this cannot turn an unrelated UNKNOWN/map frame
  * into a blind click.
@@ -333,6 +365,19 @@ internal fun labyrinthKeepsRoleRewardBatchOnPage(
  * the opening invitation flow. Keep this deliberately narrow so a fresh run still retains the
  * original CHARACTER_JOINED opening-safety check.
  */
+internal fun labyrinthShopJoinedRewardOwnsRoute(
+    result: LabyrinthEntryFrameResult,
+    purchaseConfirmedAt: Long,
+    now: Long,
+): Boolean {
+    if (result.observation.state != LabyrinthEntryPageState.CHARACTER_JOINED) return false
+    val recentPurchase = purchaseConfirmedAt != Long.MIN_VALUE && now - purchaseConfirmedAt in 0..120_000
+    val shopBackground = listOf(EntryAnchorId.SHOP_TITLE, EntryAnchorId.SHOP_INSTRUCTION,
+        EntryAnchorId.SHOP_REFRESH_BUTTON, EntryAnchorId.SHOP_CLOSE)
+        .count { result.observation.anchorScores[it] >= 0.65 } >= 2
+    return recentPurchase || shopBackground
+}
+
 internal fun labyrinthResumedRunRewardPageOwnsRoute(
     result: LabyrinthEntryFrameResult,
 ): Boolean = when (result.observation.state) {
