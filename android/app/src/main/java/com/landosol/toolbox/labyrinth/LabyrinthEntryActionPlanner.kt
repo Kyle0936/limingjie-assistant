@@ -25,6 +25,10 @@ data class LabyrinthEntryActionPlannerConfig(
     val preAnnouncementTimeoutMillis: Long = 45_000L,
     val characterSelectionClickIntervalMillis: Long = 2_000L,
     val openingSelectionFeedbackTimeoutMillis: Long = 3_000L,
+    /** Stable roster frames that must agree the tapped card is still unselected before stopping. */
+    val openingSelectionFeedbackStableFrames: Int = 2,
+    /** Absolute ceiling regardless of stability, so a permanently unstable roster cannot hang. */
+    val openingSelectionFeedbackHardTimeoutMillis: Long = 12_000L,
     val openingRosterScrollIntervalMillis: Long = 900L,
     val maxOpeningRosterScrolls: Int = 12,
     val openingRosterBottomStableFrames: Int = 3,
@@ -46,6 +50,8 @@ data class LabyrinthEntryActionPlannerConfig(
         require(preAnnouncementTimeoutMillis > 0)
         require(characterSelectionClickIntervalMillis > 0)
         require(openingSelectionFeedbackTimeoutMillis > 0)
+        require(openingSelectionFeedbackStableFrames > 0)
+        require(openingSelectionFeedbackHardTimeoutMillis >= openingSelectionFeedbackTimeoutMillis)
         require(openingRosterScrollIntervalMillis > 0)
         require(maxOpeningRosterScrolls > 0)
         require(openingRosterBottomStableFrames > 0)
@@ -115,6 +121,7 @@ class LabyrinthEntryActionPlanner(
     private var pendingOpeningCharacterId: String? = null
     private var pendingOpeningCharacterName: String? = null
     private var pendingOpeningCharacterClickedAt = Long.MIN_VALUE
+    private var pendingOpeningStableFramesSeen = 0
     private var openingRosterScrollAttempts = 0
     private var openingRosterBottomMissFrames = 0
 
@@ -145,6 +152,7 @@ class LabyrinthEntryActionPlanner(
         pendingOpeningCharacterId = null
         pendingOpeningCharacterName = null
         pendingOpeningCharacterClickedAt = Long.MIN_VALUE
+        pendingOpeningStableFramesSeen = 0
         openingRosterScrollAttempts = 0
         openingRosterBottomMissFrames = 0
     }
@@ -155,6 +163,7 @@ class LabyrinthEntryActionPlanner(
         pendingOpeningCharacterId = null
         pendingOpeningCharacterName = null
         pendingOpeningCharacterClickedAt = Long.MIN_VALUE
+        pendingOpeningStableFramesSeen = 0
         openingRosterScrollAttempts = 0
         openingRosterBottomMissFrames = 0
     }
@@ -426,11 +435,31 @@ class LabyrinthEntryActionPlanner(
                     pendingOpeningCharacterId = null
                     pendingOpeningCharacterName = null
                     pendingOpeningCharacterClickedAt = Long.MIN_VALUE
+        pendingOpeningStableFramesSeen = 0
+                    pendingOpeningStableFramesSeen = 0
                 } else {
+                    // Feedback can only be observed on a STABLE roster frame: while the recognizer
+                    // reports WAITING_FOR_STABILITY it returns no cards at all, so "not selected"
+                    // there is absence of evidence, not evidence of absence. The tap itself
+                    // perturbs the viewport signature (dimmed card, new badge), which on a slow
+                    // host can hold the recognizer in WAITING for longer than the wall-clock
+                    // timeout. Count stable frames actually inspected, and only give up after a
+                    // few of them agree that the card is still unselected.
+                    // A caller that supplies no viewport observation has no stability signal;
+                    // its card list is the only evidence, so every such frame counts as inspected.
+                    if (openingCharacterSelection == null ||
+                        openingCharacterSelection.recognitionState == LabyrinthBattleTeamRecognitionState.STABLE
+                    ) {
+                        pendingOpeningStableFramesSeen++
+                    }
                     val elapsed = nowMillis - pendingOpeningCharacterClickedAt
-                    if (elapsed < config.openingSelectionFeedbackTimeoutMillis) {
+                    val timedOut = elapsed >= config.openingSelectionFeedbackTimeoutMillis
+                    val stableAgreement = pendingOpeningStableFramesSeen >= config.openingSelectionFeedbackStableFrames
+                    val hardTimedOut = elapsed >= config.openingSelectionFeedbackHardTimeoutMillis
+                    if (!(timedOut && stableAgreement) && !hardTimedOut) {
                         return LabyrinthEntryActionDecision.Wait(
-                            "已点击初始角色${pendingOpeningCharacterName ?: pendingId}，等待选中状态确认",
+                            "已点击初始角色${pendingOpeningCharacterName ?: pendingId}，等待选中状态确认" +
+                                "（稳定帧${pendingOpeningStableFramesSeen}/${config.openingSelectionFeedbackStableFrames}）",
                         )
                     }
                     return LabyrinthEntryActionDecision.Stop(
@@ -508,6 +537,7 @@ class LabyrinthEntryActionPlanner(
                 pendingOpeningCharacterId = target.characterId
                 pendingOpeningCharacterName = target.displayName
                 pendingOpeningCharacterClickedAt = nowMillis
+                pendingOpeningStableFramesSeen = 0
                 return LabyrinthEntryActionDecision.Execute(
                     LabyrinthEntryActionKind.SELECT_INITIAL_CHARACTER,
                     "选择初始角色${(selectedOpeningCharacterIds.size + 1).coerceAtMost(REQUIRED_INITIAL_CHARACTERS)}/" +

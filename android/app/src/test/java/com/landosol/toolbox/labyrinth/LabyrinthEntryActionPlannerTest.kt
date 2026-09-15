@@ -183,6 +183,107 @@ class LabyrinthEntryActionPlannerTest {
     }
 
     @Test
+    fun `opening feedback timeout counts only stable roster frames and keeps a hard ceiling`() {
+        // 2026-09-15 22:49 bundle: the tap did select the card (the "1" badge is on the last
+        // frame), but the tap itself changed the viewport signature, so the recognizer reported
+        // WAITING_FOR_STABILITY with no cards for every frame until the 3 s timer expired and
+        // automation stopped. Blind frames must not count as "no feedback".
+        val planner = LabyrinthEntryActionPlanner(
+            LabyrinthEntryActionPlannerConfig(
+                stableFrames = 1,
+                characterSelectionClickIntervalMillis = 1L,
+                openingSelectionFeedbackTimeoutMillis = 100L,
+                openingSelectionFeedbackStableFrames = 2,
+                openingSelectionFeedbackHardTimeoutMillis = 1_000L,
+                requireConfiguredOpeningRoster = true,
+            ),
+        )
+        planner.configureOpeningRoster(1)
+        val selecting = scores(
+            EntryAnchorId.SELECTION_COUNT_NONE to 0.90,
+            EntryAnchorId.SELECTION_COUNT_COMPLETE to 0.10,
+            EntryAnchorId.INVITE_DISABLED to 0.91,
+            EntryAnchorId.INVITE_ENABLED to 0.12,
+        )
+        val matches = listOf(
+            openingMatch("1075", "贪吃佩可(夏日)", 200),
+            openingMatch("1351", "雪菲(夏日)", 400),
+            openingMatch("1059", "可可萝", 600),
+        )
+        val stable = openingViewport(position = 0.75)
+        val waiting = stable.copy(recognitionState = LabyrinthBattleTeamRecognitionState.WAITING_FOR_STABILITY)
+        fun decide(now: Long, obs: LabyrinthBattleTeamObservation, cards: List<LabyrinthBattleCharacterMatch> = matches) =
+            planner.decide(
+                state = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                frameWidth = 1920, frameHeight = 1080, nowMillis = now,
+                anchorScores = selecting, openingCharacterMatches = cards, openingCharacterSelection = obs,
+            )
+
+        assertTrue(decide(0L, stable) is LabyrinthEntryActionDecision.Execute)
+        // Well past the soft timeout, but every frame so far was blind: keep waiting.
+        for (now in listOf(150L, 300L, 450L)) {
+            val d = decide(now, waiting, emptyList())
+            assertTrue("now=$now $d", d is LabyrinthEntryActionDecision.Wait)
+        }
+        // First stable look without the badge: still one short of agreement.
+        assertTrue(decide(500L, stable) is LabyrinthEntryActionDecision.Wait)
+        // Second stable look agrees the card is unselected: now it is a real failure.
+        assertTrue(decide(550L, stable) is LabyrinthEntryActionDecision.Stop)
+    }
+
+    @Test
+    fun `opening feedback that arrives late on a stable frame clears the pending tap`() {
+        val planner = LabyrinthEntryActionPlanner(
+            LabyrinthEntryActionPlannerConfig(
+                stableFrames = 1,
+                characterSelectionClickIntervalMillis = 1L,
+                openingSelectionFeedbackTimeoutMillis = 100L,
+                openingSelectionFeedbackStableFrames = 2,
+                openingSelectionFeedbackHardTimeoutMillis = 1_000L,
+                requireConfiguredOpeningRoster = true,
+            ),
+        )
+        planner.configureOpeningRoster(1)
+        val selecting = scores(
+            EntryAnchorId.SELECTION_COUNT_NONE to 0.90,
+            EntryAnchorId.SELECTION_COUNT_COMPLETE to 0.10,
+            EntryAnchorId.INVITE_DISABLED to 0.91,
+            EntryAnchorId.INVITE_ENABLED to 0.12,
+        )
+        val before = listOf(
+            openingMatch("1075", "贪吃佩可(夏日)", 200),
+            openingMatch("1351", "雪菲(夏日)", 400),
+            openingMatch("1059", "可可萝", 600),
+        )
+        val after = listOf(
+            openingMatch("1075", "贪吃佩可(夏日)", 200, selected = true),
+            openingMatch("1351", "雪菲(夏日)", 400),
+            openingMatch("1059", "可可萝", 600),
+        )
+        val stable = openingViewport(position = 0.75)
+        val waiting = stable.copy(recognitionState = LabyrinthBattleTeamRecognitionState.WAITING_FOR_STABILITY)
+        fun decide(now: Long, obs: LabyrinthBattleTeamObservation, cards: List<LabyrinthBattleCharacterMatch>) =
+            planner.decide(
+                state = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                frameWidth = 1920, frameHeight = 1080, nowMillis = now,
+                anchorScores = selecting, openingCharacterMatches = cards, openingCharacterSelection = obs,
+            )
+
+        assertTrue(decide(0L, stable, before) is LabyrinthEntryActionDecision.Execute)
+        assertTrue(decide(200L, waiting, emptyList()) is LabyrinthEntryActionDecision.Wait)
+        assertTrue(decide(400L, waiting, emptyList()) is LabyrinthEntryActionDecision.Wait)
+        // Feedback finally visible at 600 ms, six times the soft timeout: it must be accepted and
+        // the planner must move on to the next target instead of stopping.
+        val next = decide(600L, stable, after)
+        assertTrue("$next", next is LabyrinthEntryActionDecision.Execute)
+        assertTrue((next as LabyrinthEntryActionDecision.Execute).label.contains("2/3"))
+
+        // Hard ceiling: a roster that never stabilises still ends, it does not hang forever.
+        assertTrue(decide(601L, waiting, emptyList()) is LabyrinthEntryActionDecision.Wait)
+        assertTrue(decide(1_700L, waiting, emptyList()) is LabyrinthEntryActionDecision.Stop)
+    }
+
+    @Test
     fun `configured opening roster invites only after the exact three targets are visibly selected`() {
         val planner = LabyrinthEntryActionPlanner(
             LabyrinthEntryActionPlannerConfig(
