@@ -12,117 +12,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LabyrinthNodeClassifierFixtureTest {
-    @Test fun `visible neighbors cannot prevent expansion when route target is unconfirmed`() {
-        val root = locateProjectRoot()
-        val frame = readImage(File(root, "android/app/src/test/resources/labyrinth/node-link-20260914.png"))
-        val templates = NodeTemplateSet(NODE_TEMPLATE_FILES.mapValues { (_, name) ->
-            readImage(File(root, "android/app/src/main/assets/resource-packs/cn-bilibili/vision/$name"))
-        })
-        val classifier = LabyrinthNodeClassifier()
-        val hint = NodeSearchHint(30302, 400, setOf(LabyrinthNodeTypes.LINK,
-            LabyrinthNodeTypes.EVENT, LabyrinthNodeTypes.NORMAL_BATTLE, LabyrinthNodeTypes.RELIC), 2..4)
-        val modes = (1..6).map {
-            assertTrue(classifier.classifyMapNodes(frame, templates, hint).isNotEmpty())
-            classifier.lastSearchMode
-        }
-        assertEquals(listOf("directed", "directed", "typed", "typed", "full", "full"), modes)
-        classifier.classifyMapNodes(frame, templates, hint.copy(matchedTargetBlockId = 30302))
-        assertTrue(classifier.lastSearchMode in setOf("tracked", "directed"))
-        classifier.classifyMapNodes(frame, templates, hint.copy(targetBlockId = 30401, matchedTargetBlockId = 30302))
-        assertEquals("directed", classifier.lastSearchMode)
-        // Without a camera prediction the template set is still restricted to the route
-        // neighbourhood; only two misses in that mode fall back to the unrestricted scan.
-        classifier.classifyMapNodes(frame, templates, hint.copy(targetBlockId = 30401, expectedCenterX = null))
-        assertEquals("typed", classifier.lastSearchMode)
-        classifier.classifyMapNodes(frame, templates, hint.copy(targetBlockId = 30401, expectedCenterX = null))
-        assertEquals("typed", classifier.lastSearchMode)
-        classifier.classifyMapNodes(frame, templates, hint.copy(targetBlockId = 30401, expectedCenterX = null))
-        assertEquals("full", classifier.lastSearchMode)
-    }
-
-    @Test fun `directed search keeps target while scoring fewer candidate windows`() {
-        val root = locateProjectRoot()
-        val frame = readImage(File(root, "android/app/src/test/resources/labyrinth/node-link-20260914.png"))
-        val templates = NodeTemplateSet(NODE_TEMPLATE_FILES.mapValues { (_, name) ->
-            readImage(File(root, "android/app/src/main/assets/resource-packs/cn-bilibili/vision/$name"))
-        })
-        val fullClassifier = LabyrinthNodeClassifier()
-        val full = fullClassifier.classifyMapNodes(frame, templates)
-        val target = requireNotNull(full.firstOrNull { it.isClickable && it.blockType == LabyrinthNodeTypes.LINK })
-        val targetRect = requireNotNull(target.screenRect)
-        val fullWindows = fullClassifier.lastSearchWindowCount
-
-        val directedClassifier = LabyrinthNodeClassifier()
-        val directed = directedClassifier.classifyMapNodes(
-            frame = frame,
-            templates = templates,
-            searchHint = NodeSearchHint(
-                targetBlockId = 99901,
-                expectedCenterX = targetRect.left + targetRect.width / 2,
-                expectedTypes = setOf(LabyrinthNodeTypes.LINK),
-                reachableColumns = 1..3,
-            ),
-        )
-        val directedWindows = directedClassifier.lastSearchWindowCount
-
-        println(
-            "node-directed-benchmark fixture=node-link-20260914.png " +
-                "fullWindows=$fullWindows directedWindows=$directedWindows " +
-                "reduction=${100 - directedWindows * 100 / fullWindows}%",
-        )
-
-        assertEquals("mode=${directedClassifier.lastSearchMode}", "directed", directedClassifier.lastSearchMode)
-        assertTrue("directed=$directed", directed.any { node ->
-            node.blockType == target.blockType && node.isClickable && node.screenRect?.let { rect ->
-                kotlin.math.abs((rect.left + rect.width / 2) - (targetRect.left + targetRect.width / 2)) <= 30
-            } == true
-        })
-        assertTrue("full=$fullWindows directed=$directedWindows", directedWindows < fullWindows)
-    }
-
-    @Test fun `directed search survives a coarse prediction with a realistic type set`() {
-        val root = locateProjectRoot()
-        val frame = readImage(File(root, "android/app/src/test/resources/labyrinth/node-link-20260914.png"))
-        val templates = NodeTemplateSet(NODE_TEMPLATE_FILES.mapValues { (_, name) ->
-            readImage(File(root, "android/app/src/main/assets/resource-packs/cn-bilibili/vision/$name"))
-        })
-        val fullClassifier = LabyrinthNodeClassifier()
-        var full = emptyList<NodeClassification>()
-        val fullNanos = kotlin.system.measureNanoTime { full = fullClassifier.classifyMapNodes(frame, templates) }
-        println(
-            "node-directed-benchmark baseline windows=${fullClassifier.lastSearchWindowCount} " +
-                "ms=${fullNanos / 1_000_000}",
-        )
-        val target = requireNotNull(full.firstOrNull { it.isClickable && it.blockType == LabyrinthNodeTypes.LINK })
-        val targetCenterX = requireNotNull(target.screenRect).let { it.left + it.width / 2 }
-        // The live session hands the classifier the whole route neighbourhood, and the camera
-        // fit is rarely exact: a prediction 100 px off on either side must still hit the target
-        // while the window budget stays far below the 2266-window full scan.
-        val neighbourhood = setOf(
-            LabyrinthNodeTypes.LINK, LabyrinthNodeTypes.RELIC,
-            LabyrinthNodeTypes.NORMAL_BATTLE, LabyrinthNodeTypes.EX_BATTLE, LabyrinthNodeTypes.EVENT,
-        )
-        for (error in listOf(-100, 0, 100)) {
-            val classifier = LabyrinthNodeClassifier()
-            var directed = emptyList<NodeClassification>()
-            val nanos = kotlin.system.measureNanoTime {
-                directed = classifier.classifyMapNodes(
-                    frame = frame,
-                    templates = templates,
-                    searchHint = NodeSearchHint(99901, targetCenterX + error, neighbourhood, 1..3),
-                )
-            }
-            val windows = classifier.lastSearchWindowCount
-            println("node-directed-benchmark error=$error windows=$windows ms=${nanos / 1_000_000}")
-            assertEquals("directed", classifier.lastSearchMode)
-            assertTrue("error=$error directed=$directed", directed.any { node ->
-                node.blockType == LabyrinthNodeTypes.LINK && node.isClickable &&
-                    node.screenRect?.let { kotlin.math.abs(it.left + it.width / 2 - targetCenterX) <= 30 } == true
-            })
-            assertTrue("error=$error windows=$windows", windows <= DIRECTED_WINDOW_BUDGET)
-        }
-    }
-
     @Test fun `pink link statue in reported map is not a blue relic`() {
         val frame = readImage(File(locateProjectRoot(), "android/app/src/test/resources/labyrinth/node-link-20260914.png"))
         val templates = NodeTemplateSet(NODE_TEMPLATE_FILES.mapValues { (_, name) ->
@@ -506,9 +395,6 @@ class LabyrinthNodeClassifierFixtureTest {
     }
 
     private companion object {
-        /** Phase one target: roughly 2 ms per window on device, so 250 windows is the 500 ms line. */
-        const val DIRECTED_WINDOW_BUDGET = 800
-
         val NODE_TEMPLATE_FILES = mapOf(
             "node.normal_battle.active" to "node_normal_battle_active.png",
             "node.normal_battle.active.bottom" to "node_normal_battle_active_bottom.png",

@@ -120,13 +120,11 @@ class LandosolToolboxApplication : Application() {
         AndroidLabyrinthCnDatabaseRepository(this)
     }
     private val labyrinthDebugDashboard by lazy {
-        LabyrinthDebugDashboardServer(
-            frameArchiveDirectory = java.io.File(cacheDir, "labyrinth-frame-archive"),
-        ).also { server ->
+        LabyrinthDebugDashboardServer().also { server ->
             server.start()
         }
     }
-    val labyrinthEntryRecognitionSession: LabyrinthEntryRecognitionSession by lazy {
+    val labyrinthEntryRecognitionSession by lazy {
         // Start the debug endpoint with its initial waiting snapshot instead of waiting for the
         // first captured frame. That keeps first-frame capture failures observable in the browser.
         val debugDashboard = labyrinthDebugDashboard
@@ -157,9 +155,6 @@ class LandosolToolboxApplication : Application() {
                     context = this,
                     characterAttributes = characterAttributes,
                     finalBossOnly = finalBossOnly,
-                    skipJoinedCharacters = { labyrinthEntryRecognitionSession.skipRoleRewardJoinedRecognition },
-                    nodeSearchHint = { labyrinthEntryRecognitionSession.currentNodeSearchHint() },
-                    nodeScanRequested = { labyrinthEntryRecognitionSession.nodeScanRequested() },
                 )::process
             },
             captureStop = { MediaProjectionCaptureService.stop(this) },

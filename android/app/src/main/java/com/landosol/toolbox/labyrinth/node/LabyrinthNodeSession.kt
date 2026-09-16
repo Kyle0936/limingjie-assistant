@@ -341,29 +341,6 @@ class LabyrinthNodeSession(
      */
     fun getState(): NodeSessionState = state
 
-    /** Route-proven next node, available before the first visual map pass of a viewport. */
-    fun currentRouteTarget(): LabyrinthMapNode? {
-        if (state.isComplete) return null
-        val currentId = state.currentNodeId ?: return null
-        val currentIndex = routeNodes.indexOfFirst { it.blockId == currentId }
-        if (currentIndex < 0) return null
-        return routeNodes.getOrNull(currentIndex + 1)
-            ?.takeIf { it.area == state.currentArea }
-    }
-
-    /**
-     * Keep enough semantic variety around the target column for topology mapping while avoiding
-     * templates that cannot possibly occur near the route target.
-     */
-    fun searchTypesNearTarget(target: LabyrinthMapNode): Set<Int> {
-        val columns = (target.column - 1).coerceAtLeast(1)..(target.column + 1)
-        return allMapNodes.asSequence()
-            .filter { it.area == target.area && it.column in columns }
-            .map(LabyrinthMapNode::blockType)
-            .plus(target.blockType)
-            .toSet()
-    }
-
     /**
      * Returns the route-proven final Boss that may be clicked without visual Boss classification.
      *
@@ -415,15 +392,6 @@ class LabyrinthNodeSession(
 
     /** Last raw-to-route mapping pass, retained only for diagnostics/overlay rendering. */
     fun getLastMatchResult(): NodeMatchResult? = lastMatchResult
-
-    /** A search hit is the exact route target accepted by the ordinary click planner. */
-    fun matchedRouteTargetId(): Long? {
-        val target = currentRouteTarget() ?: return null
-        val match = lastMatchResult ?: return null
-        if (match.nextNode?.blockId != target.blockId) return null
-        return (planner.planAction(match) as? NodeAction.ClickNode)
-            ?.takeIf { it.blockId == target.blockId && it.screenRect != null }?.blockId
-    }
 
     /** All raw visual candidates from the most recent externally classified frame. */
     fun getLastClassifications(): List<NodeClassification> = lastClassifications

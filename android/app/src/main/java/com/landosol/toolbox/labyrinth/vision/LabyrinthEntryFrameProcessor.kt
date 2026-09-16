@@ -5,7 +5,6 @@ import com.landosol.toolbox.labyrinth.node.FinalBossPlatformMatch
 
 import com.landosol.toolbox.clanbattle.recognition.PixelImage
 import com.landosol.toolbox.labyrinth.node.LabyrinthNodeClassifier
-import com.landosol.toolbox.labyrinth.node.NodeSearchHint
 import com.landosol.toolbox.labyrinth.node.NodeClassification
 import com.landosol.toolbox.labyrinth.node.NodeTemplateSet
 import java.util.IdentityHashMap
@@ -325,11 +324,6 @@ data class LabyrinthEntryFrameResult(
     val frameHeight: Int = 0,
     val stageMillis: Map<String, Long> = emptyMap(),
     val nodeSearchMode: String = "none",
-    /** Candidate windows the node classifier scored on this frame; 0 when no node scan ran. */
-    val nodeSearchWindowCount: Int = 0,
-    /** Pixel-only map viewport signature, independent from successful node classification. */
-    val nodeViewportSignature: String = "",
-    val nodeViewportPixels: com.landosol.toolbox.labyrinth.node.NodeViewportPixels? = null,
     val finalBossPlatforms: List<FinalBossPlatformMatch> = emptyList(),
     val finalBossPlatformCandidates: List<FinalBossPlatformMatch> = emptyList(),
 )
@@ -356,22 +350,11 @@ class LabyrinthEntryFrameProcessor(
     private val battleFailureDetector: LabyrinthBattleFailureDetector = LabyrinthBattleFailureDetector(),
     private val exChallengeDetector: LabyrinthExChallengeDetector = LabyrinthExChallengeDetector(),
     private val finalBossOnly: () -> Boolean = { false },
-    private val nodeSearchHint: () -> NodeSearchHint? = { null },
-    /**
-     * Whether a map-node scan can be consumed right now. Before the route session exists the
-     * session cannot bind or act on any classification, so the scan is pure waste; on a slow host
-     * that wasted first frame took 49 s in the 2026-09-15 20:58 bundle.
-     */
-    private val nodeScanRequested: () -> Boolean = { true },
 ) {
     private val finalBossPlatformLocator = FinalBossPlatformLocator(
         nodeTemplates.templates["node.boss.platform"],
     )
-    fun process(
-        frame: PixelImage,
-        deferRoleRewardPortraits: Boolean = false,
-        skipJoinedCharacters: Boolean = false,
-    ): LabyrinthEntryFrameResult {
+    fun process(frame: PixelImage): LabyrinthEntryFrameResult {
         if (frame.width <= frame.height) return unsupportedOrientation(frame)
         lateinit var observation: LabyrinthEntryPageObservation
         var matchedFeatures = emptyList<String>()
@@ -392,9 +375,6 @@ class LabyrinthEntryFrameProcessor(
         var nodesNanos = 0L
         var bossPlatformNanos = 0L
         var nodeSearchMode = "none"
-        var nodeSearchWindowCount = 0
-        var nodeViewportSignature = ""
-        var nodeViewportPixels: com.landosol.toolbox.labyrinth.node.NodeViewportPixels? = null
         val elapsedNanos = measureNanoTime {
             val measurements = DEFINITIONS_BY_ID.mapValues { (id, definitions) ->
                 val template = templates.values[id]
@@ -447,8 +427,7 @@ class LabyrinthEntryFrameProcessor(
                         minimumScore = MATCHED_FEATURE_MIN_SCORE,
                     )
             ) {
-                characterMatches = if (deferRoleRewardPortraits) characterRecognizer.roleRewardSlots(frame)
-                    else characterRecognizer.recognizeRoleRewardChoices(frame)
+                characterMatches = characterRecognizer.recognizeRoleRewardChoices(frame)
             } else if (observation.state == LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION) {
                 openingCharacterSelection = battleTeamRecognizer.recognizeOpening(frame)
                 openingCharacterMatches = openingCharacterSelection?.visibleCharacters.orEmpty()
@@ -464,12 +443,7 @@ class LabyrinthEntryFrameProcessor(
                         anchorScores[EntryAnchorId.JOINED_CLOSE_STANDARD],
                     ) >= MATCHED_FEATURE_MIN_SCORE
             ) {
-                val shopBackground = listOf(EntryAnchorId.SHOP_TITLE, EntryAnchorId.SHOP_INSTRUCTION,
-                    EntryAnchorId.SHOP_REFRESH_BUTTON, EntryAnchorId.SHOP_CLOSE)
-                    .count { anchorScores[it] >= 0.65 } >= 2
-                if (!skipJoinedCharacters || shopBackground) {
-                    characterMatches = characterRecognizer.recognizeJoinedCharacters(frame)
-                }
+                characterMatches = characterRecognizer.recognizeJoinedCharacters(frame)
             }
             if (
                 observation.state == LabyrinthEntryPageState.NODE_SELECTION &&
@@ -477,11 +451,8 @@ class LabyrinthEntryFrameProcessor(
                     // classifier can still report NODE_SELECTION. The dialog has priority and
                     // does not need the expensive map-node classification pass.
                     nodeMoveConfirmation == null &&
-                    nodeTemplates.templates.isNotEmpty() &&
-                    nodeScanRequested()
+                    nodeTemplates.templates.isNotEmpty()
             ) {
-                nodeViewportSignature = nodeClassifier.viewportSignatureKey(frame)
-                nodeViewportPixels = com.landosol.toolbox.labyrinth.node.NodeViewportPixels.sample(frame)
                 if (finalBossOnly()) {
                     // Route already proves the only destination. Animated scenery must not force
                     // an expensive ordinary-node scan; do not reuse its old viewport evidence.
@@ -489,14 +460,9 @@ class LabyrinthEntryFrameProcessor(
                     nodeSearchMode = "final-boss-platform"
                 } else {
                     nodesNanos = measureNanoTime {
-                        nodeClassifications = nodeClassifier.classifyMapNodes(
-                            frame = frame,
-                            templates = nodeTemplates,
-                            searchHint = nodeSearchHint(),
-                        )
+                        nodeClassifications = nodeClassifier.classifyMapNodes(frame, nodeTemplates)
                     }
                     nodeSearchMode = nodeClassifier.lastSearchMode
-                    nodeSearchWindowCount = nodeClassifier.lastSearchWindowCount
                 }
                 bossPlatformNanos = measureNanoTime {
                     finalBossPlatforms = finalBossPlatformLocator.locate(frame)
@@ -546,9 +512,6 @@ class LabyrinthEntryFrameProcessor(
                 "bossPlatform" to bossPlatformNanos / 1_000_000,
                 "pageAndOther" to (elapsedNanos - nodesNanos - bossPlatformNanos) / 1_000_000),
             nodeSearchMode = nodeSearchMode,
-            nodeSearchWindowCount = nodeSearchWindowCount,
-            nodeViewportSignature = nodeViewportSignature,
-            nodeViewportPixels = nodeViewportPixels,
             anchorMatches = anchorMatches,
             nodeClassifications = nodeClassifications,
             finalBossPlatforms = finalBossPlatforms,
@@ -587,7 +550,7 @@ class LabyrinthEntryFrameProcessor(
         )
     }
 
-    internal companion object {
+    private companion object {
         const val MATCHED_FEATURE_MIN_SCORE = 0.45
         val WIDE_REFERENCE = EntryReferenceSize(2780, 1264)
         val STANDARD_REFERENCE = EntryReferenceSize(1920, 1080)

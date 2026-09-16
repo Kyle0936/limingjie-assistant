@@ -44,8 +44,3 @@ __pycache__/
 
 # Local tooling and debug artifacts
 *.lnk
-
-# Local device debug bundles, built APK drops and session scratch (not source)
-/log/
-/artifacts/
-/docs/history-session/

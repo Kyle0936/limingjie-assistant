@@ -216,22 +216,6 @@ internal fun stableNodeColorRoiScore(
 private fun mapNodeTemplateCoordinate(value: Int, sourceSize: Int, targetSize: Int): Int =
     (value.toLong() * (targetSize - 1) / (sourceSize - 1)).toInt().coerceIn(1, targetSize - 2)
 
-/** Optional route-aware restriction for the expensive node proposal search. */
-data class NodeSearchHint(
-    val targetBlockId: Long,
-    val expectedCenterX: Int?,
-    val expectedTypes: Set<Int>,
-    val reachableColumns: IntRange,
-    /** Target confirmed by the preceding frame's protocol-bound action planner. */
-    val matchedTargetBlockId: Long? = null,
-)
-
-private enum class NodeSearchMode(val label: String) {
-    DIRECTED("directed"),
-    TYPED("typed"),
-    FULL("full"),
-}
-
 /**
  * 黎明界节点分类器
  * 通过模板匹配识别屏幕上的节点类型
@@ -246,13 +230,7 @@ class LabyrinthNodeClassifier(
     private var previousTemplates: NodeTemplateSet? = null
     private var previousNodes: List<NodeClassification> = emptyList()
     private var trackedFrames = 0
-    private var hintedTargetBlockId: Long? = null
-    private var directedMissFrames: Int = 0
-    private var typedMissFrames: Int = 0
     var lastSearchMode: String = "full"
-        private set
-    /** Candidate windows scored by [classifyNode] during the most recent [classifyMapNodes]. */
-    var lastSearchWindowCount: Int = 0
         private set
 
     fun resetTracking() {
@@ -260,9 +238,6 @@ class LabyrinthNodeClassifier(
         previousTemplates = null
         previousNodes = emptyList()
         trackedFrames = 0
-        hintedTargetBlockId = null
-        directedMissFrames = 0
-        typedMissFrames = 0
         matcher.clearPreparedFrame()
         proposalMatcher.clearPreparedFrame()
         refinementMatcher.clearPreparedFrame()
@@ -555,17 +530,6 @@ class LabyrinthNodeClassifier(
         }
     }
 
-    private fun updateHintMissState(hint: NodeSearchHint?, mode: NodeSearchMode) {
-        if (hint == null) return
-        // Only the next frame's protocol-bound feedback can prove target acquisition.
-        // Nearby visual proposals, including tracked ones, cannot clear target misses.
-        when (mode) {
-            NodeSearchMode.DIRECTED -> directedMissFrames++
-            NodeSearchMode.TYPED -> typedMissFrames++
-            NodeSearchMode.FULL -> Unit // Keep full search until a real target is recovered.
-        }
-    }
-
     /**
      * 在地图候选锚点附近寻找节点。地图纵向会滚动，不能只在一个固定矩形上匹配；
      * 这里保留列锚点，再对每个候选做小范围偏移搜索，并用中心距离做非极大值抑制。
@@ -573,42 +537,16 @@ class LabyrinthNodeClassifier(
     fun classifyMapNodes(
         frame: PixelImage,
         templates: NodeTemplateSet,
-        searchHint: NodeSearchHint? = null,
     ): List<NodeClassification> {
         if (templates.templates.isEmpty()) return emptyList()
-        if (searchHint?.targetBlockId != hintedTargetBlockId) {
-            hintedTargetBlockId = searchHint?.targetBlockId
-            directedMissFrames = 0
-            typedMissFrames = 0
-        }
-        val targetConfirmed = searchHint != null && searchHint.matchedTargetBlockId == searchHint.targetBlockId
-        if (targetConfirmed) {
-            directedMissFrames = 0
-            typedMissFrames = 0
-        }
-        val searchMode = when {
-            searchHint == null -> NodeSearchMode.FULL
-            // No camera prediction yet (area entry, tracker not fitted): still restrict the
-            // template set to the route's neighbourhood so the first, most expensive frame of a
-            // viewport is not a full 16-anchor by all-template scan.
-            searchHint.expectedCenterX == null ->
-                if (typedMissFrames < TYPED_MISS_FRAMES_BEFORE_FULL) NodeSearchMode.TYPED else NodeSearchMode.FULL
-            directedMissFrames < DIRECTED_MISS_FRAMES_BEFORE_EXPAND ->
-                NodeSearchMode.DIRECTED
-            typedMissFrames < TYPED_MISS_FRAMES_BEFORE_FULL -> NodeSearchMode.TYPED
-            else -> NodeSearchMode.FULL
-        }
         val previous = previousFrame
-        val trackedNodesStillCoverHint = searchHint == null || targetConfirmed
         if (previous != null && previousTemplates === templates && previousNodes.isNotEmpty() &&
-            trackedNodesStillCoverHint &&
             trackedFrames < 5 && isStableViewport(previous, frame)
         ) {
             val refreshed = previousNodes.mapNotNull { node ->
                 val rect = node.screenRect ?: return@mapNotNull null
                 classifyNode(frame, rect, templates)?.copy(column = node.column, row = node.row)
             }
-            lastSearchWindowCount = refreshed.size
             if (refreshed.size == previousNodes.size && refreshed.zip(previousNodes).all { (now, old) ->
                     now.blockType == old.blockType && now.isClickable == old.isClickable
                 }) {
@@ -618,25 +556,13 @@ class LabyrinthNodeClassifier(
                 return refreshed
             }
         }
-        lastSearchMode = searchMode.label
+        lastSearchMode = "full"
         trackedFrames = 0
-        var scoredWindows = 0
         try {
             matcher.prepareFrame(frame)
             proposalMatcher.sharePreparedFrame(matcher)
             refinementMatcher.sharePreparedFrame(matcher)
-            val expectedTypes = searchHint?.expectedTypes.orEmpty()
-            val regularTemplates = templates.filterKeys { templateId ->
-                isRegularNodeTemplate(templateId) &&
-                    (searchMode == NodeSearchMode.FULL || expectedTypes.isEmpty() ||
-                        blockTypeForTemplate(templateId) in expectedTypes)
-            }
-            // Directed search keeps every anchor at its reference position and keeps the full
-            // offset sweep, so a prediction that is off by a node width still reaches the target.
-            // The saving comes from dropping the windows that land far from the prediction: the
-            // remaining budget concentrates on the predicted column and its two neighbours.
-            val directedCenterX = searchHint?.expectedCenterX?.takeIf { searchMode == NodeSearchMode.DIRECTED }
-            val directedToleranceX = labyrinthReferenceColumnPitch(frame.height) * DIRECTED_CENTER_PITCH_TOLERANCE
+            val regularTemplates = templates.filterKeys(::isRegularNodeTemplate)
             val offsets = NodeAnchorDefinitions.searchOffsets(frame.width, frame.height)
             val detections = NodeAnchorDefinitions.NODE_ICON_RECTS.flatMap { definition ->
                 val rectangles = offsets.asSequence()
@@ -650,11 +576,6 @@ class LabyrinthNodeClassifier(
                         )
                         if (rect == null || !isInsideRegularNodeRecognitionRegion(rect, frame.width)) {
                             null
-                        } else if (
-                            directedCenterX != null &&
-                            kotlin.math.abs(rect.left + rect.width / 2 - directedCenterX) > directedToleranceX
-                        ) {
-                            null
                         } else {
                             rect
                         }
@@ -663,23 +584,15 @@ class LabyrinthNodeClassifier(
                 // Locate the platform/label at low sample density before expensive whole-node
                 // classification. Keep alternatives per type so a single common silhouette cannot
                 // crowd out a rarer icon. Proposals never directly authorize a click.
-                // Proposal counts are per template, so with a broad type hint they, not the
-                // rectangle pool, dominate the window budget. A directed search has already
-                // concentrated the rectangles on the predicted column, so far fewer alternatives
-                // per template are needed to keep the target among the proposals.
-                val platformProposalsPerTemplate =
-                    if (directedCenterX != null) DIRECTED_PLATFORM_PROPOSALS_PER_TEMPLATE else 8
-                val silhouetteProposalsPerTemplate =
-                    if (directedCenterX != null) DIRECTED_SILHOUETTE_PROPOSALS_PER_TEMPLATE else 3
                 val platformProposals = regularTemplates.platformTemplates.values
                     .flatMap { template ->
                         rectangles.map { rect ->
                             rect to proposalMatcher.score(frame, rect, template)
-                        }.sortedByDescending { it.second }.take(platformProposalsPerTemplate).map { it.first }
+                        }.sortedByDescending { it.second }.take(8).map { it.first }
                     }.distinct()
                 val silhouetteProposals = regularTemplates.gradientTemplates.values.flatMap { template ->
                     rectangles.map { rect -> rect to proposalMatcher.score(frame, rect, template) }
-                        .sortedByDescending { it.second }.take(silhouetteProposalsPerTemplate).map { it.first }
+                        .sortedByDescending { it.second }.take(3).map { it.first }
                 }
                 val proposals = (platformProposals + silhouetteProposals).distinct()
                 val refined = proposals.flatMap { rect ->
@@ -687,15 +600,8 @@ class LabyrinthNodeClassifier(
                     val variants = regularTemplates.gradientTemplates.entries.map {
                         it to proposalMatcher.score(frame, rect, it.value)
                     }.sortedByDescending { it.second }.map { it.first }
-                    // The colour-inferred alternative guards against a common silhouette winning
-                    // the gradient vote. Directed search already restricts templates to the route
-                    // neighbourhood, so the best variant alone is enough there.
-                    val colourAlternative = if (directedCenterX != null) {
-                        emptyList()
-                    } else {
-                        variants.firstOrNull { blockTypeForTemplate(it.key) == possibleType }?.let(::listOf).orEmpty()
-                    }
-                    val candidates = (variants.take(1) + colourAlternative).distinctBy { it.key }
+                    val candidates = (variants.take(1) + variants.firstOrNull { blockTypeForTemplate(it.key) == possibleType }
+                        ?.let(::listOf).orEmpty()).distinctBy { it.key }
                     candidates.map { (_, template) ->
                         val step = maxOf(2, (7.0 * frame.height / 1080).roundToInt())
                         val local = (-2..2).flatMap { dy ->
@@ -708,9 +614,7 @@ class LabyrinthNodeClassifier(
                         } }.maxByOrNull { refinementMatcher.score(frame, it, template) } ?: best
                     }
                 }
-                val candidateWindows = (proposals + refined).distinct()
-                scoredWindows += candidateWindows.size
-                val candidateDetections = candidateWindows.mapNotNull {
+                val candidateDetections = (proposals + refined).distinct().mapNotNull {
                     classifyNode(frame, it, regularTemplates)
                 }
                 selectSpatiallyDistinct(candidateDetections, MAX_DETECTIONS_PER_SEARCH_ANCHOR)
@@ -735,7 +639,6 @@ class LabyrinthNodeClassifier(
                     .mapNotNull { (offsetX, offsetY) ->
                         val rect = candidate.rect.offsetInside(offsetX, offsetY, frame.width, frame.height)
                             ?: return@mapNotNull null
-                        scoredWindows++
                         classifyNode(frame, rect, specialTemplates)
                     }
                     .maxByOrNull(NodeClassification::confidence)
@@ -747,11 +650,9 @@ class LabyrinthNodeClassifier(
             val result = assignVisualRows(
                 rejectWeakIsolatedFarLeftDetections(spatialDetections, frame.width),
             )
-            updateHintMissState(searchHint, searchMode)
             previousFrame = viewportSignature(frame)
             previousTemplates = templates
             previousNodes = result
-            lastSearchWindowCount = scoredWindows
             return result
         } finally {
             matcher.clearPreparedFrame()
@@ -770,15 +671,6 @@ class LabyrinthNodeClassifier(
             }
         }
         return ViewportSignature(frame.width, frame.height, colors.toIntArray())
-    }
-
-    /** Pixel-only viewport identity; remains available even when no node can be classified. */
-    fun viewportSignatureKey(frame: PixelImage): String {
-        val signature = viewportSignature(frame)
-        return buildString {
-            append(signature.width).append('x').append(signature.height).append(':')
-            append(signature.colors.contentHashCode().toUInt().toString(16))
-        }
     }
 
     /** Compare against the full-scan frame, not the previous frame: slow scrolling accumulates. */
@@ -1012,16 +904,6 @@ class LabyrinthNodeClassifier(
         // not stable across frames. Route/type/row matching, stable frames and page-transition
         // confirmation provide the action safety gates after this gradient-led detection.
         const val MIN_CONFIDENCE = 0.40
-        private const val DIRECTED_MISS_FRAMES_BEFORE_EXPAND = 2
-        private const val TYPED_MISS_FRAMES_BEFORE_FULL = 2
-        /**
-         * Windows whose centre is farther than this many column pitches from the tracker
-         * prediction are dropped. Half a pitch keeps the predicted column plus the inner edge of
-         * each neighbour, which absorbs a prediction error of about one node width.
-         */
-        private const val DIRECTED_CENTER_PITCH_TOLERANCE = 0.55
-        private const val DIRECTED_PLATFORM_PROPOSALS_PER_TEMPLATE = 3
-        private const val DIRECTED_SILHOUETTE_PROPOSALS_PER_TEMPLATE = 1
         private const val MIN_CHANNEL_SCORE = 0.0
         private const val MAX_DETECTIONS_PER_SEARCH_ANCHOR = 3
         private const val COLOR_GATE_TOP_TEMPLATE_COUNT = 4

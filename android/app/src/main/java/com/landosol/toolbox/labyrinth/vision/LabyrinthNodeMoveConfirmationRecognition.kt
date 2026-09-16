@@ -5,8 +5,6 @@ import com.landosol.toolbox.clanbattle.recognition.PixelImage
 data class LabyrinthNodeMoveConfirmationObservation(
     val confidence: Double,
     val confirmButtonRect: EntryPixelRect,
-    /** Light cancel button; the only in-dialog control that closes the modal without moving. */
-    val cancelButtonRect: EntryPixelRect,
 )
 
 /**
@@ -36,7 +34,6 @@ class LabyrinthNodeMoveConfirmationDetector(
         val confirmSample = map(frame, CONFIRM_BUTTON_SAMPLE) ?: return null
         val cancelSample = map(frame, CANCEL_BUTTON_SAMPLE) ?: return null
         val confirmButton = map(frame, CONFIRM_BUTTON_RECT) ?: return null
-        val cancelButton = map(frame, CANCEL_BUTTON_RECT) ?: return null
 
         val titleBlue = coverage(frame, titleBar, ::isDialogBlue)
         val bodyLight = coverage(frame, body, ::isDialogLight)
@@ -54,7 +51,6 @@ class LabyrinthNodeMoveConfirmationDetector(
         return LabyrinthNodeMoveConfirmationObservation(
             confidence = (titleBlue + bodyLight + confirmBlue + cancelLight) / 4.0,
             confirmButtonRect = confirmButton,
-            cancelButtonRect = cancelButton,
         )
     }
 
@@ -97,7 +93,6 @@ class LabyrinthNodeMoveConfirmationDetector(
         val CANCEL_BUTTON_SAMPLE = EntryReferenceRect(570, 710, 340, 60)
         val CONFIRM_BUTTON_SAMPLE = EntryReferenceRect(1_000, 710, 350, 60)
         val CONFIRM_BUTTON_RECT = EntryReferenceRect(975, 690, 415, 105)
-        val CANCEL_BUTTON_RECT = EntryReferenceRect(545, 690, 415, 105)
         const val SAMPLE_STEP = 4
 
         fun isDialogBlue(red: Int, green: Int, blue: Int): Boolean =

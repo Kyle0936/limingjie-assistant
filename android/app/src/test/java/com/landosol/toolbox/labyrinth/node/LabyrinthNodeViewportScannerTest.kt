@@ -179,52 +179,6 @@ class LabyrinthNodeViewportScannerTest {
         assertTrue(snapshot.columnSpacingResidual!! > 150.0)
     }
 
-    @Test
-    fun `low confidence topology inherits camera geometry for at most three frames`() {
-        val scanner = LabyrinthNodeViewportScanner()
-        val direct = requireNotNull(scanner.observe(
-            area = 2,
-            viewportSignature = "direct",
-            frameWidth = 1920,
-            frameHeight = 1080,
-            matchResult = match(
-                mapping(blockId = 20402, logicalColumn = 4, left = 500),
-                mapping(blockId = 20501, logicalColumn = 5, left = 1040),
-            ),
-        ))
-        assertTrue(direct.geometryReliable)
-        assertFalse(direct.geometryInferred)
-
-        repeat(3) { index ->
-            val inferred = requireNotNull(scanner.observe(
-                area = 2,
-                viewportSignature = "inferred-$index",
-                frameWidth = 1920,
-                frameHeight = 1080,
-                matchResult = match(
-                    mapping(blockId = 20402, logicalColumn = 4, left = 470 - index * 30, topologyConfidence = 0.40),
-                    mapping(blockId = 20501, logicalColumn = 5, left = 1010 - index * 30, topologyConfidence = 0.40),
-                ),
-            ))
-            assertTrue("frame=$index snapshot=$inferred", inferred.geometryReliable)
-            assertTrue("frame=$index snapshot=$inferred", inferred.geometryInferred)
-        }
-
-        val exhausted = requireNotNull(scanner.observe(
-            area = 2,
-            viewportSignature = "inference-exhausted",
-            frameWidth = 1920,
-            frameHeight = 1080,
-            matchResult = match(
-                mapping(blockId = 20402, logicalColumn = 4, left = 350, topologyConfidence = 0.40),
-                mapping(blockId = 20501, logicalColumn = 5, left = 890, topologyConfidence = 0.40),
-            ),
-        ))
-        assertFalse(exhausted.geometryReliable)
-        assertFalse(exhausted.geometryInferred)
-        assertNull(exhausted.viewportWorldLeft)
-    }
-
     private fun match(vararg mappings: NodeTopologyMapping) = NodeMatchResult(
         currentNodeId = 20402,
         currentNodeType = LabyrinthNodeTypes.RELIC,
@@ -238,7 +192,6 @@ class LabyrinthNodeViewportScannerTest {
         blockId: Long,
         logicalColumn: Int,
         left: Int,
-        topologyConfidence: Double = 0.90,
     ) = NodeTopologyMapping(
         blockId = blockId,
         expectedBlockType = LabyrinthNodeTypes.NORMAL_BATTLE,
@@ -248,7 +201,7 @@ class LabyrinthNodeViewportScannerTest {
         screenRect = EntryPixelRect(left = left, top = 300, width = 280, height = 350),
         detectedBlockType = LabyrinthNodeTypes.NORMAL_BATTLE,
         visualConfidence = 0.80,
-        topologyConfidence = topologyConfidence,
+        topologyConfidence = 0.90,
         isClickable = true,
         bindingKind = NodeTopologyBindingKind.FULL_COLUMN,
     )

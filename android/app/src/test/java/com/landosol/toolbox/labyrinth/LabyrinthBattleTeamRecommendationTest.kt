@@ -50,49 +50,6 @@ class LabyrinthBattleTeamRecommendationTest {
         assertTrue(result.recommendation.reasons.any { it.contains("本队确认0/2") })
     }
 
-    @Test fun `guide core is reserved even when generic attackers out-score it`() {
-        // Two DOT dealers rated far below five generic attackers. A scoring bonus alone loses
-        // to the player rating gap; the guide core must be reserved before the search runs.
-        val profiles = buildList {
-            add(role("tank", "T", 1, 90.0, 20.0, reliableVanguard = 100.0))
-            (1..5).forEach { add(role("gen$it", "高分输出$it", 1 + it, 95.0, 95.0)) }
-            (1..2).forEach { i ->
-                val r = role("dot$i", "持续伤害$i", 10 + i, 55.0, 55.0)
-                add(r.copy(functions = r.functions.copy(dot = 85.0)))
-            }
-        }.associateBy { it.characterId }
-        val planner = recommendationPlanner(profiles)
-        val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4, encounterStrategy = dotGuide)
-        val first = planner.initialRecommendation(profiles.keys, context) as LabyrinthBattleTeamRecommendationResult.Ready
-        val ids = first.recommendation.members.map { it.characterId }.toSet()
-        assertTrue("$ids", ids.containsAll(setOf("dot1", "dot2", "tank")))
-        assertTrue(first.recommendation.reasons.any { it.contains("已按攻略锁定核心角色") })
-        assertFalse(first.recommendation.reasons.any { it.contains("本队确认0/2") })
-
-        // An effective-effect role with no DOT is reserved too, ahead of the requirement fill.
-        val withEffective = planner.initialRecommendation(
-            profiles.keys, context.copy(effectiveCharacterIds = setOf("gen5")),
-        ) as LabyrinthBattleTeamRecommendationResult.Ready
-        val ids2 = withEffective.recommendation.members.map { it.characterId }.toSet()
-        assertTrue("$ids2", ids2.containsAll(setOf("gen5", "dot1", "dot2", "tank")))
-    }
-
-    @Test fun `guide core that cannot sit behind any eligible tank falls back to the normal search`() {
-        val profiles = buildList {
-            add(role("tank", "T", 5, 90.0, 20.0, reliableVanguard = 100.0))
-            (1..5).forEach { add(role("gen$it", "输出$it", 5 + it, 80.0, 80.0)) }
-            // DOT dealer positioned in front of the only tank: fielding her breaks the front line.
-            val front = role("dotFront", "前排持续", 1, 70.0, 60.0)
-            add(front.copy(functions = front.functions.copy(dot = 90.0)))
-        }.associateBy { it.characterId }
-        val first = recommendationPlanner(profiles).initialRecommendation(
-            profiles.keys, LabyrinthRoleDecisionContext(defenseMarkStacks = 4, encounterStrategy = dotGuide),
-        ) as LabyrinthBattleTeamRecommendationResult.Ready
-        assertEquals("tank", first.recommendation.vanguard.characterId)
-        assertFalse(first.recommendation.members.any { it.characterId == "dotFront" })
-        assertFalse(first.recommendation.reasons.any { it.contains("已按攻略锁定核心角色") })
-    }
-
     @Test fun `guide capability coverage remains preferred when enough characters exist`() {
         val profiles = (1..7).map { i ->
             val role = role("r$i", "角色$i", i, 80.0, 70.0,

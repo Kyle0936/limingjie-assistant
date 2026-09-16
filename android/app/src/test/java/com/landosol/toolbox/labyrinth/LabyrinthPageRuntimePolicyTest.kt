@@ -18,27 +18,8 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.junit.Assert.assertFalse
 
 class LabyrinthPageRuntimePolicyTest {
-    @Test fun `shop joined popup owns reward flow without opening invitation or purchase memory`() {
-        val frame = result(LabyrinthEntryPageState.CHARACTER_JOINED, anchorScores = mapOf(
-            EntryAnchorId.SHOP_TITLE to 0.9, EntryAnchorId.SHOP_CLOSE to 0.8))
-        assertTrue(labyrinthShopJoinedRewardOwnsRoute(frame, Long.MIN_VALUE, 50_000))
-    }
-
-    @Test fun `confirmed imprint purchase owns direct joined popup across purchase cleanup`() {
-        val frame = result(LabyrinthEntryPageState.CHARACTER_JOINED)
-        assertTrue(labyrinthShopJoinedRewardOwnsRoute(frame, 1_000, 10_000))
-        assertFalse(labyrinthShopJoinedRewardOwnsRoute(frame, 1_000, 130_000))
-        assertFalse(labyrinthShopJoinedRewardOwnsRoute(frame, Long.MIN_VALUE, 10_000))
-        assertFalse(labyrinthShopJoinedRewardOwnsRoute(result(LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION), 1_000, 10_000))
-    }
-
-    @Test fun `one shop lookalike anchor cannot take over a fresh invitation`() {
-        val frame = result(LabyrinthEntryPageState.CHARACTER_JOINED, anchorScores = mapOf(EntryAnchorId.SHOP_TITLE to 0.99))
-        assertFalse(labyrinthShopJoinedRewardOwnsRoute(frame, Long.MIN_VALUE, 10_000))
-    }
     @Test
     fun `challenge button waits for difficulty and never bypasses unresolved EX guide`() {
         val normal = LabyrinthCombatContext(LabyrinthCombatKind.NORMAL)
@@ -56,48 +37,6 @@ class LabyrinthPageRuntimePolicyTest {
 
         // Route-known Bosses keep their existing direct challenge behavior.
         assertTrue(labyrinthBattleChallengeCanAutoStart(boss, false, false, false))
-    }
-
-    @Test
-    fun `unrecoverable orphan movement modal is dismissed within bounds instead of searched around`() {
-        fun decide(
-            stable: Int = 2, attempts: Int = 0, lastAt: Long = Long.MIN_VALUE, now: Long = 10_000,
-            pending: Boolean = false, recoverable: Boolean = false,
-            page: LabyrinthEntryPageState = LabyrinthEntryPageState.NODE_SELECTION,
-        ) = labyrinthShouldDismissOrphanNodeMoveConfirmation(
-            pageState = page, hasPendingNodeTransition = pending, canRecover = recoverable,
-            stableFrames = stable, dismissAttempts = attempts, lastDismissAt = lastAt, now = now,
-        )
-        // This is the 2026-09-15 20:33 bundle: dialog open, three reachable successors, no pending tap.
-        assertTrue(decide())
-        assertTrue(decide(page = LabyrinthEntryPageState.UNKNOWN))
-        // One frame is not enough: the detector is a colour test and a transition can fake it.
-        assertFalse(decide(stable = 1))
-        // Anything the pending/recovery paths own stays theirs.
-        assertFalse(decide(pending = true))
-        assertFalse(decide(recoverable = true))
-        // Bounded: three taps, two seconds apart, never on a page the map does not own.
-        assertFalse(decide(attempts = MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS))
-        assertFalse(decide(attempts = 1, lastAt = 9_000))
-        assertTrue(decide(attempts = 1, lastAt = 7_000))
-        assertFalse(decide(page = LabyrinthEntryPageState.SHOP_EXIT_CONFIRMATION))
-        // Shop exit dialog hides the shop title so the page reads UNKNOWN, but the shop chrome
-        // around it is still visible. That is the shop handler's dialog, never an orphan.
-        assertFalse(
-            labyrinthShouldDismissOrphanNodeMoveConfirmation(
-                pageState = LabyrinthEntryPageState.UNKNOWN, hasPendingNodeTransition = false,
-                canRecover = false, stableFrames = 2, dismissAttempts = 0,
-                lastDismissAt = Long.MIN_VALUE, now = 10_000, shopBackgroundVisible = true,
-            ),
-        )
-    }
-
-    @Test fun `shop background is two or more fixed shop anchors regardless of page state`() {
-        val exitDialog = result(LabyrinthEntryPageState.UNKNOWN, anchorScores = mapOf(
-            EntryAnchorId.SHOP_REFRESH_BUTTON to 0.9, EntryAnchorId.SHOP_CLOSE to 0.8))
-        assertTrue(labyrinthShopBackgroundVisible(exitDialog))
-        val map = result(LabyrinthEntryPageState.NODE_SELECTION, anchorScores = mapOf(EntryAnchorId.SHOP_CLOSE to 0.9))
-        assertFalse(labyrinthShopBackgroundVisible(map))
     }
 
     @Test
