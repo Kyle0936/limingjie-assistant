@@ -1,10 +1,20 @@
 package com.landosol.toolbox.account
 
+import com.landosol.toolbox.protocol.bilibili.GameServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AccountInputValidatorTest {
+    @Test
+    fun `new account can switch server while existing account stays on original server`() {
+        val fresh = AccountEditorState()
+        assertEquals(GameServer.CN_CHANNEL, fresh.selectServer(GameServer.CN_CHANNEL).server)
+
+        val existing = AccountEditorState(id = 1L, server = GameServer.CN_BILIBILI)
+        assertEquals(GameServer.CN_BILIBILI, existing.selectServer(GameServer.CN_CHANNEL).server)
+    }
+
     @Test
     fun `normalizes valid account input`() {
         val result = AccountInputValidator.validate(

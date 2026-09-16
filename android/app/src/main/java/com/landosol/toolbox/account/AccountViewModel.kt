@@ -21,6 +21,9 @@ data class AccountEditorState(
     val server: GameServer = GameServer.CN_BILIBILI,
 ) {
     val isEditing: Boolean get() = id != null
+
+    fun selectServer(server: GameServer): AccountEditorState =
+        if (isEditing) this else copy(server = server)
 }
 
 data class AccountUiState(
