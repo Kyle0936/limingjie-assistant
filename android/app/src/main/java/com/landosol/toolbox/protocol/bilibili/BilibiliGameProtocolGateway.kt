@@ -25,7 +25,8 @@ class BilibiliGameProtocolGateway(
     private val client: OkHttpClient,
     private val bootstrapEndpoint: HttpUrl,
     private val channelBootstrapEndpoint: HttpUrl = bootstrapEndpoint,
-    private val profile: GameProtocolProfile,
+    private val profile: GameProtocolProfile? = null,
+    private val profileProvider: ((GameServer) -> GameProtocolProfile)? = null,
     private val codec: MessagePackCodec = MessagePackCodec(),
     private val crypto: GameProtocolCrypto = GameProtocolCrypto(),
     private val json: Json = Json { ignoreUnknownKeys = true },
@@ -37,9 +38,11 @@ class BilibiliGameProtocolGateway(
         captcha: CaptchaSolution?,
     ): GameLoginResult = withContext(Dispatchers.IO) {
         val server = sdkSession.server
+        val activeProfile = profileProvider?.invoke(server)
+            ?: requireNotNull(profile) { "游戏协议配置不可用" }
         val state = ClientState(
             server = if (server == GameServer.CN_CHANNEL) channelBootstrapEndpoint else bootstrapEndpoint,
-            headers = profile.headers.toMutableMap().apply {
+            headers = activeProfile.headers.toMutableMap().apply {
                 put("DEVICE-ID", md5Hex(deviceSeed))
                 put("PLATFORM-ID", server.protocolPlatform)
                 if (server == GameServer.CN_CHANNEL) put("RES-KEY", CHANNEL_RES_KEY)
@@ -91,7 +94,7 @@ class BilibiliGameProtocolGateway(
             val viewerId = user.long("viewer_id") ?: state.viewerId.takeIf { it > 0 } ?: error("游戏 UID 缺失")
             val userName = user.string("user_name").orEmpty().ifBlank { "未命名玩家" }
             val teamLevel = user.long("team_level")?.toInt() ?: 0
-            val accountProfile = GameAccountProfile(viewerId, userName, teamLevel, profile.appVersion)
+            val accountProfile = GameAccountProfile(viewerId, userName, teamLevel, activeProfile.appVersion)
             GameLoginResult.Success(accountProfile, ProtocolSession(state, accountProfile))
         } catch (failure: GameApiFailure) {
             val message = failure.message.orEmpty().ifBlank { "游戏服拒绝请求" }.take(MAX_MESSAGE_LENGTH)

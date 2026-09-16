@@ -50,7 +50,7 @@
 
 - 工程最低系统要求为 Android 8.0（API 26），不代表已验证所有符合版本要求的设备。
 - 已测试环境仅为 **MuMu 模拟器，1920 × 1080**。手机、其他模拟器、其他分辨率及宽高比均暂未验证。
-- 当前适配游戏包名：`com.bilibili.priconne`。
+- 当前识别的国服客户端包名包括：`com.bilibili.priconne`、`com.bilibili.priconne.mi`、`com.bilibili.priconne.huawei`、`com.bilibili.priconne.vivo`、`com.tencent.tmgp.bilibili.priconne`、`com.bilibili.priconne.aligames`。此外会从可启动应用中兜底发现包名含 `priconne` / `princessconnect` 的未知渠道客户端；未知渠道统一按国服渠道协议处理。
 - 视觉资源以横屏 `1920 × 1080` 为主要参考尺寸，识别时进行坐标映射；其他分辨率、宽高比、遮挡和窗口裁切需要实际验证。
 - 登录、刷开局和数据库更新需要网络；画面自动化需要通知、屏幕捕获和无障碍服务权限。不需要悬浮窗权限。
 

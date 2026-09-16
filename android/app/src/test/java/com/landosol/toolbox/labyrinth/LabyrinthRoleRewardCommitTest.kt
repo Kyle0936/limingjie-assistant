@@ -25,7 +25,7 @@ class LabyrinthRoleRewardCommitTest {
             sessionManager = manager, captureActive = { true },
             processorFactory = { { error("no captured frames in this action test") } },
             actionExecutor = SessionBoundActionExecutor(manager) { backend },
-            actionsAvailable = { true }, gameLauncher = { true }, runStateStore = store,
+            actionsAvailable = { true }, gameLauncher = { _ -> true }, runStateStore = store,
         )
         try {
             assertTrue(session.startAutomation() is LabyrinthEntryRecognitionStartResult.Started)

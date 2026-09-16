@@ -47,6 +47,7 @@ import com.landosol.toolbox.protocol.bilibili.BilibiliLoginCoordinator
 import com.landosol.toolbox.protocol.bilibili.BilibiliGameGatewayFactory
 import com.landosol.toolbox.protocol.bilibili.BilibiliNativeLoginCoordinator
 import com.landosol.toolbox.protocol.bilibili.BilibiliSdkGatewayFactory
+import com.landosol.toolbox.protocol.bilibili.AndroidGameClientLocator
 import com.landosol.toolbox.protocol.bilibili.InMemoryGameSessionRegistry
 import com.landosol.toolbox.security.AndroidKeystoreCredentialStore
 import com.landosol.toolbox.security.AndroidKeystoreSdkSessionStore
@@ -90,7 +91,10 @@ class LandosolToolboxApplication : Application() {
     val automationOverlayCoordinator by lazy {
         AutomationOverlayCoordinator(AndroidAutomationNotificationHost(this))
     }
-    private val accessibilityActionBackend by lazy { AndroidAccessibilityActionBackend() }
+    private val gameClientLocator by lazy { AndroidGameClientLocator(this) }
+    private val accessibilityActionBackend by lazy {
+        AndroidAccessibilityActionBackend(gameClientLocator::isSupportedGamePackage)
+    }
     val automationActionExecutor by lazy {
         SessionBoundActionExecutor(automationSessionManager, accessibilityActionBackend)
     }
@@ -167,7 +171,7 @@ class LandosolToolboxApplication : Application() {
             actionExecutor = automationActionExecutor,
             actionsAvailable = LandosolAccessibilityService::isConnected,
             actionTargetReady = {
-                LandosolAccessibilityService.foregroundPackage() == GAME_PACKAGE_NAME
+                gameClientLocator.isSupportedGamePackage(LandosolAccessibilityService.foregroundPackage())
             },
             actionPlannerFactory = {
                 LabyrinthEntryActionPlanner(
@@ -203,8 +207,9 @@ class LandosolToolboxApplication : Application() {
                     )
                 }
             },
-            gameLauncher = gameLauncher@{
-                val intent = packageManager.getLaunchIntentForPackage(GAME_PACKAGE_NAME)
+            gameLauncher = gameLauncher@{ accountId ->
+                val server = accountRepository.resolveServer(accountId)
+                val intent = gameClientLocator.launchIntent(server)
                     ?: return@gameLauncher false
                 runCatching {
                     startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -261,8 +266,8 @@ class LandosolToolboxApplication : Application() {
     val gameSessionResetWorkflow by lazy {
         val frameTracker = SessionExpiryFrameTracker()
         val presence = AccessibilityForegroundPresenceObserver(
-            gamePackageName = GAME_PACKAGE_NAME,
             foregroundPackage = LandosolAccessibilityService::foregroundPackage,
+            isGamePackage = gameClientLocator::isSupportedGamePackage,
         )
         val terminator = SessionExpiryTerminator(
             onTap = { point ->
@@ -285,7 +290,8 @@ class LandosolToolboxApplication : Application() {
             backend = CompositeSessionResetBackend(
                 terminator = terminator,
                 relauncher = Relauncher {
-                    val intent = packageManager.getLaunchIntentForPackage(GAME_PACKAGE_NAME)
+                    val server = accountRepository.resolveServer(null)
+                    val intent = gameClientLocator.launchIntent(server)
                         ?: return@Relauncher GameClientRelaunchResult.LAUNCH_UNAVAILABLE
                     runCatching {
                         startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -372,7 +378,6 @@ class LandosolToolboxApplication : Application() {
 
     private companion object {
         const val DATABASE_UPDATE_LOG_TAG = "LabyrinthCnDatabase"
-        const val GAME_PACKAGE_NAME = "com.bilibili.priconne"
         /** 触发入口「冒险→黎明界」，与 [LabyrinthEntryActionPlanner] 的锚点一致 */
         val SESSION_EXPIRY_TRIGGER_POINT = ScreenPoint(1735f, 805f)
         /** 「返回标题」按钮（模板中心，1080p 参考系） */

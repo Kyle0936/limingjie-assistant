@@ -48,6 +48,11 @@ class AccountRepository(
         }
     }
 
+    suspend fun resolveServer(id: Long?): GameServer {
+        val account = if (id != null) database.accountDao().getById(id) else database.accountDao().getSelected()
+        return account?.let { GameServer.fromStorageId(it.serverId) } ?: GameServer.CN_BILIBILI
+    }
+
     suspend fun loadEditor(id: Long): AccountEditorData {
         val account = requireNotNull(database.accountDao().getById(id)) { "账号不存在" }
         val credentials = requireNotNull(credentialStore.read(account.credentialKey)) { "账号凭据不可用" }

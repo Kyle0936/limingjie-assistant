@@ -8,6 +8,7 @@ import okhttp3.OkHttpClient
 
 object BilibiliGameGatewayFactory {
     fun create(context: Context): BilibiliGameGateway {
+        val gameClientLocator = AndroidGameClientLocator(context.applicationContext)
         val client = OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
             .readTimeout(30, TimeUnit.SECONDS)
@@ -19,7 +20,10 @@ object BilibiliGameGatewayFactory {
             client = client,
             bootstrapEndpoint = BOOTSTRAP_ENDPOINT.toHttpUrl(),
             channelBootstrapEndpoint = CHANNEL_BOOTSTRAP_ENDPOINT.toHttpUrl(),
-            profile = AndroidGameProtocolProfileFactory(context.applicationContext).create(),
+            profileProvider = AndroidGameProtocolProfileFactory(
+                context.applicationContext,
+                gameClientLocator,
+            )::create,
             json = Json { ignoreUnknownKeys = true },
         )
     }
