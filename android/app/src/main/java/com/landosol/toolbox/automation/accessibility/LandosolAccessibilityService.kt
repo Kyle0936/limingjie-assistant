@@ -252,14 +252,16 @@ class LandosolAccessibilityService : AccessibilityService() {
 }
 
 class AndroidAccessibilityActionBackend(
-    private val expectedPackageName: String? = GAME_PACKAGE_NAME,
+    private val expectedPackage: ((String?) -> Boolean)? = { packageName ->
+        com.landosol.toolbox.protocol.bilibili.PcrGamePackages.classify(packageName) != null
+    },
 ) : AutomationActionBackend {
     override suspend fun execute(action: AutomationAction): AutomationBackendResult {
         if (!action.hasValidCoordinates()) return AutomationBackendResult.Rejected("动作坐标无效")
         val service = LandosolAccessibilityService.current()
             ?: return AutomationBackendResult.Rejected("无障碍服务未连接")
         val foregroundPackage = LandosolAccessibilityService.foregroundPackage()
-        if (expectedPackageName != null && foregroundPackage != expectedPackageName) {
+        if (expectedPackage != null && !expectedPackage.invoke(foregroundPackage)) {
             return AutomationBackendResult.Rejected(GAME_NOT_FOREGROUND_REASON)
         }
         return service.perform(
@@ -272,9 +274,5 @@ class AndroidAccessibilityActionBackend(
         is AutomationAction.Tap -> point.x >= 0f && point.y >= 0f
         is AutomationAction.Swipe -> start.x >= 0f && start.y >= 0f && end.x >= 0f && end.y >= 0f
         AutomationAction.Back -> true
-    }
-
-    private companion object {
-        const val GAME_PACKAGE_NAME = "com.bilibili.priconne"
     }
 }

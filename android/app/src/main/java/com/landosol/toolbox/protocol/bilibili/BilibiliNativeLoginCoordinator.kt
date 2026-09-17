@@ -16,6 +16,14 @@ class BilibiliNativeLoginCoordinator(
     suspend fun start(material: AccountLoginMaterial): NativeLoginResult = mutex.withLock {
         pending.remove(material.accountId)
         sdkCoordinator.cancel(material.accountId)
+        if (material.server == GameServer.CN_CHANNEL) {
+            val directSession = SdkSession(
+                uid = material.loginId,
+                accessKey = material.password,
+                server = GameServer.CN_CHANNEL,
+            )
+            return@withLock loginGame(material, directSession)
+        }
         val cached = sessionStore.read(material.credentialKey)
         if (cached != null) {
             when (val result = gameGateway.loginAndLoadProfile(cached, material.loginId)) {
@@ -119,7 +127,13 @@ class BilibiliNativeLoginCoordinator(
     private suspend fun requestGameCaptcha(
         material: AccountLoginMaterial,
         session: SdkSession,
-    ): NativeLoginResult = when (val captcha = sdkGateway.startCaptcha()) {
+    ): NativeLoginResult = if (material.server == GameServer.CN_CHANNEL) {
+        failure(
+            LoginFailureKind.Rejected,
+            "渠道服登录触发游戏风控；请先在渠道客户端重新登录，再重新提取 login_id/token 后重试",
+            material,
+        )
+    } else when (val captcha = sdkGateway.startCaptcha()) {
         is SdkCaptchaResult.Ready -> {
             pending[material.accountId] = PendingCaptcha.GameRisk(material, session, captcha.challenge)
             NativeLoginResult.CaptchaRequired(captcha.challenge)

@@ -108,7 +108,7 @@ class LabyrinthEntryRecognitionSessionTest {
             processorFactory = { { error("test does not dispatch frames") } },
             actionExecutor = SessionBoundActionExecutor(manager) { AutomationBackendResult.Completed },
             actionsAvailable = { true },
-            gameLauncher = { launchCalls++; true },
+            gameLauncher = { _ -> launchCalls++; true },
         )
 
         val result = session.startAutomation()
@@ -131,7 +131,7 @@ class LabyrinthEntryRecognitionSessionTest {
             processorFactory = { { error("test does not dispatch frames") } },
             actionExecutor = SessionBoundActionExecutor(manager) { AutomationBackendResult.Completed },
             actionsAvailable = { true },
-            gameLauncher = { false },
+            gameLauncher = { _ -> false },
         )
 
         val result = session.startAutomation()

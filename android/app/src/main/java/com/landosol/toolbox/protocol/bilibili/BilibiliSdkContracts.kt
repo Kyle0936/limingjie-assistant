@@ -7,6 +7,21 @@ class SdkLoginCredentials(
     override fun toString(): String = "SdkLoginCredentials(REDACTED)"
 }
 
+enum class GameServer(
+    val storageId: String,
+    val displayName: String,
+    val protocolPlatform: String,
+) {
+    CN_BILIBILI("cn-bilibili", "国服 Bilibili", "2"),
+    CN_CHANNEL("cn-channel", "国服渠道服", "4"),
+    ;
+
+    companion object {
+        fun fromStorageId(value: String): GameServer = entries.firstOrNull { it.storageId == value }
+            ?: CN_BILIBILI
+    }
+}
+
 data class CaptchaChallenge(
     val gt: String,
     val challenge: String,
@@ -26,13 +41,19 @@ class SdkSession(
     val uid: String,
     val accessKey: String,
     val updatedAt: Long = 0L,
+    val server: GameServer = GameServer.CN_BILIBILI,
 ) {
     override fun equals(other: Any?): Boolean =
-        other is SdkSession && uid == other.uid && accessKey == other.accessKey && updatedAt == other.updatedAt
+        other is SdkSession &&
+            uid == other.uid &&
+            accessKey == other.accessKey &&
+            updatedAt == other.updatedAt &&
+            server == other.server
 
-    override fun hashCode(): Int = 31 * (31 * uid.hashCode() + accessKey.hashCode()) + updatedAt.hashCode()
+    override fun hashCode(): Int = 31 * (31 * (31 * uid.hashCode() + accessKey.hashCode()) + updatedAt.hashCode()) + server.hashCode()
 
-    override fun toString(): String = "SdkSession(uid=REDACTED, accessKey=REDACTED, updatedAt=$updatedAt)"
+    override fun toString(): String =
+        "SdkSession(uid=REDACTED, accessKey=REDACTED, updatedAt=$updatedAt, server=${server.storageId})"
 }
 
 sealed interface SdkLoginResult {
@@ -70,8 +91,10 @@ class AccountLoginMaterial(
     val credentialKey: String,
     val loginId: String,
     val password: String,
+    val server: GameServer = GameServer.CN_BILIBILI,
 ) {
-    override fun toString(): String = "AccountLoginMaterial(accountId=$accountId, REDACTED)"
+    override fun toString(): String =
+        "AccountLoginMaterial(accountId=$accountId, server=${server.storageId}, REDACTED)"
 }
 
 enum class LoginFailureKind {

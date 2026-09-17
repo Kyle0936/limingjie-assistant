@@ -67,6 +67,30 @@ class BilibiliGameProtocolGatewayTest {
         assertEquals(3, server.requestCount)
     }
 
+    @Test
+    fun `channel session uses platform four and channel protocol headers`() = runTest {
+        server.dispatcher = protocolDispatcher(risk = false)
+        val gateway = gateway()
+
+        val result = gateway.loginAndLoadProfile(
+            SdkSession("channel-login-id", "channel-token", server = GameServer.CN_CHANNEL),
+            "device-seed",
+        )
+
+        assertTrue(result is GameLoginResult.Success)
+        val sourceRequest = server.takeRequest()
+        server.takeRequest() // maintenance
+        val loginRequest = server.takeRequest()
+        val loginPayload = codec.decode(crypto.decryptRequestForTest(loginRequest.body.readByteArray())) as Map<*, *>
+        assertEquals("channel-login-id", loginPayload["uid"])
+        assertEquals("channel-token", loginPayload["access_key"])
+        assertEquals("4", loginPayload["platform"])
+        assertEquals("4", sourceRequest.getHeader("PLATFORM-ID"))
+        assertEquals("d145b29050641dac2f8b19df0afe0e59", sourceRequest.getHeader("RES-KEY"))
+        assertEquals("4", loginRequest.getHeader("PLATFORM-ID"))
+        assertEquals("runtime-res-key", loginRequest.getHeader("RES-KEY"))
+    }
+
     private fun gateway() = BilibiliGameProtocolGateway(
         client = okhttp3.OkHttpClient.Builder().retryOnConnectionFailure(false).build(),
         bootstrapEndpoint = server.url("/"),
@@ -84,7 +108,7 @@ class BilibiliGameProtocolGatewayTest {
                 """{"data_headers":{"result_code":1},"data":{"server":["${server.url("/")}"],"server_error":null}}""",
             )
             "/source_ini/get_maintenance_status?format=json" -> jsonResponse(
-                """{"data_headers":{"result_code":1},"data":{"required_manifest_ver":"202607141753","res_ver":"10002200","server_error":null}}""",
+                """{"data_headers":{"result_code":1},"data":{"required_manifest_ver":"202607141753","res_key":"runtime-res-key","res_ver":"10002200","server_error":null}}""",
             )
             "/tool/sdk_login" -> encryptedResponse(
                 data = mapOf("server_error" to null, "is_risk" to risk),
