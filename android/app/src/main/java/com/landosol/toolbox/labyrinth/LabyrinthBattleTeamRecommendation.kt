@@ -15,8 +15,10 @@ data class LabyrinthBattleTeamRecommendation(
     val reasons: List<String>,
     val defenseMarkStacks: Int,
     val targetCount: Int,
-    /** Total safe Boss teams chosen by the global multi-team planner for this attempt. */
+    /** Total Boss teams the planner will field this attempt, tank-led safe teams plus damage supplements. */
     val plannedBossTeamCount: Int = 1,
+    /** Leading teams that passed the vanguard survival gate; the rest of [plannedBossTeamCount] are supplements. */
+    val safeBossTeamCount: Int = plannedBossTeamCount,
     val excludedIncompleteCharacterIds: List<String> = emptyList(),
 ) {
     init {
@@ -27,6 +29,7 @@ data class LabyrinthBattleTeamRecommendation(
         require(defenseMarkStacks >= 0)
         require(targetCount >= 1)
         require(plannedBossTeamCount in 1..3)
+        require(safeBossTeamCount in 0..plannedBossTeamCount)
     }
 
     val damageTypeLabel: String
@@ -87,6 +90,11 @@ class LabyrinthBattleTeamRecommendationPlanner(
         acquiredCharacterIds: Collection<String>,
         context: LabyrinthRoleDecisionContext,
         requestedBossTeamCount: Int = 1,
+        /**
+         * Boss follow-up slot (team 2/3): the tank-led teams are already committed, so the team
+         * for this slot may lead without a qualified vanguard rather than leave the slot empty.
+         */
+        allowSupplementLead: Boolean = false,
     ): LabyrinthBattleTeamRecommendationResult {
         require(requestedBossTeamCount in 1..3)
         val canonicalIds = acquiredCharacterIds.map(::canonicalLabyrinthRoleId).distinct()
@@ -99,13 +107,13 @@ class LabyrinthBattleTeamRecommendationPlanner(
         if (resolved.isEmpty()) {
             return LabyrinthBattleTeamRecommendationResult.Unavailable("没有已获得的可用角色")
         }
-        if (resolved.none { it.isEligibleBattleVanguard(context) }) {
+        if (!allowSupplementLead && resolved.none { it.isEligibleBattleVanguard(context) }) {
             return LabyrinthBattleTeamRecommendationResult.Unavailable(
                 "当前角色池中没有满足生存资格的一号位；不再仅按掩护者职阶强行上T",
             )
         }
 
-        val plan = if (requestedBossTeamCount > 1) {
+        val plan = if (requestedBossTeamCount > 1 || allowSupplementLead) {
             teamPlanSearcher.bossMultiTeamSearch(
                 roster = resolved,
                 context = context,
@@ -113,6 +121,11 @@ class LabyrinthBattleTeamRecommendationPlanner(
             )
         } else {
             teamPlanSearcher.initialSearch(resolved, context)
+        }
+        if (!allowSupplementLead && plan.teams.isNotEmpty() && plan.safeTeamCount == 0) {
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                "当前角色池中没有满足生存资格的一号位；不再仅按掩护者职阶强行上T",
+            )
         }
         val evaluation = plan.teams.firstOrNull()
             ?: return LabyrinthBattleTeamRecommendationResult.Unavailable(
@@ -129,7 +142,8 @@ class LabyrinthBattleTeamRecommendationPlanner(
         val members = evaluation.members.map { it.toRecommendedMember() }
         val memberById = members.associateBy(LabyrinthRecommendedTeamMember::characterId)
         val vanguard = requireNotNull(memberById[evaluation.vanguardCharacterId])
-        if (profiles[evaluation.vanguardCharacterId]?.isEligibleBattleVanguard(context) != true) {
+        val leadIsSupplement = plan.safeTeamCount == 0
+        if (!leadIsSupplement && profiles[evaluation.vanguardCharacterId]?.isEligibleBattleVanguard(context) != true) {
             return LabyrinthBattleTeamRecommendationResult.Unavailable(
                 "自动战斗一号位生存资格校验失败，已拒绝进入自动编组",
             )
@@ -140,6 +154,7 @@ class LabyrinthBattleTeamRecommendationPlanner(
             if (incompleteIds.isNotEmpty()) {
                 add("部分角色资料不完整，按已有信息参与编组评分：${incompleteIds.joinToString()}")
             }
+            if (leadIsSupplement) add("Boss后续队伍：无合格一号位，作为输出补刀队上场而不留空")
             add(plan.reason)
         }.distinct()
         return LabyrinthBattleTeamRecommendationResult.Ready(
@@ -153,6 +168,7 @@ class LabyrinthBattleTeamRecommendationPlanner(
                 defenseMarkStacks = context.defenseMarkStacks,
                 targetCount = context.targetCount,
                 plannedBossTeamCount = plan.teams.size.coerceIn(1, 3),
+                safeBossTeamCount = plan.safeTeamCount.coerceIn(0, plan.teams.size.coerceIn(1, 3)),
             ),
         )
     }
@@ -265,6 +281,7 @@ class LabyrinthBattleTeamRecommendationPlanner(
         retryNumber: Int = 1,
         lastFailedTeamSignature: String? = null,
         requestedBossTeamCount: Int = 1,
+        allowSupplementLead: Boolean = false,
     ): LabyrinthBattleTeamRecommendationResult {
         require(requestedBossTeamCount in 1..3)
         val canonicalIds = acquiredCharacterIds.map(::canonicalLabyrinthRoleId).distinct()
@@ -275,7 +292,7 @@ class LabyrinthBattleTeamRecommendationPlanner(
                 "战斗失败后可用角色不足${TEAM_SIZE}名，无法生成完整重试队伍",
             )
         }
-        if (resolved.none { it.isEligibleBattleVanguard(context) }) {
+        if (!allowSupplementLead && resolved.none { it.isEligibleBattleVanguard(context) }) {
             return LabyrinthBattleTeamRecommendationResult.Unavailable(
                 "战斗失败后角色池中没有满足生存资格的一号位；不能生成安全重试队伍",
             )
@@ -315,7 +332,7 @@ class LabyrinthBattleTeamRecommendationPlanner(
             )
         }
 
-        val plan = if (requestedBossTeamCount > 1) {
+        val plan = if (requestedBossTeamCount > 1 || allowSupplementLead) {
             teamPlanSearcher.bossMultiTeamSearch(
                 roster = resolved,
                 context = context,
@@ -330,6 +347,12 @@ class LabyrinthBattleTeamRecommendationPlanner(
                 excludedTeamSignatures = failedTeamSignatures,
             )
         }
+        if (!allowSupplementLead && plan.teams.isNotEmpty() && plan.safeTeamCount == 0) {
+            return LabyrinthBattleTeamRecommendationResult.Unavailable(
+                "战斗失败后角色池中没有满足生存资格的一号位；不能生成安全重试队伍",
+            )
+        }
+        val retryLeadIsSupplement = plan.safeTeamCount == 0
         val evaluation = plan.teams.firstOrNull()
             ?: return LabyrinthBattleTeamRecommendationResult.Unavailable(plan.reason)
         if (evaluation.members.size != TEAM_SIZE) {
@@ -349,7 +372,7 @@ class LabyrinthBattleTeamRecommendationPlanner(
         val memberById = members.associateBy(LabyrinthRecommendedTeamMember::characterId)
         val vanguard = memberById[evaluation.vanguardCharacterId]
             ?: return LabyrinthBattleTeamRecommendationResult.Unavailable("失败重试阵容缺少可确认的一号位")
-        if (profiles[evaluation.vanguardCharacterId]?.isEligibleBattleVanguard(context) != true) {
+        if (!retryLeadIsSupplement && profiles[evaluation.vanguardCharacterId]?.isEligibleBattleVanguard(context) != true) {
             return LabyrinthBattleTeamRecommendationResult.Unavailable(
                 "失败重试一号位生存资格校验失败",
             )
@@ -365,6 +388,7 @@ class LabyrinthBattleTeamRecommendationPlanner(
                 defenseMarkStacks = context.defenseMarkStacks,
                 targetCount = context.targetCount,
                 plannedBossTeamCount = plan.teams.size.coerceIn(1, 3),
+                safeBossTeamCount = plan.safeTeamCount.coerceIn(0, plan.teams.size.coerceIn(1, 3)),
             ),
         )
     }
@@ -399,7 +423,7 @@ internal fun labyrinthBattleTeamSelectionMessage(
             "推荐第一队：${it.members.joinToString("、") { member -> member.displayName }}；" +
                 "${it.damageTypeLabel}；评分${formatBattleTeamScore(it.score)}" +
                 if (combatContext?.kind == LabyrinthCombatKind.BOSS) {
-                    "；本轮安全计划${it.plannedBossTeamCount}队"
+                    "；本轮计划${it.plannedBossTeamCount}队（安全${it.safeBossTeamCount}队）"
                 } else {
                     ""
                 }

@@ -5,6 +5,7 @@ import com.landosol.toolbox.labyrinth.node.FinalBossPlatformMatch
 
 import com.landosol.toolbox.clanbattle.recognition.PixelImage
 import com.landosol.toolbox.labyrinth.node.LabyrinthNodeClassifier
+import com.landosol.toolbox.labyrinth.node.NodeSearchHint
 import com.landosol.toolbox.labyrinth.node.NodeClassification
 import com.landosol.toolbox.labyrinth.node.NodeTemplateSet
 import java.util.IdentityHashMap
@@ -115,6 +116,14 @@ object EntryAnchorId {
     const val RUN_CLEAR_CHEST_ANIMATION_TITLE = "run.clear.chest_animation.title"
     const val RUN_CLEAR_CHEST_RESULT_TITLE = "run.clear.chest_result.title"
     const val RUN_CLEAR_CHEST_CONFIRM_BUTTON = "run.clear.chest_confirm_button"
+    /**
+     * 黎明界主页底栏最左的「我的主页」标签；会话失效触发点，只在识别到时点击。
+     * 2026-09-17 实测：点当前已选中的「冒险」标签不联网，不会触发返回标题；「我的主页」会。
+     */
+    const val DAWN_HOME_MY_HOME_TAB = "dawn.home.my_home_tab"
+    /** 主页面板顶部的「迷宫遗物效果」标题（迷宫大师开局赠送遗物弹窗）。 */
+    const val RELIC_EFFECT_TITLE = "entry.relic_effect.title"
+    const val RELIC_EFFECT_INSTRUCTION = "entry.relic_effect.instruction"
 
     val required = setOf(
         TITLE_LOGO,
@@ -318,12 +327,19 @@ data class LabyrinthEntryFrameResult(
     val shopObservation: LabyrinthShopObservation? = null,
     val nodeMoveConfirmation: LabyrinthNodeMoveConfirmationObservation? = null,
     val battleFailure: LabyrinthBattleFailureObservation? = null,
+    /** 结束确认 dialog over the failure page; non-null only while such a dialog is open. */
+    val battleEndConfirmation: LabyrinthBattleEndConfirmationObservation? = null,
     val exChallenge: LabyrinthExChallengeObservation? = null,
     val exEncounter: LabyrinthExEncounterObservation? = null,
     val frameWidth: Int = 0,
     val frameHeight: Int = 0,
     val stageMillis: Map<String, Long> = emptyMap(),
     val nodeSearchMode: String = "none",
+    /** Candidate windows the node classifier scored on this frame; 0 when no node scan ran. */
+    val nodeSearchWindowCount: Int = 0,
+    /** Pixel-only map viewport signature, independent from successful node classification. */
+    val nodeViewportSignature: String = "",
+    val nodeViewportPixels: com.landosol.toolbox.labyrinth.node.NodeViewportPixels? = null,
     val finalBossPlatforms: List<FinalBossPlatformMatch> = emptyList(),
     val finalBossPlatformCandidates: List<FinalBossPlatformMatch> = emptyList(),
 )
@@ -348,13 +364,26 @@ class LabyrinthEntryFrameProcessor(
     private val nodeMoveConfirmationDetector: LabyrinthNodeMoveConfirmationDetector =
         LabyrinthNodeMoveConfirmationDetector(),
     private val battleFailureDetector: LabyrinthBattleFailureDetector = LabyrinthBattleFailureDetector(),
+    private val battleEndConfirmationDetector: LabyrinthBattleEndConfirmationDetector =
+        LabyrinthBattleEndConfirmationDetector(),
     private val exChallengeDetector: LabyrinthExChallengeDetector = LabyrinthExChallengeDetector(),
     private val finalBossOnly: () -> Boolean = { false },
+    private val nodeSearchHint: () -> NodeSearchHint? = { null },
+    /**
+     * Whether a map-node scan can be consumed right now. Before the route session exists the
+     * session cannot bind or act on any classification, so the scan is pure waste; on a slow host
+     * that wasted first frame took 49 s in the 2026-09-15 20:58 bundle.
+     */
+    private val nodeScanRequested: () -> Boolean = { true },
 ) {
     private val finalBossPlatformLocator = FinalBossPlatformLocator(
         nodeTemplates.templates["node.boss.platform"],
     )
-    fun process(frame: PixelImage): LabyrinthEntryFrameResult {
+    fun process(
+        frame: PixelImage,
+        deferRoleRewardPortraits: Boolean = false,
+        skipJoinedCharacters: Boolean = false,
+    ): LabyrinthEntryFrameResult {
         if (frame.width <= frame.height) return unsupportedOrientation(frame)
         lateinit var observation: LabyrinthEntryPageObservation
         var matchedFeatures = emptyList<String>()
@@ -371,10 +400,14 @@ class LabyrinthEntryFrameProcessor(
         var shopObservation: LabyrinthShopObservation? = null
         var nodeMoveConfirmation: LabyrinthNodeMoveConfirmationObservation? = null
         var battleFailure: LabyrinthBattleFailureObservation? = null
+        var battleEndConfirmation: LabyrinthBattleEndConfirmationObservation? = null
         var exChallenge: LabyrinthExChallengeObservation? = null
         var nodesNanos = 0L
         var bossPlatformNanos = 0L
         var nodeSearchMode = "none"
+        var nodeSearchWindowCount = 0
+        var nodeViewportSignature = ""
+        var nodeViewportPixels: com.landosol.toolbox.labyrinth.node.NodeViewportPixels? = null
         val elapsedNanos = measureNanoTime {
             val measurements = DEFINITIONS_BY_ID.mapValues { (id, definitions) ->
                 val template = templates.values[id]
@@ -409,6 +442,13 @@ class LabyrinthEntryFrameProcessor(
             val anchorScores = LabyrinthAnchorScores(scores)
             val classified = classifier.classify(anchorScores)
             battleFailure = battleFailureDetector.detect(frame)
+            // The dialog dims the page behind it; only probe when the page still looks like a
+            // failure page (or classified as nothing), never over a recognised unrelated page.
+            battleEndConfirmation = if (battleFailure != null || classified.state == LabyrinthEntryPageState.UNKNOWN) {
+                battleEndConfirmationDetector.detect(frame)
+            } else {
+                null
+            }
             observation = battleFailure?.let { failure ->
                 classified.copy(
                     state = LabyrinthEntryPageState.BATTLE_FAILED,
@@ -427,7 +467,8 @@ class LabyrinthEntryFrameProcessor(
                         minimumScore = MATCHED_FEATURE_MIN_SCORE,
                     )
             ) {
-                characterMatches = characterRecognizer.recognizeRoleRewardChoices(frame)
+                characterMatches = if (deferRoleRewardPortraits) characterRecognizer.roleRewardSlots(frame)
+                    else characterRecognizer.recognizeRoleRewardChoices(frame)
             } else if (observation.state == LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION) {
                 openingCharacterSelection = battleTeamRecognizer.recognizeOpening(frame)
                 openingCharacterMatches = openingCharacterSelection?.visibleCharacters.orEmpty()
@@ -443,7 +484,12 @@ class LabyrinthEntryFrameProcessor(
                         anchorScores[EntryAnchorId.JOINED_CLOSE_STANDARD],
                     ) >= MATCHED_FEATURE_MIN_SCORE
             ) {
-                characterMatches = characterRecognizer.recognizeJoinedCharacters(frame)
+                val shopBackground = listOf(EntryAnchorId.SHOP_TITLE, EntryAnchorId.SHOP_INSTRUCTION,
+                    EntryAnchorId.SHOP_REFRESH_BUTTON, EntryAnchorId.SHOP_CLOSE)
+                    .count { anchorScores[it] >= 0.65 } >= 2
+                if (!skipJoinedCharacters || shopBackground) {
+                    characterMatches = characterRecognizer.recognizeJoinedCharacters(frame)
+                }
             }
             if (
                 observation.state == LabyrinthEntryPageState.NODE_SELECTION &&
@@ -451,8 +497,11 @@ class LabyrinthEntryFrameProcessor(
                     // classifier can still report NODE_SELECTION. The dialog has priority and
                     // does not need the expensive map-node classification pass.
                     nodeMoveConfirmation == null &&
-                    nodeTemplates.templates.isNotEmpty()
+                    nodeTemplates.templates.isNotEmpty() &&
+                    nodeScanRequested()
             ) {
+                nodeViewportSignature = nodeClassifier.viewportSignatureKey(frame)
+                nodeViewportPixels = com.landosol.toolbox.labyrinth.node.NodeViewportPixels.sample(frame)
                 if (finalBossOnly()) {
                     // Route already proves the only destination. Animated scenery must not force
                     // an expensive ordinary-node scan; do not reuse its old viewport evidence.
@@ -460,9 +509,14 @@ class LabyrinthEntryFrameProcessor(
                     nodeSearchMode = "final-boss-platform"
                 } else {
                     nodesNanos = measureNanoTime {
-                        nodeClassifications = nodeClassifier.classifyMapNodes(frame, nodeTemplates)
+                        nodeClassifications = nodeClassifier.classifyMapNodes(
+                            frame = frame,
+                            templates = nodeTemplates,
+                            searchHint = nodeSearchHint(),
+                        )
                     }
                     nodeSearchMode = nodeClassifier.lastSearchMode
+                    nodeSearchWindowCount = nodeClassifier.lastSearchWindowCount
                 }
                 bossPlatformNanos = measureNanoTime {
                     finalBossPlatforms = finalBossPlatformLocator.locate(frame)
@@ -512,6 +566,9 @@ class LabyrinthEntryFrameProcessor(
                 "bossPlatform" to bossPlatformNanos / 1_000_000,
                 "pageAndOther" to (elapsedNanos - nodesNanos - bossPlatformNanos) / 1_000_000),
             nodeSearchMode = nodeSearchMode,
+            nodeSearchWindowCount = nodeSearchWindowCount,
+            nodeViewportSignature = nodeViewportSignature,
+            nodeViewportPixels = nodeViewportPixels,
             anchorMatches = anchorMatches,
             nodeClassifications = nodeClassifications,
             finalBossPlatforms = finalBossPlatforms,
@@ -525,6 +582,7 @@ class LabyrinthEntryFrameProcessor(
             shopObservation = shopObservation,
             nodeMoveConfirmation = nodeMoveConfirmation,
             battleFailure = battleFailure,
+            battleEndConfirmation = battleEndConfirmation,
             exChallenge = exChallenge,
             frameWidth = frame.width,
             frameHeight = frame.height,
@@ -550,7 +608,7 @@ class LabyrinthEntryFrameProcessor(
         )
     }
 
-    private companion object {
+    internal companion object {
         const val MATCHED_FEATURE_MIN_SCORE = 0.45
         val WIDE_REFERENCE = EntryReferenceSize(2780, 1264)
         val STANDARD_REFERENCE = EntryReferenceSize(1920, 1080)
@@ -702,8 +760,17 @@ class LabyrinthEntryFrameProcessor(
             standard(EntryAnchorId.RUN_CLEAR_NEXT_BUTTON, 1452, 946, 388, 92),
             standard(EntryAnchorId.RUN_CLEAR_REWARD_ANIMATION_TITLE, 650, 80, 620, 120),
             standard(EntryAnchorId.RUN_CLEAR_CHEST_ANIMATION_TITLE, 650, 80, 620, 120),
-            standard(EntryAnchorId.RUN_CLEAR_CHEST_RESULT_TITLE, 650, 80, 620, 110),
-            standard(EntryAnchorId.RUN_CLEAR_CHEST_CONFIRM_BUTTON, 1452, 946, 388, 92),
+            // 宝箱开封结果 title bar: blue band y 60..112 on the 2026-09-17 recording; crop matches this rect exactly.
+            standard(EntryAnchorId.RUN_CLEAR_CHEST_RESULT_TITLE, 650, 52, 620, 60),
+            // 宝箱开封结果 is a centred modal; its 确认 sits bottom-centre like 获得道具's 关闭.
+            standard(EntryAnchorId.RUN_CLEAR_CHEST_CONFIRM_BUTTON, 745, 910, 430, 110),
+            // 我的主页 tab on the labyrinth home bottom bar (2026-09-17 recording t10.5). The
+            // selected 冒险 tab is not used: tapping the active tab makes no server request.
+            standard(EntryAnchorId.DAWN_HOME_MY_HOME_TAB, 85, 945, 175, 125),
+            // 迷宫遗物效果 popup (迷宫大师 opening relic). Same modal shell as 获得道具, but the
+            // title and the two-line instruction differ; the close button is shared.
+            standard(EntryAnchorId.RELIC_EFFECT_TITLE, 760, 50, 400, 75),
+            standard(EntryAnchorId.RELIC_EFFECT_INSTRUCTION, 770, 150, 380, 65),
         )
         val DEFINITIONS_BY_ID = DEFINITIONS.groupBy(EntryAnchorDefinition::id)
     }

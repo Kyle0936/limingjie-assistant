@@ -48,6 +48,43 @@ internal fun labyrinthCanRecoverOrphanNodeMoveConfirmation(
 }
 
 /**
+ * An orphan movement modal that cannot be recovered (several reachable successors, or weak
+ * evidence) still blocks every map interaction: swipes and node taps land on the dialog and the
+ * search loop would otherwise nudge the map forever. The only safe automatic action is to press
+ * the dialog's own cancel button, which returns to the untouched map. Dismissal stays bounded so
+ * a misdetected dialog cannot turn into an endless tap loop.
+ */
+internal fun labyrinthShouldDismissOrphanNodeMoveConfirmation(
+    pageState: LabyrinthEntryPageState,
+    hasPendingNodeTransition: Boolean,
+    canRecover: Boolean,
+    stableFrames: Int,
+    dismissAttempts: Int,
+    lastDismissAt: Long,
+    now: Long,
+    shopBackgroundVisible: Boolean = false,
+): Boolean {
+    if (hasPendingNodeTransition || canRecover) return false
+    // The shop exit dialog has the same blue-title/white-body/two-button chrome and hides the
+    // shop title, so the page can classify as UNKNOWN. The shop chrome around it is still
+    // visible; that dialog belongs to the shop handler, never to map recovery.
+    if (shopBackgroundVisible) return false
+    if (pageState !in setOf(
+            LabyrinthEntryPageState.NODE_SELECTION,
+            LabyrinthEntryPageState.NODE_MAP_VIEW,
+            LabyrinthEntryPageState.UNKNOWN,
+        )
+    ) return false
+    if (stableFrames < ORPHAN_MOVE_CONFIRMATION_DISMISS_STABLE_FRAMES) return false
+    if (dismissAttempts >= MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS) return false
+    return lastDismissAt == Long.MIN_VALUE || now - lastDismissAt >= ORPHAN_MOVE_CONFIRMATION_DISMISS_INTERVAL_MILLIS
+}
+
+internal const val ORPHAN_MOVE_CONFIRMATION_DISMISS_STABLE_FRAMES = 2
+internal const val MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS = 3
+internal const val ORPHAN_MOVE_CONFIRMATION_DISMISS_INTERVAL_MILLIS = 2_000L
+
+/**
  * A one-choice event has no strategic ambiguity.  Two independent current-frame anchors are
  * required before exposing its sole button so this cannot turn an unrelated UNKNOWN/map frame
  * into a blind click.
@@ -69,6 +106,24 @@ internal fun labyrinthSingleChoiceEventButtonRect(
  * way to move identity OCR onto the much more stable detail-modal name row.  Multi-monster and
  * special-dual EX use their own structurally detected info buttons and never enter this path.
  */
+/**
+ * The EX identity probe (name OCR, then the bounded 详情 fallback) is budgeted per *visit* to the
+ * challenge page, not per run. 2026-09-17 live (bundle 152039): the EX challenge page was first
+ * seen at 15:13:58, the battle was lost, and 重新挑战 brought the page back at 15:16:05; the
+ * probe clock still held the first visit, so the 10 s budget was already spent and the run
+ * stopped 0.4 s later with "未建立可信身份" before OCR could read 好朋友X even once.
+ * UNKNOWN frames (animations, the 详情 modal) never count as leaving the page.
+ */
+internal fun labyrinthExIdentityProbeRestarts(
+    lastKnownPage: LabyrinthEntryPageState?,
+    page: LabyrinthEntryPageState,
+    encounterResolved: Boolean,
+): Boolean =
+    page == LabyrinthEntryPageState.BATTLE_CHALLENGE &&
+        !encounterResolved &&
+        lastKnownPage != null &&
+        lastKnownPage != LabyrinthEntryPageState.BATTLE_CHALLENGE
+
 internal fun labyrinthSingleExDetailProbeRect(
     pageState: LabyrinthEntryPageState,
     isEx: Boolean,
@@ -333,6 +388,22 @@ internal fun labyrinthKeepsRoleRewardBatchOnPage(
  * the opening invitation flow. Keep this deliberately narrow so a fresh run still retains the
  * original CHARACTER_JOINED opening-safety check.
  */
+/** Two or more fixed shop chrome anchors still visible: a dialog is open on top of the shop. */
+internal fun labyrinthShopBackgroundVisible(result: LabyrinthEntryFrameResult): Boolean =
+    listOf(EntryAnchorId.SHOP_TITLE, EntryAnchorId.SHOP_INSTRUCTION,
+        EntryAnchorId.SHOP_REFRESH_BUTTON, EntryAnchorId.SHOP_CLOSE)
+        .count { result.observation.anchorScores[it] >= 0.65 } >= 2
+
+internal fun labyrinthShopJoinedRewardOwnsRoute(
+    result: LabyrinthEntryFrameResult,
+    purchaseConfirmedAt: Long,
+    now: Long,
+): Boolean {
+    if (result.observation.state != LabyrinthEntryPageState.CHARACTER_JOINED) return false
+    val recentPurchase = purchaseConfirmedAt != Long.MIN_VALUE && now - purchaseConfirmedAt in 0..120_000
+    return recentPurchase || labyrinthShopBackgroundVisible(result)
+}
+
 internal fun labyrinthResumedRunRewardPageOwnsRoute(
     result: LabyrinthEntryFrameResult,
 ): Boolean = when (result.observation.state) {
@@ -386,6 +457,25 @@ internal fun labyrinthRosterReconciliationMatches(
     else -> emptyList()
 }
     .distinctBy { match -> canonicalLabyrinthRoleId(requireNotNull(match.characterId)) }
+
+/**
+ * Roster evidence for the guild's opening grant. The confirmed three picks replace the roster;
+ * the granted character rides along so the run never plans without it. Only the guild is
+ * needed: the grant is unconditional and its 角色加入 popup may not be recognised.
+ */
+internal fun labyrinthGuildGrantedRosterMatches(
+    guildId: Int?,
+    frameRect: EntryPixelRect,
+): List<LabyrinthCharacterMatch> = LabyrinthOpeningRosterCatalog.grantedCharactersFor(guildId).map { granted ->
+    LabyrinthCharacterMatch(
+        slotId = "guild_grant_${granted.characterId}",
+        characterId = granted.characterId,
+        displayName = granted.displayName,
+        confidence = 1.0,
+        screenRect = frameRect,
+        trusted = true,
+    )
+}
 
 internal fun labyrinthRosterReplacesExisting(
     result: LabyrinthEntryFrameResult,

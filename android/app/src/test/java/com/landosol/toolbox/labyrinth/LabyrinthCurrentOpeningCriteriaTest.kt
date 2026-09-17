@@ -2,6 +2,9 @@ package com.landosol.toolbox.labyrinth
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
+import com.landosol.toolbox.protocol.labyrinth.LabyrinthFailureKind
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 
 class LabyrinthCurrentOpeningCriteriaTest {
     @Test
@@ -67,5 +70,15 @@ class LabyrinthCurrentOpeningCriteriaTest {
         )
 
         assertEquals(0, criteria.attempt)
+    }
+
+    @Test
+    fun `a kicked api session is retried with a fresh login but other failures are not`() {
+        // 2026-09-17: "连接中断。回到标题界面。" arrives as REJECTED after the client re-logs in.
+        assertTrue(labyrinthReadRetriesWithFreshLogin(LabyrinthFailureKind.REJECTED, 0, 3))
+        assertTrue(labyrinthReadRetriesWithFreshLogin(LabyrinthFailureKind.REJECTED, 2, 3))
+        assertFalse(labyrinthReadRetriesWithFreshLogin(LabyrinthFailureKind.REJECTED, 3, 3))
+        assertFalse(labyrinthReadRetriesWithFreshLogin(LabyrinthFailureKind.NETWORK, 0, 3))
+        assertFalse(labyrinthReadRetriesWithFreshLogin(LabyrinthFailureKind.PROTOCOL, 0, 3))
     }
 }

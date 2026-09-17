@@ -82,6 +82,32 @@ class LabyrinthRerollWorkflowTest {
     }
 
     @Test
+    fun `abandoning retires a matching existing run instead of resuming it`() = runTest {
+        // 2026-09-17: a perfect opening lost in battle still matches the target route; the
+        // failure reroll must not hand the same enterId back at 0 分 0 秒.
+        val map = fullMap(area3BossQuest = 770330401, area5BossQuest = 770530301)
+        val api = FakeApi(
+            top = LabyrinthTop(99, 101, 2, listOf(ClearedDifficulty(101, 1))),
+            topResults = ArrayDeque(
+                listOf(
+                    LabyrinthOperationResult.Success(LabyrinthTop(99, 101, 2, listOf(ClearedDifficulty(101, 1)))),
+                    LabyrinthOperationResult.Success(unlockedTop()),
+                ),
+            ),
+            resumes = ArrayDeque(listOf(LabyrinthResume(99, 101, null, map))),
+            enters = ArrayDeque(listOf(LabyrinthEnter(2, map))),
+        )
+        val store = FakeRouteStore()
+
+        val result = LabyrinthRerollWorkflow(api, store).run(config(abandonExisting = true))
+
+        assertTrue(result is LabyrinthRerollResult.Success)
+        assertEquals(false, (result as LabyrinthRerollResult.Success).resumedExisting)
+        assertEquals(listOf(99L), api.retired)
+        assertEquals(2L, result.route.enterId)
+    }
+
+    @Test
     fun `reroll until found ignores finite attempt limit`() = runTest {
         val api = FakeApi(
             top = unlockedTop(),
@@ -431,6 +457,7 @@ class LabyrinthRerollWorkflowTest {
         retireExisting: Boolean = true,
         maxAttempts: Int = 3,
         rerollUntilFound: Boolean = false,
+        abandonExisting: Boolean = false,
     ) = LabyrinthRerollConfig(
         accountId = 7,
         guildId = 101,
@@ -438,6 +465,7 @@ class LabyrinthRerollWorkflowTest {
         maxAttempts = maxAttempts,
         retireExisting = retireExisting,
         rerollUntilFound = rerollUntilFound,
+        abandonExisting = abandonExisting,
     )
 
     private fun unlockedTop() = LabyrinthTop(null, null, null, listOf(ClearedDifficulty(101, 1)))

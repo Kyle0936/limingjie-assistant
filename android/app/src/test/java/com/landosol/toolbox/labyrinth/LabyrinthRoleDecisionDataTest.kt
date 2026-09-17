@@ -82,7 +82,9 @@ class LabyrinthRoleDecisionDataTest {
         )
         val strictPlan = planner.initialRecommendation(acquired, strict, requestedBossTeamCount = 3)
             as LabyrinthBattleTeamRecommendationResult.Ready
-        assertEquals(1, strictPlan.recommendation.plannedBossTeamCount)
+        // One tank-led team; the other two slots are filled with damage supplements (2026-09-17).
+        assertEquals(1, strictPlan.recommendation.safeBossTeamCount)
+        assertEquals(3, strictPlan.recommendation.plannedBossTeamCount)
         assertEquals("1145", strictPlan.recommendation.vanguard.characterId)
 
         val relaxed = strict.copy(relaxedVanguardGate = true)
@@ -114,6 +116,101 @@ class LabyrinthRoleDecisionDataTest {
     }
 
     @Test
+    fun `production 24 role frost wolf roster plans at least two boss teams`() {
+        val asset = listOf(
+            File("app/src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+            File("src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+        ).first { it.isFile }
+        val parsed = when (val result = LabyrinthRoleDecisionDataParser.parse(asset.readText())) {
+            is LabyrinthRoleDecisionDataResult.Ready -> result
+            is LabyrinthRoleDecisionDataResult.Unavailable -> error(result.reason)
+        }
+        // 2026-09-15 17:59 debug bundle: 24 owned roles against 冰霜魔狼 with multi-team mode on.
+        // Six roles pass the strict vanguard gate, yet the session planned only one team because
+        // every formation in the ranked beam reused the same AOE core.
+        val acquired = listOf(
+            "1351", "1059", "1075", "1225", "1811", "1280", "1332", "1033", "1119", "1137",
+            "1058", "1247", "1261", "1018", "1302", "1331", "1028", "1239", "1278", "1264",
+            "1108", "1215", "1093", "1068",
+        )
+        val planner = parsed.runtime.battleTeamRecommendationPlanner
+        val context = LabyrinthRoleDecisionContext(
+            defenseMarkStacks = 4,
+            targetCount = 3,
+            optimizeBossVanguardSynergy = true,
+            preferSingleDamageSystem = true,
+            encounterStrategy = LabyrinthBossEncounterCatalog.forUnitId(319604),
+        )
+        val first = planner.initialRecommendation(acquired, context, requestedBossTeamCount = 3)
+            as LabyrinthBattleTeamRecommendationResult.Ready
+        assertTrue(
+            "planned=${first.recommendation.plannedBossTeamCount} reasons=${first.recommendation.reasons}",
+            first.recommendation.plannedBossTeamCount >= 2,
+        )
+        val firstIds = first.recommendation.members.map { it.characterId }
+        assertEquals(5, firstIds.size)
+
+        // The follow-up tabs are planned from the leftover roster exactly as the session does it.
+        val second = planner.initialRecommendation(
+            acquiredCharacterIds = acquired.filterNot(firstIds::contains),
+            context = context.copy(optimizeBossVanguardSynergy = false),
+            requestedBossTeamCount = first.recommendation.plannedBossTeamCount - 1,
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertEquals(5, second.recommendation.members.size)
+        assertTrue(second.recommendation.members.none { it.characterId in firstIds })
+
+        // The planner's own multi-team answer must be a set of fully disjoint teams.
+        val plan = parsed.runtime.teamPlanSearcher.bossMultiTeamSearch(
+            roster = acquired.map(parsed.runtime.profiles::getValue),
+            context = context,
+            requestedTeams = 3,
+        )
+        assertTrue("kind=${plan.kind} reason=${plan.reason}", plan.teams.size >= 2)
+        val allMembers = plan.teams.flatMap { team -> team.members.map { it.characterId } }
+        assertEquals(allMembers.size, allMembers.distinct().size)
+        plan.teams.forEach { team -> assertEquals(5, team.members.size) }
+    }
+
+    @Test
+    fun `production ex first attempt fields the confirmed effective dot dealer against 好朋友X`() {
+        val asset = listOf(
+            File("app/src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+            File("src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
+        ).first { it.isFile }
+        val parsed = when (val result = LabyrinthRoleDecisionDataParser.parse(asset.readText())) {
+            is LabyrinthRoleDecisionDataResult.Ready -> result
+            is LabyrinthRoleDecisionDataResult.Unavailable -> error(result.reason)
+        }
+        // 2026-09-16 00:26 bundle: 31 owned roles, EX 好朋友X (guide: at least two DOT dealers).
+        // 碧 (1040) is the only DOT dealer owned and the in-game effective-effect tab confirmed
+        // her, yet the automatic team was five generic attackers three times in a row.
+        val roster = listOf(
+            "1351", "1059", "1075", "1257", "1801", "1297", "1094", "1181", "1290", "1093", "1261",
+            "1810", "1005", "1328", "1242", "1037", "1168", "1245", "1010", "1040", "1030", "1278",
+            "1113", "1115", "1173", "1054", "1260", "1009", "1806", "1343", "1808",
+        )
+        val strategy = requireNotNull(LabyrinthExEncounterCatalog.matchObservedName("好朋友X"))
+        val planner = parsed.runtime.battleTeamRecommendationPlanner
+        for (effective in listOf(emptySet(), setOf("1040"))) {
+            val context = LabyrinthRoleDecisionContext(
+                defenseMarkStacks = 4,
+                targetCount = 1,
+                preferSingleDamageSystem = true,
+                encounterStrategy = strategy,
+                effectiveCharacterIds = effective,
+            )
+            val first = planner.initialRecommendation(roster, context)
+                as LabyrinthBattleTeamRecommendationResult.Ready
+            assertTrue(
+                "effective=$effective members=${first.recommendation.members.map { it.displayName }}",
+                first.recommendation.members.any { it.characterId == "1040" },
+            )
+            assertEquals("1351", first.recommendation.vanguard.characterId)
+            assertTrue(first.recommendation.reasons.any { it.contains("已按攻略锁定核心角色") })
+        }
+    }
+
+    @Test
     fun `production boss multi team degrades to two safe teams when only two vanguards are owned`() {
         val asset = listOf(
             File("app/src/main/assets/resource-packs/cn-bilibili/labyrinth-role-decision.json"),
@@ -138,7 +235,8 @@ class LabyrinthRoleDecisionDataTest {
             requestedBossTeamCount = 3,
         ) as LabyrinthBattleTeamRecommendationResult.Ready
         val firstIds = first.recommendation.members.map { it.characterId }.toSet()
-        assertEquals(2, first.recommendation.plannedBossTeamCount)
+        assertEquals(2, first.recommendation.safeBossTeamCount)
+        assertEquals(3, first.recommendation.plannedBossTeamCount)
         assertTrue(first.recommendation.vanguard.characterId in setOf("1045", "1145"))
         assertTrue(first.recommendation.reasons.any { it.contains("安全容量2队") && it.contains("总评分") })
 
@@ -160,7 +258,8 @@ class LabyrinthRoleDecisionDataTest {
             ),
             requestedBossTeamCount = 3,
         ) as LabyrinthBattleTeamRecommendationResult.Ready
-        assertEquals(2, frostWolf.recommendation.plannedBossTeamCount)
+        assertEquals(2, frostWolf.recommendation.safeBossTeamCount)
+        assertEquals(3, frostWolf.recommendation.plannedBossTeamCount)
     }
 
     @Test

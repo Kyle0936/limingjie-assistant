@@ -7,47 +7,68 @@ import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import com.landosol.toolbox.labyrinth.labyrinthRoleRewardNeedsNameVerification
 import kotlin.math.roundToInt
 
-/**
- * Android-only second-pass verifier for the three role-reward name rows.
- *
- * The expensive OCR path is deliberately narrow:
- * - only an icon result that is not independently safe for role-reward tapping is eligible;
- * - only icon candidates within a small score gap are compared;
- * - only the fixed name-row ROI is sent to OCR;
- * - a perceptual hash caches stable rows, so a stationary reward page is not OCR'd every 500 ms.
- */
+/** Read all three names first; only uncertain rows invoke the portrait matcher. */
 class AndroidLabyrinthRoleRewardNameResolver(
     private val fuzzyMatcher: LabyrinthCharacterNameFuzzyMatcher = LabyrinthCharacterNameFuzzyMatcher(),
     private val submitTextRead: (Bitmap, (String?) -> Unit) -> Unit = AndroidChineseRoleNameOcr::readAsync,
+    private val names: List<LabyrinthCharacterNameCandidate> = emptyList(),
+    private val recognizePortrait: ((Bitmap, String) -> LabyrinthCharacterMatch)? = null,
+    private val clock: () -> Long = android.os.SystemClock::elapsedRealtime,
 ) {
     private val cache = mutableMapOf<String, CachedOcr>()
     private val pending = mutableMapOf<String, Long>()
     private var remainingNewOcrRuns = 0
+    private var generation = 0L
+    private val startedAt = mutableMapOf<String, Long>()
+    private val resolvedPortraits = mutableMapOf<String, Pair<Long, LabyrinthCharacterMatch>>()
 
     @Synchronized
     fun resolve(
         bitmap: Bitmap,
         result: LabyrinthEntryFrameResult,
     ): LabyrinthEntryFrameResult {
-        if (result.observation.state != LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION) {
+        if (!com.landosol.toolbox.labyrinth.labyrinthIsRoleRewardPage(result)) {
             // Every role-reward page is separated by another page/state in the live flow. Clearing
             // here avoids carrying a perceptual-hash hit into a later reward choice while keeping
             // the cache useful for a stationary page.
             cache.clear()
+            pending.clear()
+            startedAt.clear()
+            resolvedPortraits.clear()
+            generation++
             return result
         }
         if (result.characterMatches.isEmpty()) return result
 
-        // Even if all three portraits are ambiguous, initialize/process at most one new name ROI
-        // on a capture frame. Stable cached rows are free to resolve together on later frames.
+        // Schedule all three name rows together; reuse completed OCR on subsequent frames.
         remainingNewOcrRuns = MAX_NEW_OCR_RUNS_PER_FRAME
         var changed = false
         val resolved = result.characterMatches.map { match ->
-            val updated = resolveMatch(bitmap, match)
+            val updated = resolveNameFirst(bitmap, match)
             if (updated != match) changed = true
             updated
         }
         return if (changed) result.copy(characterMatches = resolved) else result
+    }
+
+    private fun resolveNameFirst(bitmap: Bitmap, match: LabyrinthCharacterMatch): LabyrinthCharacterMatch {
+        val reference = NAME_RECTS[match.slotId] ?: return match
+        val rect = ReferenceFitMapper.map(bitmap.width, bitmap.height, STANDARD_REFERENCE, reference)
+            ?: return match
+        val text = readCachedOrSchedule(bitmap, match.slotId, rect)
+        if (text == null && clock() - (startedAt[match.slotId] ?: clock()) < 2_500L) return match
+        return roleRewardTextFirstMatch(text.orEmpty(), names, match) {
+            val hash = differenceHash(bitmap, rect)
+            resolvedPortraits[match.slotId]?.let { (previous, resolved) ->
+                if (java.lang.Long.bitCount(previous xor hash) <= MAX_CACHE_HASH_DISTANCE) return@roleRewardTextFirstMatch resolved
+            }
+            val portrait = recognizePortrait?.invoke(bitmap, match.slotId) ?: match
+            val resolved = resolveMatch(bitmap, portrait)
+            if (com.landosol.toolbox.labyrinth.labyrinthRoleRewardIdentityIsActionSafe(resolved)) {
+                resolvedPortraits[match.slotId] = hash to resolved
+            }
+            resolved
+        }
     }
 
     private fun resolveMatch(bitmap: Bitmap, match: LabyrinthCharacterMatch): LabyrinthCharacterMatch {
@@ -139,19 +160,22 @@ class AndroidLabyrinthRoleRewardNameResolver(
         if (remainingNewOcrRuns <= 0) return null
         remainingNewOcrRuns--
         val crop = Bitmap.createBitmap(bitmap, rect.left, rect.top, rect.width, rect.height)
+        val requestGeneration = generation
         pending[slotId] = fingerprint
+        startedAt[slotId] = clock()
         runCatching {
             submitTextRead(crop) { text ->
                 synchronized(this) {
-                    val submittedFingerprint = pending.remove(slotId)
-                    if (submittedFingerprint == fingerprint && !text.isNullOrBlank()) {
-                        cache[slotId] = CachedOcr(fingerprint, text.trim())
+                    if (requestGeneration == generation && pending[slotId] == fingerprint) {
+                        pending.remove(slotId)
+                        cache[slotId] = CachedOcr(fingerprint, text.orEmpty().trim())
                     }
                 }
                 if (!crop.isRecycled) crop.recycle()
             }
         }.onFailure {
             pending.remove(slotId)
+            cache[slotId] = CachedOcr(fingerprint, "")
             if (!crop.isRecycled) crop.recycle()
         }
         return null
@@ -190,16 +214,14 @@ class AndroidLabyrinthRoleRewardNameResolver(
     private companion object {
         val STANDARD_REFERENCE = EntryReferenceSize(1920, 1080)
         val NAME_RECTS = mapOf(
-            // The left diagnostic overlay reaches roughly x=330 in the 1920 reference layout.
-            // Start after it on purpose: losing part of the first glyph is acceptable because the
-            // fuzzy matcher can confirm from "蕾西亚" / other partial core-name combinations.
-            "role_reward_left" to EntryReferenceRect(335, 650, 280, 135),
+            // Include the complete name now that OCR is the primary source of identity.
+            "role_reward_left" to EntryReferenceRect(260, 650, 355, 135),
             "role_reward_center" to EntryReferenceRect(820, 650, 300, 135),
             "role_reward_right" to EntryReferenceRect(1370, 650, 300, 135),
         )
         const val MAX_ICON_GAP_FOR_NAME_ASSIST = 0.08
         const val MAX_CACHE_HASH_DISTANCE = 6
-        const val MAX_NEW_OCR_RUNS_PER_FRAME = 1
+        const val MAX_NEW_OCR_RUNS_PER_FRAME = 3
         const val HASH_COLUMNS = 9
         const val HASH_ROWS = 8
         const val SINGLE_CHARACTER_OCR_ASSIST_SCORE = 0.82

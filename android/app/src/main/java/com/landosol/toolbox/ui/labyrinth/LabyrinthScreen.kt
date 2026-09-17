@@ -47,6 +47,12 @@ import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.landosol.toolbox.labyrinth.LabyrinthAutoRunProgress
+import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchCheckpoint
+import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchGoal
+import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchGoalMode
+import com.landosol.toolbox.labyrinth.LabyrinthGuildOption
+import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchHaltReason
+import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage
 import com.landosol.toolbox.labyrinth.LabyrinthBossOption
 import com.landosol.toolbox.labyrinth.LabyrinthEntryRecognitionSessionState
 import com.landosol.toolbox.labyrinth.LabyrinthRerollOptions
@@ -75,6 +81,8 @@ fun LabyrinthScreen(
     entryRecognitionState: LabyrinthEntryRecognitionSessionState,
     sessionResetState: GameSessionResetState,
     autoRunProgress: LabyrinthAutoRunProgress,
+    batchCheckpoint: LabyrinthBatchCheckpoint? = null,
+    batchHaltReason: LabyrinthBatchHaltReason? = null,
     onBack: (() -> Unit)? = null,
     onGuildSelected: (Int) -> Unit,
     onDifficultySelected: (Int) -> Unit,
@@ -95,7 +103,7 @@ fun LabyrinthScreen(
     onStopEntryRecognition: () -> Unit,
     onStartSessionReset: () -> Unit,
     onStopSessionReset: () -> Unit,
-    onStartAutoRun: (Int) -> Unit,
+    onStartAutoRun: (List<LabyrinthBatchGoal>) -> Unit,
     onStopAutoRun: () -> Unit,
     onCaptchaSolved: (String) -> Unit,
     onCaptchaError: (String) -> Unit,
@@ -232,13 +240,16 @@ fun LabyrinthScreen(
                         onStartAutomation = onStartEntryAutomation,
                         onStop = onStopEntryRecognition,
                     )
-                    Card(modifier = Modifier.fillMaxWidth()) {
-                        Text(
-                            "多轮自动执行与会话重置暂时禁用。先验证单轮闭环；完成后再开放轮间状态重置。",
-                            modifier = Modifier.padding(14.dp),
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                    }
+                    BatchRunCard(
+                        checkpoint = batchCheckpoint,
+                        haltReason = batchHaltReason,
+                        routeProgress = entryRecognitionState.routeProgress,
+                        guildOptions = state.guildOptions.take(5),
+                        selectedDifficulty = state.selectedDifficulty,
+                        enabled = state.selectedAccount != null && state.settingsReady && !state.isWorking,
+                        onStart = onStartAutoRun,
+                        onStop = onStopAutoRun,
+                    )
                 }
             }
 
@@ -602,6 +613,133 @@ private fun EntryRecognitionCard(
                 TextButton(onClick = onStart) { Text("只读识别") }
                 Button(onClick = onStartAutomation) { Text("执行入口流程") }
             }
+        }
+    }
+}
+
+@Composable
+private fun BatchRunCard(
+    checkpoint: LabyrinthBatchCheckpoint?,
+    haltReason: LabyrinthBatchHaltReason?,
+    routeProgress: LabyrinthRouteProgress?,
+    guildOptions: List<LabyrinthGuildOption>,
+    selectedDifficulty: Int,
+    enabled: Boolean,
+    onStart: (List<LabyrinthBatchGoal>) -> Unit,
+    onStop: () -> Unit,
+) {
+    val active = checkpoint?.stage in setOf(
+        LabyrinthBatchStage.REROLLING,
+        LabyrinthBatchStage.INVALIDATING_OLD_CLIENT_SESSION,
+        LabyrinthBatchStage.RUNNING_LABYRINTH,
+        LabyrinthBatchStage.RECORDING_RESULT,
+    )
+    SelectionCard(
+        title = "批量自动执行",
+        description = "一次屏幕授权跑完全部目标，按列表顺序逐个公会执行：刷开局 → 底栏主页触发旧会话失效 → " +
+            "进入并通关 → 记录 → 下一轮。难度沿用上方设置（$selectedDifficulty）；" +
+            "战斗连续失败按策略设置放弃本局并重刷。",
+    ) {
+        // Per-guild target text and mode; the guild list itself is fixed (top five).
+        val counts = remember(guildOptions) {
+            mutableStateOf(guildOptions.associate { it.guildId to "" })
+        }
+        val modes = remember(guildOptions) {
+            mutableStateOf(guildOptions.associate { it.guildId to LabyrinthBatchGoalMode.CLEARS })
+        }
+
+        checkpoint?.let { cp ->
+            Text(
+                "批次 ${cp.batchId} · 阶段 ${cp.stage.name}" +
+                    (cp.currentRunId?.let { " · $it" } ?: ""),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            cp.goals.forEachIndexed { index, goal ->
+                val name = guildOptions.firstOrNull { it.guildId == goal.guildId }?.name ?: "ID ${goal.guildId}"
+                val marker = when {
+                    index == cp.activeGoalIndex && cp.stage != LabyrinthBatchStage.COMPLETED -> "▶ "
+                    goal.isSatisfied -> "✓ "
+                    else -> "· "
+                }
+                val modeLabel = if (goal.mode == LabyrinthBatchGoalMode.CLEARS) "通关" else "开局"
+                Text(
+                    "$marker$name：$modeLabel ${goal.completedCount}/${goal.targetCount}" +
+                        (if (goal.failedCount > 0) " · 放弃 ${goal.failedCount}" else ""),
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (cp.abnormalRuns > 0) {
+                Text("异常中止 ${cp.abnormalRuns} 局（未计入）", style = MaterialTheme.typography.bodySmall)
+            }
+            cp.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            haltReason?.let {
+                Text("停止原因：${it.name}", style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        routeProgress?.let { route ->
+            Text(
+                "本轮路线：区域${route.currentArea} · 已走 ${route.visitedCount}/${route.routeNodeCount}" +
+                    (route.nextNodeLabel?.let { " · 下一节点 $it" } ?: "") +
+                    if (route.complete) " · 已完成" else "",
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+
+        if (active) {
+            Button(onClick = onStop) { Text("停止批量执行") }
+            return@SelectionCard
+        }
+
+        Text("目标（留空 = 跳过该公会）", style = MaterialTheme.typography.titleSmall)
+        guildOptions.forEach { guild ->
+            val text = counts.value[guild.guildId].orEmpty()
+            val mode = modes.value[guild.guildId] ?: LabyrinthBatchGoalMode.CLEARS
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { value ->
+                        counts.value = counts.value + (guild.guildId to value.filter(Char::isDigit).take(2))
+                    },
+                    label = { Text(guild.name) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
+                FilterChip(
+                    selected = mode == LabyrinthBatchGoalMode.CLEARS,
+                    onClick = {
+                        modes.value = modes.value + (
+                            guild.guildId to if (mode == LabyrinthBatchGoalMode.CLEARS) {
+                                LabyrinthBatchGoalMode.ATTEMPTS
+                            } else {
+                                LabyrinthBatchGoalMode.CLEARS
+                            }
+                            )
+                    },
+                    label = { Text(if (mode == LabyrinthBatchGoalMode.CLEARS) "按通关计" else "按开局计") },
+                )
+            }
+        }
+        val goals = guildOptions.mapNotNull { guild ->
+            counts.value[guild.guildId]?.toIntOrNull()?.takeIf { it >= 1 }?.let { count ->
+                LabyrinthBatchGoal(
+                    guildId = guild.guildId,
+                    targetCount = count,
+                    mode = modes.value[guild.guildId] ?: LabyrinthBatchGoalMode.CLEARS,
+                )
+            }
+        }
+        val total = goals.sumOf { it.targetCount }
+        Button(
+            onClick = { onStart(goals) },
+            enabled = enabled && goals.isNotEmpty(),
+        ) { Text(if (goals.isEmpty()) "开始批量执行" else "开始批量执行（${goals.size} 个公会 · 共 $total 轮）") }
+        if (!enabled) {
+            Text("需要已选账号且刷开局设置就绪、无进行中的刷取任务。", style = MaterialTheme.typography.bodySmall)
         }
     }
 }

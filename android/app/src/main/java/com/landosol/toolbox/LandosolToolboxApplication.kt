@@ -26,6 +26,7 @@ import com.landosol.toolbox.automation.session.SessionBlockKind
 import com.landosol.toolbox.automation.session.SessionExpiryFrameTracker
 import com.landosol.toolbox.automation.session.SessionExpiryTerminator
 import com.landosol.toolbox.automation.session.toSessionBlockScores
+import com.landosol.toolbox.automation.capture.CaptureState
 import com.landosol.toolbox.clanbattle.ClanBattleRecognitionSession
 import com.landosol.toolbox.automation.overlay.AndroidAutomationNotificationHost
 import com.landosol.toolbox.automation.overlay.AutomationOverlayCoordinator
@@ -120,11 +121,13 @@ class LandosolToolboxApplication : Application() {
         AndroidLabyrinthCnDatabaseRepository(this)
     }
     private val labyrinthDebugDashboard by lazy {
-        LabyrinthDebugDashboardServer().also { server ->
+        LabyrinthDebugDashboardServer(
+            frameArchiveDirectory = java.io.File(cacheDir, "labyrinth-frame-archive"),
+        ).also { server ->
             server.start()
         }
     }
-    val labyrinthEntryRecognitionSession by lazy {
+    val labyrinthEntryRecognitionSession: LabyrinthEntryRecognitionSession by lazy {
         // Start the debug endpoint with its initial waiting snapshot instead of waiting for the
         // first captured frame. That keeps first-frame capture failures observable in the browser.
         val debugDashboard = labyrinthDebugDashboard
@@ -147,14 +150,26 @@ class LandosolToolboxApplication : Application() {
                 )
             },
             rerollRequester = { accountId ->
-                labyrinthController.startAfterBattleFailureReroll(accountId)
+                // A batch-owned run does not reroll from inside the run: the batch controller
+                // receives FailedMaxRetry and performs the reroll itself.
+                if (labyrinthBatchController.state.value?.stage ==
+                    com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage.RUNNING_LABYRINTH
+                ) {
+                    true
+                } else {
+                    labyrinthController.startAfterBattleFailureReroll(accountId)
+                }
             },
+            runTerminalListener = { event -> labyrinthBatchController.onRunTerminal(event) },
             sessionManager = automationSessionManager,
             processorFactory = { finalBossOnly ->
                 AndroidLabyrinthEntryFrameProcessor.create(
                     context = this,
                     characterAttributes = characterAttributes,
                     finalBossOnly = finalBossOnly,
+                    skipJoinedCharacters = { labyrinthEntryRecognitionSession.skipRoleRewardJoinedRecognition },
+                    nodeSearchHint = { labyrinthEntryRecognitionSession.currentNodeSearchHint() },
+                    nodeScanRequested = { labyrinthEntryRecognitionSession.nodeScanRequested() },
                 )::process
             },
             captureStop = { MediaProjectionCaptureService.stop(this) },
@@ -259,22 +274,27 @@ class LandosolToolboxApplication : Application() {
             gamePackageName = GAME_PACKAGE_NAME,
             foregroundPackage = LandosolAccessibilityService::foregroundPackage,
         )
-        val terminator = SessionExpiryTerminator(
+        // After a server-side reroll the client still holds the previous run's local state.
+        // Tapping 进入黎明界 there opens the unrecognised guild-selection page and never
+        // triggers the expiry popup; the bottom 主页 tab requests home data immediately and
+        // is rejected by the server, which is the popup we want (labyrinth-full-automation §5.1).
+        val terminator = com.landosol.toolbox.automation.session.AnchorTriggerSessionExpiryTerminator(
             onTap = { point ->
                 when (accessibilityActionBackend.execute(AutomationAction.Tap(point))) {
                     com.landosol.toolbox.automation.AutomationBackendResult.Completed -> true
                     else -> false
                 }
             },
-            triggerEntryPoint = SESSION_EXPIRY_TRIGGER_POINT,
+            triggerPoint = { frameTracker.sessionInvalidationTrigger },
             returnTitlePoint = SESSION_RETURN_TITLE_POINT,
             popupVisible = { frameTracker.popupVisible },
             titleReached = { frameTracker.titleReached },
             frameSize = { frameTracker.frameSize },
             available = LandosolAccessibilityService::isConnected,
-            triggerAnchorPoint = { frameTracker.anchorCenter(EntryAnchorId.LABYRINTH_ENTRY) },
             returnTitleAnchorPoint = { frameTracker.anchorCenter(EntryAnchorId.SESSION_RETURN_TITLE) },
+            trace = { step -> android.util.Log.d("LabyrinthReset", "trigger-terminator $step") },
         )
+        val resetDashboard = labyrinthDebugDashboard
         GameSessionResetWorkflow(
             sessionManager = automationSessionManager,
             backend = CompositeSessionResetBackend(
@@ -309,7 +329,101 @@ class LandosolToolboxApplication : Application() {
             presence = presence,
             actionExecutor = automationActionExecutor,
             entryActionPlannerFactory = { LabyrinthEntryActionPlanner() },
+            debugFramePublisher = resetDashboard?.let { dashboard ->
+                { frame, resetState, result, presentation ->
+                    // The dashboard is keyed to the labyrinth session state; during a reset the
+                    // session is stopped, so hand it a synthetic snapshot that carries the reset
+                    // stage in the message and the real frame/page for the picture.
+                    dashboard.publish(
+                        bitmap = frame.bitmap,
+                        state = com.landosol.toolbox.labyrinth.LabyrinthEntryRecognitionSessionState(
+                            status = com.landosol.toolbox.labyrinth.LabyrinthEntryRecognitionStatus.RUNNING,
+                            dryRun = false,
+                            frameCount = resetState.frameCount,
+                            actionCount = resetState.actionCount,
+                            message = "会话重置 ${resetState.stage.name}：${resetState.message ?: ""}",
+                        ),
+                        result = result,
+                        presentation = presentation,
+                        nowMillis = frame.timestampMillis,
+                    )
+                }
+            },
         )
+    }
+
+    val labyrinthBatchCheckpointStore by lazy {
+        com.landosol.toolbox.labyrinth.batch.AndroidLabyrinthBatchCheckpointStore(this)
+    }
+
+    /**
+     * Unattended multi-run orchestration (labyrinth-full-automation.md §4). Sequences reroll →
+     * client invalidation → run over the existing components; never touches capture itself.
+     */
+    val labyrinthBatchController by lazy {
+        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchController(
+            ports = object : com.landosol.toolbox.labyrinth.batch.LabyrinthBatchPorts {
+                override suspend fun reroll(accountId: Long, guildId: Int, difficulty: Int) =
+                    labyrinthController.rerollForBatch(accountId, guildId, difficulty)
+
+                override suspend fun invalidateClientSessionAndReturn():
+                    com.landosol.toolbox.labyrinth.batch.LabyrinthBatchInvalidationResult {
+                    // AnchorTriggerSessionExpiryTerminator taps the recognised trigger, expects the
+                    // "session expired" popup, taps 返回标题, then the entry planner navigates
+                    // title → home → adventure → labyrinth home. READY means the stale local
+                    // state is gone and the new server entry is what the client sees.
+                    if (!CaptureStateRegistry.isActive()) {
+                        return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchInvalidationResult.Failure(
+                            "屏幕捕获已停止" + (CaptureStateRegistry.lastStopReason()?.let { "（$it）" } ?: ""),
+                        )
+                    }
+                    return when (val started = gameSessionResetWorkflow.start()) {
+                        is GameSessionResetStartResult.Started -> {
+                            val final = gameSessionResetWorkflow.state.first { !it.running }
+                            val ok = final.status == GameSessionResetStatus.STOPPED &&
+                                final.lastBlock == SessionBlockKind.NONE
+                            if (ok) {
+                                com.landosol.toolbox.labyrinth.batch.LabyrinthBatchInvalidationResult.Success("home-tab-session-expiry")
+                            } else {
+                                com.landosol.toolbox.labyrinth.batch.LabyrinthBatchInvalidationResult.Failure(
+                                    "重置流程 ${final.stage.name}/${final.status.name}" +
+                                        (final.message?.let { "：$it" } ?: "") +
+                                        (final.lastBlock.takeIf { it != SessionBlockKind.NONE }?.let { "，阻塞 $it" } ?: ""),
+                                )
+                            }
+                        }
+                        is GameSessionResetStartResult.Blocked ->
+                            com.landosol.toolbox.labyrinth.batch.LabyrinthBatchInvalidationResult.Failure(started.reason)
+                        is GameSessionResetStartResult.AlreadyRunning ->
+                            com.landosol.toolbox.labyrinth.batch.LabyrinthBatchInvalidationResult.Failure("会话重置已在运行")
+                    }
+                }
+
+                override suspend fun startRun(accountId: Long, guildId: Int, runId: String): Boolean =
+                    labyrinthEntryRecognitionSession.startAutomation(accountId, runId) is
+                        LabyrinthEntryRecognitionStartResult.Started
+
+                override suspend fun stopRun(reason: String) {
+                    labyrinthEntryRecognitionSession.stop(reason, releaseCapture = false)
+                }
+
+                override suspend fun saveCheckpoint(
+                    checkpoint: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchCheckpoint,
+                ) = labyrinthBatchCheckpointStore.save(checkpoint)
+            },
+        ).also { controller ->
+            // Environment loss must pause the batch without widening any action (§18).
+            autoRunScope.launch {
+                CaptureStateRegistry.observe().collect { state ->
+                    if (state !is CaptureState.Running && controller.state.value?.stage in ACTIVE_BATCH_STAGES) {
+                        controller.haltForEnvironment(
+                            com.landosol.toolbox.labyrinth.batch.LabyrinthBatchHaltReason.CAPTURE_LOST,
+                            "屏幕捕获已停止" + (CaptureStateRegistry.lastStopReason()?.let { "：$it" } ?: ""),
+                        )
+                    }
+                }
+            }
+        }
     }
 
     /**
@@ -352,23 +466,53 @@ class LandosolToolboxApplication : Application() {
     @Volatile
     private var autoRunJob: Job? = null
 
-    /** Multi-round reset is intentionally disabled until the single-round loop is proven. */
-    @Suppress("UNUSED_PARAMETER")
-    fun startLabyrinthAutoRun(accountId: Long?, targetRuns: Int): Boolean = false
+    /**
+     * Starts an unattended batch: [targetRuns] cleared runs of the account's currently selected
+     * guild and difficulty. Returns false when no account is selected or a batch is active.
+     */
+    fun startLabyrinthAutoRun(
+        accountId: Long?,
+        goals: List<com.landosol.toolbox.labyrinth.batch.LabyrinthBatchGoal>,
+    ): Boolean {
+        val id = accountId ?: return false
+        if (goals.isEmpty()) return false
+        val ui = labyrinthController.uiState.value
+        val batchId = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT)
+            .format(java.util.Date())
+        autoRunJob?.cancel()
+        autoRunJob = autoRunScope.launch {
+            labyrinthBatchController.start(
+                batchId = batchId,
+                accountId = id,
+                goals = goals,
+                difficulty = ui.selectedDifficulty,
+            )
+        }
+        return true
+    }
 
     fun stopLabyrinthAutoRun() {
         autoRunJob?.cancel()
         autoRunJob = null
         autoRunScope.launch {
-            labyrinthEntryRecognitionSession.stop("用户停止自动执行")
+            labyrinthBatchController.stop("用户停止自动执行")
             gameSessionResetWorkflow.stop("用户停止自动执行")
+            // The batch is over: release the capture session the user authorized for it.
+            labyrinthEntryRecognitionSession.stop("用户停止自动执行")
         }
     }
 
     private companion object {
+        val ACTIVE_BATCH_STAGES = setOf(
+            com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage.REROLLING,
+            com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage.INVALIDATING_OLD_CLIENT_SESSION,
+            com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage.RUNNING_LABYRINTH,
+            com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage.RECORDING_RESULT,
+        )
         const val DATABASE_UPDATE_LOG_TAG = "LabyrinthCnDatabase"
         const val GAME_PACKAGE_NAME = "com.bilibili.priconne"
-        /** 触发入口「冒险→黎明界」，与 [LabyrinthEntryActionPlanner] 的锚点一致 */
+        /** 旧触发点「冒险→黎明界」。已弃用：刷开局后会进入无识别的公会选择页。 */
+        @Suppress("unused")
         val SESSION_EXPIRY_TRIGGER_POINT = ScreenPoint(1735f, 805f)
         /** 「返回标题」按钮（模板中心，1080p 参考系） */
         val SESSION_RETURN_TITLE_POINT = ScreenPoint(961f, 739f)

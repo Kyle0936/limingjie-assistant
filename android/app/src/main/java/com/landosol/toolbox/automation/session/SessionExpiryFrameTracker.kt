@@ -3,6 +3,7 @@ package com.landosol.toolbox.automation.session
 import com.landosol.toolbox.automation.ScreenPoint
 import com.landosol.toolbox.labyrinth.vision.EntryAnchorId
 import com.landosol.toolbox.labyrinth.vision.EntryAnchorMatch
+import com.landosol.toolbox.labyrinth.vision.EntryPixelRect
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryFrameResult
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageState
 
@@ -18,6 +19,10 @@ class SessionExpiryFrameTracker {
     @Volatile
     private var pageState: LabyrinthEntryPageState = LabyrinthEntryPageState.UNKNOWN
     @Volatile
+    private var battleFailureEndPoint: ScreenPoint? = null
+    @Volatile
+    private var battleEndConfirmationPoint: ScreenPoint? = null
+    @Volatile
     private var width: Int = 0
     @Volatile
     private var height: Int = 0
@@ -27,7 +32,34 @@ class SessionExpiryFrameTracker {
         scores = result.observation.anchorScores.values
         matches = result.anchorMatches
         pageState = result.observation.state
+        battleFailureEndPoint = result.battleFailure?.endButtonRect?.let(::centre)
+        battleEndConfirmationPoint = result.battleEndConfirmation?.advanceButtonRect?.let(::centre)
     }
+
+    private fun centre(rect: EntryPixelRect) = ScreenPoint(
+        x = rect.left + rect.width / 2f,
+        y = rect.top + rect.height / 2f,
+    )
+
+    /**
+     * 会话失效触发点：只在当前帧识别为已知页面、且该页的触发控件被模板命中时返回。
+     * 任何其他页面都返回 null，终止器因此不会点击（此前用固定坐标点底栏，在别的页面也会点）。
+     *
+     * - 黎明界主页：底栏「我的主页」标签模板。点已选中的「冒险」不联网（2026-09-17 实测），
+     *   「我的主页」会请求主页数据，旧 enter 被拒即弹会话失效提示；
+     * - 战斗失败页：没有底栏。「重新挑战」只回到 EX 挑战页、不联网（2026-09-17 实测），所以走
+     *   结束 → 撤退（无报酬） → 确认 三步：确认才向服务端撤退，旧 enter 被拒即弹会话失效提示。
+     *   每一步都按当前帧识别到的对话框阶段给出按钮，识别不到不点。
+     */
+    val sessionInvalidationTrigger: ScreenPoint?
+        get() = when (pageState) {
+            LabyrinthEntryPageState.BATTLE_FAILED, LabyrinthEntryPageState.UNKNOWN ->
+                battleEndConfirmationPoint ?: battleFailureEndPoint.takeIf { pageState == LabyrinthEntryPageState.BATTLE_FAILED }
+            LabyrinthEntryPageState.DAWN_REALM_HOME_IDLE,
+            LabyrinthEntryPageState.DAWN_REALM_HOME_ACTIVE,
+            -> anchorCenter(EntryAnchorId.DAWN_HOME_MY_HOME_TAB, TRIGGER_MIN_SCORE)
+            else -> null
+        }
 
     /** 记录实际帧尺寸，供坐标映射与支持性判断 */
     fun trackFrame(w: Int, h: Int) {
@@ -59,5 +91,7 @@ class SessionExpiryFrameTracker {
     private companion object {
         const val POPUP_MIN_SCORE = 0.55
         const val ANCHOR_ACTION_MIN_SCORE = 0.45
+        /** Trigger taps are unconditional network actions; demand a clearly matched template. */
+        const val TRIGGER_MIN_SCORE = 0.70
     }
 }

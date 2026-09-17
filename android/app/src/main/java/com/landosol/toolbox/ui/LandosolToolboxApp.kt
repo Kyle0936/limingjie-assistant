@@ -142,10 +142,19 @@ fun LandosolToolboxApp() {
     val entryRecognitionState by application.labyrinthEntryRecognitionSession.state.collectAsStateWithLifecycle()
     val sessionResetState by application.gameSessionResetWorkflow.state.collectAsStateWithLifecycle()
     val autoRunProgress by application.labyrinthAutoRunWorkflow.progress.collectAsStateWithLifecycle()
+    val batchCheckpoint by application.labyrinthBatchController.state.collectAsStateWithLifecycle()
+    val batchHaltReason by application.labyrinthBatchController.haltReason.collectAsStateWithLifecycle()
+    val batchActive = batchCheckpoint?.stage in setOf(
+        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage.REROLLING,
+        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage.INVALIDATING_OLD_CLIENT_SESSION,
+        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage.RUNNING_LABYRINTH,
+        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage.RECORDING_RESULT,
+    )
     KeepScreenAwake(
         enabled = entryRecognitionState.running ||
             sessionResetState.running ||
-            autoRunProgress.running,
+            autoRunProgress.running ||
+            batchActive,
     )
 
     var screenName by rememberSaveable { mutableStateOf(AppScreen.Labyrinth.name) }
@@ -186,6 +195,8 @@ fun LandosolToolboxApp() {
                         entryRecognitionState = entryRecognitionState,
                         sessionResetState = sessionResetState,
                         autoRunProgress = autoRunProgress,
+                        batchCheckpoint = batchCheckpoint,
+                        batchHaltReason = batchHaltReason,
                         onRequestCapture = requestCaptureThen,
                     )
                     AppScreen.Permissions -> PermissionRoute(onStartCapture = requestCapture)
@@ -275,6 +286,8 @@ private fun LabyrinthRoute(
     entryRecognitionState: LabyrinthEntryRecognitionSessionState,
     sessionResetState: GameSessionResetState,
     autoRunProgress: LabyrinthAutoRunProgress,
+    batchCheckpoint: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchCheckpoint?,
+    batchHaltReason: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchHaltReason?,
     onRequestCapture: ((() -> Unit) -> Unit),
 ) {
     val scope = rememberCoroutineScope()
@@ -324,6 +337,8 @@ private fun LabyrinthRoute(
         entryRecognitionState = entryRecognitionState,
         sessionResetState = sessionResetState,
         autoRunProgress = autoRunProgress,
+        batchCheckpoint = batchCheckpoint,
+        batchHaltReason = batchHaltReason,
         onBack = null,
         onGuildSelected = labyrinthViewModel::selectGuild,
         onDifficultySelected = labyrinthViewModel::selectDifficulty,
@@ -387,12 +402,16 @@ private fun LabyrinthRoute(
         onStopSessionReset = {
             scope.launch { application.gameSessionResetWorkflow.stop("用户停止会话失效重置") }
         },
-        onStartAutoRun = { targetRuns ->
-            onRequestCapture {
-                application.startLabyrinthAutoRun(
-                    accountId = state.selectedAccount?.id,
-                    targetRuns = targetRuns,
-                )
+        onStartAutoRun = { goals ->
+            if (!LandosolAccessibilityService.isConnected()) {
+                labyrinthViewModel.reportMessage("无障碍服务未连接；若系统开关显示已开启，请关闭后重新开启")
+            } else {
+                onRequestCapture {
+                    application.startLabyrinthAutoRun(
+                        accountId = state.selectedAccount?.id,
+                        goals = goals,
+                    )
+                }
             }
         },
         onStopAutoRun = { application.stopLabyrinthAutoRun() },

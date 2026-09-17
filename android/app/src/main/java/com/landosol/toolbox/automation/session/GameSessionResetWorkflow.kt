@@ -28,6 +28,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
+import android.util.Log
 
 enum class GameSessionResetStatus { IDLE, RUNNING, STOPPED, ERROR }
 
@@ -50,6 +51,54 @@ sealed interface GameSessionResetStartResult {
     data class Blocked(val reason: String) : GameSessionResetStartResult
 }
 
+enum class GameSessionResetReadyDecision { HOLD_FOR_TERMINATION, READY, CONTINUE }
+
+/**
+ * Pages on which the client has not loaded any labyrinth state yet. Starting a batch from one of
+ * them (title, loading, announcement, home, adventure) needs no "return to title": the entry
+ * planner navigates forward and the labyrinth home it reaches already reflects the new server
+ * entry. 2026-09-17 user: "从app助手内的开始批量执行处发起的操作视为初次执行，需要可以从黎明界
+ * 之前的登录流程中进行操作，而不是自认为需要先触发返回标题界面". Every other page (labyrinth
+ * home, map, battle failure, unknown) keeps the invalidation step.
+ */
+internal fun gameSessionResetSkipsTermination(page: LabyrinthEntryPageState): Boolean = page in setOf(
+    LabyrinthEntryPageState.TITLE_WAITING_TAP,
+    LabyrinthEntryPageState.PRE_HOME_DATA_LOADING,
+    LabyrinthEntryPageState.HOME_ANNOUNCEMENT,
+    LabyrinthEntryPageState.HOME,
+    LabyrinthEntryPageState.ADVENTURE,
+)
+
+/**
+ * Whether a recognized labyrinth-home/map frame may complete the reset.
+ *
+ * While the terminator is still driving the client the screen is by definition the *old*
+ * labyrinth home (the batch starts the reset from there), so recognising it as READY would hand
+ * stale local state to the next run and, worse, let the entry planner tap 出发 on it. Only frames
+ * observed once the flow has moved past termination/relaunch may complete the reset.
+ */
+internal fun gameSessionResetReadyDecision(
+    stage: GameSessionResetStage,
+    pageState: LabyrinthEntryPageState,
+): GameSessionResetReadyDecision {
+    if (
+        stage == GameSessionResetStage.PENDING ||
+        stage == GameSessionResetStage.TERMINATING ||
+        stage == GameSessionResetStage.RELAUNCHING
+    ) {
+        return GameSessionResetReadyDecision.HOLD_FOR_TERMINATION
+    }
+    return if (
+        pageState == LabyrinthEntryPageState.DAWN_REALM_HOME_IDLE ||
+        pageState == LabyrinthEntryPageState.DAWN_REALM_HOME_ACTIVE ||
+        pageState == LabyrinthEntryPageState.NODE_SELECTION
+    ) {
+        GameSessionResetReadyDecision.READY
+    } else {
+        GameSessionResetReadyDecision.CONTINUE
+    }
+}
+
 /**
  * 会话重置编排：保存本局结果 → 关闭客户端 → 重启 → 等登录 → 主页 → 冒险 →
  * 黎明界 → 就绪下一轮。复用共享自动化会话仲裁、截图帧总线与悬浮窗。
@@ -69,6 +118,8 @@ class GameSessionResetWorkflow(
     private val actionExecutor: SessionBoundActionExecutor? = null,
     private val entryActionPlannerFactory: () -> LabyrinthEntryActionPlanner = { LabyrinthEntryActionPlanner() },
     private val totalTimeoutMillis: Long = DEFAULT_TOTAL_TIMEOUT_MILLIS,
+    /** Mirrors every recognized frame to the debug dashboard so the reset phase is observable. */
+    private val debugFramePublisher: ((CapturedFrame, GameSessionResetState, LabyrinthEntryFrameResult, AutomationOverlayPresentation) -> Unit)? = null,
 ) {
     private val mutex = Mutex()
     private val actionScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -82,6 +133,10 @@ class GameSessionResetWorkflow(
     private var stage: GameSessionResetStage = GameSessionResetStage.PENDING
     private var stableStageFrames = 0
     private var lastStageChangeAt = Long.MIN_VALUE
+
+    /** Most recent recognised page; read by the PENDING peek before termination is decided. */
+    @Volatile
+    private var lastObservedPage: LabyrinthEntryPageState = LabyrinthEntryPageState.UNKNOWN
 
     init {
         require(totalTimeoutMillis > 0)
@@ -142,6 +197,7 @@ class GameSessionResetWorkflow(
         stage = GameSessionResetStage.PENDING
         stableStageFrames = 0
         lastStageChangeAt = clock()
+        lastObservedPage = LabyrinthEntryPageState.UNKNOWN
         _state.value = GameSessionResetState(
             status = GameSessionResetStatus.RUNNING,
             sessionId = session.id,
@@ -228,26 +284,36 @@ class GameSessionResetWorkflow(
                 setMessage("保存本局结果")
                 saveRoundResult()
 
-                // 2. 关闭/退出客户端（ADB force-stop 或会话失效触发弹窗返回标题）
-                val terminationLabel = when (backend.kind) {
-                    ClientTerminationKind.SESSION_EXPIRY -> "触发会话失效并返回标题页"
-                    else -> "关闭/退出公主连结客户端"
-                }
-                transitionTo(sessionId, GameSessionResetStage.TERMINATING, terminationLabel)
-                val termination = backend.terminateClient()
-                if (
-                    termination != ClientTerminationResult.TERMINATED &&
-                    termination != ClientTerminationResult.ALREADY_GONE
-                ) {
-                    error("终止客户端未确认完成：$termination")
-                }
+                // 2. 先看清客户端此刻在哪一页。批次首轮可能从标题/主页/冒险页发起，那些页面
+                //    尚未载入黎明界状态，没有旧会话可失效，直接走入口导航即可。
+                setMessage("识别客户端当前页面")
+                val observedPage = awaitObservedPage(sessionId, PAGE_PEEK_TIMEOUT_MILLIS)
+                Log.d(LOG_TAG, "peek page=$observedPage skipTermination=${gameSessionResetSkipsTermination(observedPage)}")
+                if (gameSessionResetSkipsTermination(observedPage)) {
+                    setMessage("客户端在 ${observedPage.name}，尚未载入黎明界，无需触发会话失效")
+                } else {
+                    // 3. 关闭/退出客户端（ADB force-stop 或会话失效触发弹窗返回标题）
+                    val terminationLabel = when (backend.kind) {
+                        ClientTerminationKind.SESSION_EXPIRY -> "触发会话失效并返回标题页"
+                        else -> "关闭/退出公主连结客户端"
+                    }
+                    transitionTo(sessionId, GameSessionResetStage.TERMINATING, terminationLabel)
+                    val termination = backend.terminateClient()
+                    Log.d(LOG_TAG, "terminate kind=${backend.kind} result=$termination")
+                    if (
+                        termination != ClientTerminationResult.TERMINATED &&
+                        termination != ClientTerminationResult.ALREADY_GONE
+                    ) {
+                        error("终止客户端未确认完成：$termination")
+                    }
 
-                // 3. 会话失效触发已回到标题页，无需重启；其余策略重新启动客户端
-                if (backend.kind != ClientTerminationKind.SESSION_EXPIRY) {
-                    transitionTo(sessionId, GameSessionResetStage.RELAUNCHING, "重新启动公主连结")
-                    val relaunch = backend.relaunchClient()
-                    if (relaunch != GameClientRelaunchResult.LAUNCH_REQUESTED) {
-                        error("重新启动客户端失败：$relaunch")
+                    // 会话失效触发已回到标题页，无需重启；其余策略重新启动客户端
+                    if (backend.kind != ClientTerminationKind.SESSION_EXPIRY) {
+                        transitionTo(sessionId, GameSessionResetStage.RELAUNCHING, "重新启动公主连结")
+                        val relaunch = backend.relaunchClient()
+                        if (relaunch != GameClientRelaunchResult.LAUNCH_REQUESTED) {
+                            error("重新启动客户端失败：$relaunch")
+                        }
                     }
                 }
 
@@ -283,6 +349,21 @@ class GameSessionResetWorkflow(
                 message = "会话重置失败：${error?.message ?: "未知错误"}",
             )
         }
+    }
+
+    /** Waits for the first recognised page (or the timeout) while the stage is still PENDING. */
+    private suspend fun awaitObservedPage(
+        sessionId: AutomationSessionId,
+        timeoutMillis: Long,
+    ): LabyrinthEntryPageState {
+        val deadline = clock() + timeoutMillis
+        while (activeSessionId == sessionId && clock() < deadline) {
+            val page = lastObservedPage
+            if (page != LabyrinthEntryPageState.UNKNOWN) return page
+            kotlinx.coroutines.delay(FRAME_POLL_MILLIS)
+        }
+        if (activeSessionId != sessionId) error("会话重置已被停止")
+        return lastObservedPage
     }
 
     private suspend fun awaitStageReached(
@@ -325,6 +406,9 @@ class GameSessionResetWorkflow(
                     frameCount = current.frameCount + 1,
                     lastBlock = block,
                 )
+                debugFramePublisher?.let { publish ->
+                    runCatching { publish(frame, _state.value, result, buildOverlayPresentation(sessionId)) }
+                }
                 handleObservation(
                     sessionId = sessionId,
                     result = result,
@@ -371,13 +455,26 @@ class GameSessionResetWorkflow(
                 }
 
                 val pageState = result.observation.state
-                if (
-                    pageState == LabyrinthEntryPageState.DAWN_REALM_HOME_IDLE ||
-                    pageState == LabyrinthEntryPageState.DAWN_REALM_HOME_ACTIVE ||
-                    pageState == LabyrinthEntryPageState.NODE_SELECTION
-                ) {
-                    markReady(sessionId, "已回到黎明界，可以开始下一轮")
+                lastObservedPage = pageState
+                if (stage == GameSessionResetStage.PENDING) {
+                    // The flow is still deciding whether termination is needed; look, never act.
+                    _state.value = _state.value.copy(message = "识别客户端当前页面：${pageState.name}")
                     return@launch
+                }
+                // While the terminator is still driving the client (TERMINATING / RELAUNCHING) the
+                // screen is by definition the *old* labyrinth home; recognising it as "ready" here
+                // would let the entry planner tap 出发 on stale state. Only frames observed after
+                // the flow has moved into the login/navigation phase may complete the reset.
+                when (gameSessionResetReadyDecision(stage, pageState)) {
+                    GameSessionResetReadyDecision.HOLD_FOR_TERMINATION -> {
+                        _state.value = _state.value.copy(message = "等待旧会话失效（当前页面 ${pageState.name}）")
+                        return@launch
+                    }
+                    GameSessionResetReadyDecision.READY -> {
+                        markReady(sessionId, "已回到黎明界，可以开始下一轮")
+                        return@launch
+                    }
+                    GameSessionResetReadyDecision.CONTINUE -> Unit
                 }
                 if (
                     pageState == LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION ||
@@ -536,8 +633,11 @@ class GameSessionResetWorkflow(
     }
 
     private companion object {
+        const val LOG_TAG = "LabyrinthReset"
         const val OWNER = "game-session-reset"
         const val FRAME_POLL_MILLIS = 250L
+        /** How long the PENDING peek waits for a recognised page before defaulting to termination. */
+        const val PAGE_PEEK_TIMEOUT_MILLIS = 6_000L
         const val DEFAULT_TOTAL_TIMEOUT_MILLIS = 180_000L
     }
 }

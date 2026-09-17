@@ -40,7 +40,7 @@ data class LabyrinthCharacterMatch(
 
 /**
  * Defines the page-specific icon slots for role reward and character-joined pages. Character
- * identity always comes from [LabyrinthCharacterIconMatcher] in production.
+ * Reward portraits are deferred until name OCR is unreliable; joined pages normally use icons.
  */
 class LabyrinthCharacterRecognizer(
     private val legacyTemplates: LabyrinthCharacterTemplateSet = LabyrinthCharacterTemplateSet(),
@@ -54,6 +54,16 @@ class LabyrinthCharacterRecognizer(
 
     fun recognizeRoleRewardChoices(frame: PixelImage): List<LabyrinthCharacterMatch> =
         recognizeSlots(frame, ROLE_REWARD_ICON_SLOTS, ROLE_REWARD_LEGACY_NAME_SLOTS)
+
+    fun roleRewardSlots(frame: PixelImage): List<LabyrinthCharacterMatch> =
+        ROLE_REWARD_ICON_SLOTS.map { slot ->
+            emptyMatch(slot.id).copy(screenRect = ReferenceFitMapper.map(
+                frame.width, frame.height, STANDARD_REFERENCE, slot.referenceRect,
+            ) ?: emptyMatch(slot.id).screenRect)
+        }
+
+    fun recognizeRoleRewardSlot(frame: PixelImage, slotId: String): LabyrinthCharacterMatch =
+        recognizeIconSlot(frame, ROLE_REWARD_ICON_SLOTS.single { it.id == slotId })
 
     fun recognizeJoinedCharacters(frame: PixelImage): List<LabyrinthCharacterMatch> =
         recognizeSlots(frame, JOINED_ICON_SLOTS, JOINED_LEGACY_NAME_SLOTS)

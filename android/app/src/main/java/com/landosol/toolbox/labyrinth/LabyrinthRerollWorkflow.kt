@@ -29,6 +29,14 @@ data class LabyrinthRerollConfig(
     val retireExisting: Boolean,
     val routePolicy: LabyrinthRoutePolicy = LabyrinthRoutePolicy(),
     val rerollUntilFound: Boolean = false,
+    /**
+     * Never reuse the run the server currently holds, even when it matches the target route.
+     * [retireExisting] alone only retires a *non-matching* run: an interactive reroll that finds
+     * the account already sitting on a target opening keeps it. A run that was just lost in
+     * battle also still "matches" (2026-09-17: perfect opening, EX lost, reroll resumed the same
+     * enterId at 0 分 0 秒), so the failure-reroll and batch paths must abandon it outright.
+     */
+    val abandonExisting: Boolean = false,
 )
 
 data class LabyrinthRerollProgress(
@@ -450,7 +458,9 @@ class LabyrinthRerollWorkflow(
             is LabyrinthOperationResult.Failure -> return LabyrinthRerollResult.Failure(top.message, top.kind)
             is LabyrinthOperationResult.Success -> {
                 val existing = top.value.enterId
-                if (existing != null) {
+                if (existing != null && config.abandonExisting) {
+                    onProgress(progress(config, 0, "放弃现有开局（不复用）"))
+                } else if (existing != null) {
                     onProgress(progress(config, 0, "读取现有开局路线"))
                     when (val resolved = existingRouteResolver.resolve(top.value, config.routePolicy)) {
                         is ExistingLabyrinthRouteResult.Failure -> {

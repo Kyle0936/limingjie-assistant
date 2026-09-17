@@ -19,6 +19,34 @@ class LabyrinthEventFlowRegressionTest {
     private val assets = File(root, "android/app/src/main/assets/resource-packs/cn-bilibili")
     private val json = Json { ignoreUnknownKeys = true }
 
+    @Test fun `shop imprint joined screenshot belongs to rewards without opening invitation`() {
+        val paths = AndroidLabyrinthEntryTemplateLoader.TEMPLATE_PATHS + AndroidLabyrinthEntryTemplateLoader.OPTIONAL_TEMPLATE_PATHS
+        val templates = paths.mapNotNull { (id, path) ->
+            File(root, "android/app/src/main/assets/$path").takeIf { it.isFile }?.let { id to readImage(it) }
+        }.toMap()
+        val result = LabyrinthEntryFrameProcessor(LabyrinthEntryTemplateSet(templates))
+            .process(fixture("shop-character-joined-20260915.png"))
+        assertEquals("${result.observation}", LabyrinthEntryPageState.CHARACTER_JOINED, result.observation.state)
+        assertTrue("${result.observation.anchorScores.values}",
+            com.landosol.toolbox.labyrinth.labyrinthShopJoinedRewardOwnsRoute(result, Long.MIN_VALUE, 1_000))
+        val shopJoined = LabyrinthEntryFrameProcessor(LabyrinthEntryTemplateSet(templates))
+            .process(fixture("shop-character-joined-20260915.png"), skipJoinedCharacters = true)
+        assertTrue("Shop must still recognize joined roles", shopJoined.characterMatches.isNotEmpty())
+        val withoutShop = LabyrinthEntryFrameProcessor(LabyrinthEntryTemplateSet(
+            templates.mapValues { (key, value) ->
+                if (key.startsWith("entry.shop.")) PixelImage(11, 11,
+                    IntArray(121) { 0xff000000.toInt() or ((it * 73939) and 0xffffff) }) else value
+            },
+        ))
+        val recognized = withoutShop.process(fixture("shop-character-joined-20260915.png"))
+        val skipped = withoutShop.process(fixture("shop-character-joined-20260915.png"), skipJoinedCharacters = true)
+        assertEquals(LabyrinthEntryPageState.CHARACTER_JOINED, skipped.observation.state)
+        assertTrue(recognized.characterMatches.isNotEmpty())
+        assertTrue(skipped.characterMatches.isEmpty())
+        assertEquals(recognized.anchorMatches[EntryAnchorId.JOINED_CLOSE_STANDARD],
+            skipped.anchorMatches[EntryAnchorId.JOINED_CLOSE_STANDARD])
+    }
+
     @Test
     fun `event move screenshot yields confirm target at native and scaled resolutions`() {
         val original = fixture("event-move-confirmation-20260913.png")
@@ -28,6 +56,12 @@ class LabyrinthEventFlowRegressionTest {
             assertTrue(result.confidence >= 0.75)
             assertTrue((rect.left + rect.width / 2.0) / frame.width in 0.52..0.71)
             assertTrue((rect.top + rect.height / 2.0) / frame.height in 0.65..0.73)
+            // The cancel button sits to the left of confirm on the same row and stays inside
+            // the dialog body, so a dismiss tap can never land on the map behind it.
+            val cancel = result.cancelButtonRect
+            assertTrue((cancel.left + cancel.width / 2.0) / frame.width in 0.29..0.48)
+            assertTrue((cancel.top + cancel.height / 2.0) / frame.height in 0.65..0.73)
+            assertTrue(cancel.left + cancel.width <= rect.left)
         }
     }
 

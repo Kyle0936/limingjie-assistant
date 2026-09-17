@@ -20,7 +20,7 @@ class AndroidLabyrinthNodeTemplateLoader(
         return AndroidPixelImageAdapter.from(bitmap).also { bitmap.recycle() }
     }
 
-    private companion object {
+    internal companion object {
         const val ROOT = "resource-packs/cn-bilibili/vision"
         val TEMPLATE_PATHS = mapOf(
             "node.normal_battle.active" to "$ROOT/node_normal_battle_active.png",

@@ -798,6 +798,28 @@ class LabyrinthBattleTeamSelectionPlanTest {
         assertNull(labyrinthBattleRosterFilterRecoveryStep(scanningAll, onAll, everything))
     }
 
+    @Test
+    fun `fully swept editor excludes unfindable roles from the run roster instead of restarting the sweep`() {
+        // 2026-09-15 20:58 bundle: the restored roster listed 13 names, the editor could show 4.
+        // Every tab (火, 光, 全部) was scanned to its end 8 times, 66 swipes, because the
+        // exhausted-filter set was cleared each time the sweep finished.
+        fun joined(id: String, order: Int) = LabyrinthJoinedCharacter(id, "名称$id", order, 0.9, 0L, 0L)
+        val roster = listOf("1095", "1236", "1091", "1346", "1011", "1068").mapIndexed { i, id -> joined(id, i) }
+        val unfindable = setOf("1095", "1236", "1346")
+
+        val remaining = requireNotNull(labyrinthRosterAfterUnfindableExclusion(roster, unfindable))
+        assertEquals(listOf("1091", "1011", "1068"), remaining.map { it.characterId })
+
+        // Nothing to exclude means no change: the caller must not loop on a no-op.
+        assertNull(labyrinthRosterAfterUnfindableExclusion(roster, emptySet()))
+        assertNull(labyrinthRosterAfterUnfindableExclusion(roster, setOf("9999")))
+
+        // Combined-member ids canonicalize before comparison, like every other roster lookup.
+        val combined = listOf(joined("1811", 0), joined("1011", 1))
+        val afterCombined = requireNotNull(labyrinthRosterAfterUnfindableExclusion(combined, setOf("1811")))
+        assertEquals(listOf("1011"), afterCombined.map { it.characterId })
+    }
+
     private fun planner(
         ids: List<String>,
         attribute: LabyrinthCharacterAttribute = LabyrinthCharacterAttribute.FIRE,

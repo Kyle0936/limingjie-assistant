@@ -277,3 +277,21 @@ internal class LabyrinthBattleRosterSearch {
         const val VISUAL_EDGE_GAP_RATIO = 0.04
     }
 }
+
+/**
+ * Roster left after every attribute tab was scanned end to end without finding [unfindableIds].
+ *
+ * The run roster can list characters this editor cannot show: a stale roster restored from a
+ * previous run, or a recognition mistake at join time. Once the whole editor has been swept they
+ * are provably absent, so planning must stop asking for them. Returns null when nothing would
+ * change, which keeps the caller from looping on an exclusion that cannot make progress.
+ */
+internal fun labyrinthRosterAfterUnfindableExclusion(
+    roster: List<LabyrinthJoinedCharacter>,
+    unfindableIds: Set<String>,
+): List<LabyrinthJoinedCharacter>? {
+    if (unfindableIds.isEmpty()) return null
+    val canonical = unfindableIds.map(::canonicalLabyrinthRoleId).toSet()
+    val remaining = roster.filterNot { canonicalLabyrinthRoleId(it.characterId) in canonical }
+    return remaining.takeIf { it.size != roster.size }
+}

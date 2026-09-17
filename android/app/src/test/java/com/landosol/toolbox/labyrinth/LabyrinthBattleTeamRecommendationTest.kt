@@ -50,6 +50,49 @@ class LabyrinthBattleTeamRecommendationTest {
         assertTrue(result.recommendation.reasons.any { it.contains("本队确认0/2") })
     }
 
+    @Test fun `guide core is reserved even when generic attackers out-score it`() {
+        // Two DOT dealers rated far below five generic attackers. A scoring bonus alone loses
+        // to the player rating gap; the guide core must be reserved before the search runs.
+        val profiles = buildList {
+            add(role("tank", "T", 1, 90.0, 20.0, reliableVanguard = 100.0))
+            (1..5).forEach { add(role("gen$it", "高分输出$it", 1 + it, 95.0, 95.0)) }
+            (1..2).forEach { i ->
+                val r = role("dot$i", "持续伤害$i", 10 + i, 55.0, 55.0)
+                add(r.copy(functions = r.functions.copy(dot = 85.0)))
+            }
+        }.associateBy { it.characterId }
+        val planner = recommendationPlanner(profiles)
+        val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4, encounterStrategy = dotGuide)
+        val first = planner.initialRecommendation(profiles.keys, context) as LabyrinthBattleTeamRecommendationResult.Ready
+        val ids = first.recommendation.members.map { it.characterId }.toSet()
+        assertTrue("$ids", ids.containsAll(setOf("dot1", "dot2", "tank")))
+        assertTrue(first.recommendation.reasons.any { it.contains("已按攻略锁定核心角色") })
+        assertFalse(first.recommendation.reasons.any { it.contains("本队确认0/2") })
+
+        // An effective-effect role with no DOT is reserved too, ahead of the requirement fill.
+        val withEffective = planner.initialRecommendation(
+            profiles.keys, context.copy(effectiveCharacterIds = setOf("gen5")),
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        val ids2 = withEffective.recommendation.members.map { it.characterId }.toSet()
+        assertTrue("$ids2", ids2.containsAll(setOf("gen5", "dot1", "dot2", "tank")))
+    }
+
+    @Test fun `guide core that cannot sit behind any eligible tank falls back to the normal search`() {
+        val profiles = buildList {
+            add(role("tank", "T", 5, 90.0, 20.0, reliableVanguard = 100.0))
+            (1..5).forEach { add(role("gen$it", "输出$it", 5 + it, 80.0, 80.0)) }
+            // DOT dealer positioned in front of the only tank: fielding her breaks the front line.
+            val front = role("dotFront", "前排持续", 1, 70.0, 60.0)
+            add(front.copy(functions = front.functions.copy(dot = 90.0)))
+        }.associateBy { it.characterId }
+        val first = recommendationPlanner(profiles).initialRecommendation(
+            profiles.keys, LabyrinthRoleDecisionContext(defenseMarkStacks = 4, encounterStrategy = dotGuide),
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertEquals("tank", first.recommendation.vanguard.characterId)
+        assertFalse(first.recommendation.members.any { it.characterId == "dotFront" })
+        assertFalse(first.recommendation.reasons.any { it.contains("已按攻略锁定核心角色") })
+    }
+
     @Test fun `guide capability coverage remains preferred when enough characters exist`() {
         val profiles = (1..7).map { i ->
             val role = role("r$i", "角色$i", i, 80.0, 70.0,
@@ -499,6 +542,16 @@ class LabyrinthBattleTeamRecommendationTest {
     }
 
     @Test
+    fun `batch owned run ends at the retry limit regardless of the reroll toggle`() {
+        // 2026-09-17 live: 刷开局 off, EX limit 2 reached → must still be FAILED_MAX_RETRY for a batch.
+        assertTrue(labyrinthBatchOwnedRunEndsAtRetryLimit(batchOwnsRun = true, battleRetryCount = 2, retryLimit = 2))
+        assertFalse(labyrinthBatchOwnedRunEndsAtRetryLimit(batchOwnsRun = true, battleRetryCount = 1, retryLimit = 2))
+        // Interactive runs keep the old "stay on the failure page" behaviour.
+        assertFalse(labyrinthBatchOwnedRunEndsAtRetryLimit(batchOwnsRun = false, battleRetryCount = 2, retryLimit = 2))
+        assertFalse(labyrinthShouldRerollAfterBattleFailure(false, 2))
+    }
+
+    @Test
     fun `single boss fallback retry count is configurable and switches before reroll`() {
         assertEquals(
             4,
@@ -553,6 +606,28 @@ class LabyrinthBattleTeamRecommendationTest {
                 retryCountBeforeMulti = 4,
             ),
         )
+    }
+
+    @Test fun `boss follow-up slot fields a supplement team when the residual roster has no tank`() {
+        // 2026-09-17: teams 1/2 took both tanks; slot 3 must still be filled with the leftover
+        // damage dealers instead of leaving the Boss on a sliver.
+        val residual = (1..5).map { i -> role("d$i", "输出$i", i + 1, 70.0, 80.0) }
+            .associateBy { it.characterId }
+        val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4)
+
+        val strict = recommendationPlanner(residual).initialRecommendation(residual.keys, context, requestedBossTeamCount = 1)
+        assertTrue(strict is LabyrinthBattleTeamRecommendationResult.Unavailable)
+
+        val filled = recommendationPlanner(residual).initialRecommendation(
+            residual.keys, context, requestedBossTeamCount = 1, allowSupplementLead = true,
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertEquals(5, filled.recommendation.members.size)
+        assertTrue(filled.recommendation.reasons.any { it.contains("补刀队") })
+
+        val retry = recommendationPlanner(residual).retryRecommendation(
+            residual.keys, context, failedTeamSignatures = emptySet(), requestedBossTeamCount = 1, allowSupplementLead = true,
+        )
+        assertTrue(retry is LabyrinthBattleTeamRecommendationResult.Ready)
     }
 
     private fun recommendationPlanner(

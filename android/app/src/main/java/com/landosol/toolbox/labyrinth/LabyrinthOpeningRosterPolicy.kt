@@ -24,6 +24,12 @@ data class LabyrinthOpeningRosterConfig(
     val guildId: Int,
     val guildName: String,
     val slots: List<LabyrinthOpeningRosterSlot>,
+    /**
+     * Characters the guild grants automatically at the opening, on top of the three picks. They
+     * arrive as their own 角色加入 popup (2026-09-17: 拉比林斯 grants 菈比莉斯塔) and belong to
+     * the run roster from the first frame, whether or not that popup's portrait is recognised.
+     */
+    val grantedCharacters: List<LabyrinthOpeningCharacter> = emptyList(),
 ) {
     init {
         require(guildId > 0)
@@ -191,8 +197,13 @@ object LabyrinthOpeningRosterCatalog {
                 slot(character("1171", "静流(夏日)")),
                 slot(character("1011", "璃乃")),
             ),
+            grantedCharacters = listOf(character("1068", "菈比莉斯塔")),
         ),
     ).associateBy(LabyrinthOpeningRosterConfig::guildId)
+
+    /** Characters [guildId] grants at the opening without a pick; empty for unknown guilds. */
+    fun grantedCharactersFor(guildId: Int?): List<LabyrinthOpeningCharacter> =
+        guildId?.let(configs::get)?.grantedCharacters.orEmpty()
 
     fun policyFor(guildId: Int?): LabyrinthOpeningRosterPolicy? = guildId
         ?.let(configs::get)

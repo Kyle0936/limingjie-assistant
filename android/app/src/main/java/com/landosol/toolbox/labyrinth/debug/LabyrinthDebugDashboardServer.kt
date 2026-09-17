@@ -8,6 +8,7 @@ import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryFrameResult
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -32,6 +33,8 @@ import org.json.JSONObject
  */
 class LabyrinthDebugDashboardServer(
     private val port: Int = DEFAULT_PORT,
+    /** Directory for the optional per-frame archive; null disables the feature entirely. */
+    private val frameArchiveDirectory: File? = null,
 ) {
     private data class Snapshot(
         val json: ByteArray,
@@ -41,6 +44,11 @@ class LabyrinthDebugDashboardServer(
 
     private val running = AtomicBoolean(false)
     private val historyLock = Any()
+    /** Per-frame JPEG archive for offline replay. Off by default; toggled from the dashboard. */
+    private val frameArchiveEnabled = AtomicBoolean(false)
+    private val frameArchiveLock = Any()
+    private var frameArchiveSequence = 0L
+    private val frameArchiveFiles = ArrayDeque<File>()
     private val recentStates = ArrayDeque<ByteArray>()
     private val latest = AtomicReference(
         Snapshot(
@@ -93,7 +101,8 @@ class LabyrinthDebugDashboardServer(
             previous.jpeg
         }
         val version = if (shouldRefreshJpeg) previous.frameVersion + 1L else previous.frameVersion
-        val json = buildJson(state, result, presentation, version, nowMillis)
+        val archivedFrame = archiveFrame(bitmap, state.frameCount)
+        val json = buildJson(state, result, presentation, version, nowMillis, archivedFrame)
             .toString()
             .toByteArray(Charsets.UTF_8)
         latest.set(Snapshot(json = json, jpeg = jpeg, frameVersion = version))
@@ -101,6 +110,64 @@ class LabyrinthDebugDashboardServer(
             recentStates.addLast(json)
             while (recentStates.size > MAX_STATE_HISTORY_ENTRIES) recentStates.removeFirst()
         }
+    }
+
+    /**
+     * Write one downscaled JPEG per recognized frame while the archive switch is on. The archive
+     * is bounded to the same depth as the state history so the diagnostic zip stays around a few
+     * tens of megabytes. Returns the archive file name recorded in the history entry, or null.
+     */
+    private fun archiveFrame(bitmap: Bitmap, frameCount: Long): String? {
+        if (!frameArchiveEnabled.get()) return null
+        val directory = frameArchiveDirectory ?: return null
+        return runCatching {
+            if (!directory.isDirectory && !directory.mkdirs()) return null
+            val scale = FRAME_ARCHIVE_WIDTH.toFloat() / bitmap.width
+            val scaled = if (bitmap.width > FRAME_ARCHIVE_WIDTH) {
+                Bitmap.createScaledBitmap(
+                    bitmap,
+                    FRAME_ARCHIVE_WIDTH,
+                    (bitmap.height * scale).toInt().coerceAtLeast(1),
+                    true,
+                )
+            } else {
+                bitmap
+            }
+            val name: String
+            val file: File
+            synchronized(frameArchiveLock) {
+                frameArchiveSequence++
+                name = "%06d-f%d.jpg".format(Locale.US, frameArchiveSequence, frameCount)
+                file = File(directory, name)
+                frameArchiveFiles.addLast(file)
+                while (frameArchiveFiles.size > MAX_STATE_HISTORY_ENTRIES) {
+                    frameArchiveFiles.removeFirst().delete()
+                }
+            }
+            file.outputStream().use { output ->
+                scaled.compress(Bitmap.CompressFormat.JPEG, FRAME_ARCHIVE_JPEG_QUALITY, output)
+            }
+            if (scaled !== bitmap) scaled.recycle()
+            name
+        }.getOrElse { failure ->
+            Log.w(LOG_TAG, "frame archive write failed", failure)
+            null
+        }
+    }
+
+    private fun setFrameArchiveEnabled(enabled: Boolean) {
+        frameArchiveEnabled.set(enabled)
+        if (!enabled) return
+        synchronized(frameArchiveLock) {
+            // A fresh archive per enable so a replay bundle never mixes two sessions.
+            frameArchiveFiles.forEach(File::delete)
+            frameArchiveFiles.clear()
+            frameArchiveSequence = 0L
+        }
+    }
+
+    private fun archivedFramesSnapshot(): List<File> = synchronized(frameArchiveLock) {
+        frameArchiveFiles.filter(File::isFile)
     }
 
     private fun runServer(server: ServerSocket) {
@@ -135,10 +202,19 @@ class LabyrinthDebugDashboardServer(
             when (path) {
                 "/", "/index.html" -> respond(output, "text/html; charset=utf-8", DASHBOARD_HTML)
                 "/api/state" -> respond(output, "application/json; charset=utf-8", latest.get().json)
+                "/api/archive/on" -> {
+                    setFrameArchiveEnabled(frameArchiveDirectory != null)
+                    respond(output, "application/json; charset=utf-8", archiveStatusJson())
+                }
+                "/api/archive/off" -> {
+                    setFrameArchiveEnabled(false)
+                    respond(output, "application/json; charset=utf-8", archiveStatusJson())
+                }
+                "/api/archive" -> respond(output, "application/json; charset=utf-8", archiveStatusJson())
                 "/logs.zip", "/download/logs.zip" -> {
                     val snapshot = latest.get()
                     val history = synchronized(historyLock) { recentStates.toList() }
-                    val zip = buildDiagnosticZip(snapshot, history, collectOwnProcessLogcat())
+                    val zip = buildDiagnosticZip(snapshot, history, collectOwnProcessLogcat(), archivedFramesSnapshot())
                     val filename = "limingjie-debug-${timestampForFilename()}.zip"
                     respond(
                         output = output,
@@ -199,10 +275,17 @@ class LabyrinthDebugDashboardServer(
         return bytes.toString(Charsets.UTF_8.name())
     }
 
+    private fun archiveStatusJson(): String = JSONObject().apply {
+        put("supported", frameArchiveDirectory != null)
+        put("enabled", frameArchiveEnabled.get())
+        put("frames", archivedFramesSnapshot().size)
+    }.toString()
+
     private fun buildDiagnosticZip(
         snapshot: Snapshot,
         history: List<ByteArray>,
         logcat: ByteArray,
+        archivedFrames: List<File> = emptyList(),
     ): ByteArray = ByteArrayOutputStream().use { bytes ->
         ZipOutputStream(bytes).use { zip ->
             fun entry(name: String, content: ByteArray) {
@@ -220,6 +303,8 @@ class LabyrinthDebugDashboardServer(
                     appendLine("state/latest.json: 下载瞬间的结构化识别状态")
                     appendLine("state/history.ndjson: 最近 ${history.size} 条结构化状态历史")
                     appendLine("frame/latest.jpg: 最近一帧截图（若已有）")
+                    appendLine("frames/: 逐帧缩放截图（仅在面板开启逐帧归档后存在，${archivedFrames.size} 张）")
+                    appendLine("state/history.ndjson 每条的 archivedFrame 字段指向 frames/ 中的文件名")
                     appendLine("logs/logcat.txt: 当前 App 进程最近日志")
                 }.toByteArray(Charsets.UTF_8),
             )
@@ -234,6 +319,9 @@ class LabyrinthDebugDashboardServer(
                 }.toByteArray(),
             )
             snapshot.jpeg?.let { entry("frame/latest.jpg", it) }
+            archivedFrames.forEach { file ->
+                runCatching { entry("frames/${file.name}", file.readBytes()) }
+            }
             entry("logs/logcat.txt", logcat)
         }
         bytes.toByteArray()
@@ -276,9 +364,11 @@ class LabyrinthDebugDashboardServer(
         presentation: AutomationOverlayPresentation,
         frameVersion: Long,
         nowMillis: Long,
+        archivedFrame: String? = null,
     ): JSONObject = JSONObject().apply {
         put("timestamp", nowMillis)
         put("frameVersion", frameVersion)
+        put("archivedFrame", archivedFrame ?: JSONObject.NULL)
         put("title", presentation.title)
         put("status", presentation.status)
         put("detail", presentation.detail.orEmpty())
@@ -290,6 +380,22 @@ class LabyrinthDebugDashboardServer(
         put("elapsedMillis", result.elapsedMillis)
         put("stageMillis", JSONObject(result.stageMillis))
         put("nodeSearchMode", result.nodeSearchMode)
+        put("nodeSearchWindowCount", result.nodeSearchWindowCount)
+        put(
+            "trace",
+            JSONObject().apply {
+                val trace = state.frameTrace
+                put("expectedPages", JSONArray(trace.expectedPages))
+                put("actionLabel", trace.actionLabel ?: JSONObject.NULL)
+                put("actionRejectReason", trace.actionRejectReason ?: JSONObject.NULL)
+                put("nodeTargetBlockId", trace.nodeTargetBlockId ?: JSONObject.NULL)
+                put("nodeTargetColumn", trace.nodeTargetColumn ?: JSONObject.NULL)
+                put("nodeSearchWindowCount", trace.nodeSearchWindowCount)
+                put("nodeTrackerReliable", trace.nodeTrackerReliable ?: JSONObject.NULL)
+                put("nodeTrackerWorldLeft", trace.nodeTrackerWorldLeft ?: JSONObject.NULL)
+                put("nodeTargetExpectedX", trace.nodeTargetExpectedX ?: JSONObject.NULL)
+            },
+        )
         fun platformJson(matches: List<com.landosol.toolbox.labyrinth.node.FinalBossPlatformMatch>) =
             JSONArray().apply {
                 matches.forEach { match -> put(JSONObject().apply {
@@ -522,6 +628,8 @@ class LabyrinthDebugDashboardServer(
         const val DEFAULT_PORT = 8765
         const val JPEG_QUALITY = 68
         const val JPEG_REFRESH_INTERVAL_MILLIS = 750L
+        const val FRAME_ARCHIVE_WIDTH = 960
+        const val FRAME_ARCHIVE_JPEG_QUALITY = 60
         const val SOCKET_TIMEOUT_MILLIS = 3_000
         const val MAX_HEADER_LINE_BYTES = 8_192
         const val MAX_STATE_HISTORY_ENTRIES = 600
@@ -545,7 +653,7 @@ class LabyrinthDebugDashboardServer(
               </style>
             </head>
             <body>
-              <header><strong>黎明界实时分析</strong><span class="pill" id="status">等待数据</span><span class="pill" id="page">-</span><span class="muted" id="stamp"></span><a class="pill action" href="/logs.zip">下载日志 ZIP</a></header>
+              <header><strong>黎明界实时分析</strong><span class="pill" id="status">等待数据</span><span class="pill" id="page">-</span><span class="muted" id="stamp"></span><a class="pill action" href="/logs.zip">下载日志 ZIP</a><a class="pill action" href="#" id="archiveToggle">逐帧归档：读取中</a></header>
               <main class="grid">
                 <section class="card"><div class="frameWrap" id="frameWrap"><img id="frame" alt="latest frame"></div></section>
                 <section class="stack">
@@ -561,7 +669,11 @@ class LabyrinthDebugDashboardServer(
                 function setTextStable(el,value){const next=String(value??'');if(el.textContent===next||hasSelectionInside(el))return;el.textContent=next}
                 function setHtmlStable(el,value){const next=String(value??'');if(el.innerHTML===next||hasSelectionInside(el))return;el.innerHTML=next}
                 function drawBoxes(boxes){const wrap=document.getElementById('frameWrap');wrap.querySelectorAll('.box').forEach(x=>x.remove());for(const b of boxes||[]){const d=document.createElement('div');d.className='box '+(b.selected?'sel':(!b.recognized?'bad':''));d.style.left=(b.left*100)+'%';d.style.top=(b.top*100)+'%';d.style.width=(b.width*100)+'%';d.style.height=(b.height*100)+'%';const s=document.createElement('span');s.textContent=b.label;d.appendChild(s);wrap.appendChild(d)}}
-                async function tick(){try{const r=await fetch('/api/state',{cache:'no-store'});const d=await r.json();setTextStable(document.getElementById('status'),d.status||'-');setTextStable(document.getElementById('page'),(d.page||'-')+' '+Number(d.pageConfidence||0).toFixed(3));setTextStable(document.getElementById('stamp'),new Date(d.timestamp||Date.now()).toLocaleTimeString());setTextStable(document.getElementById('detail'),d.detail||'');const frameSize=(d.frameWidth??0)+' × '+(d.frameHeight??0);setHtmlStable(document.getElementById('summary'),'<b>原始帧</b><span>'+(d.receivedFrameCount??0)+'</span><b>识别帧</b><span>'+(d.recognizedFrameCount??0)+'</span><b>捕获尺寸</b><span>'+frameSize+'</span><b>宽高比</b><span>'+Number(d.frameAspectRatio||0).toFixed(3)+'</span><b>耗时</b><span>'+(d.elapsedMillis??0)+' ms</span><b>动作</b><span>'+(d.actionCount??0)+'</span><b>消息</b><span>'+esc(d.message??'')+'</span>');const compact={stageMillis:d.stageMillis,nodeSearchMode:d.nodeSearchMode,finalBossPlatforms:d.finalBossPlatforms,finalBossPlatformCandidates:d.finalBossPlatformCandidates,frame:{width:d.frameWidth,height:d.frameHeight,aspectRatio:d.frameAspectRatio},openingViewport:d.openingViewport,nodeRelicStacks:d.nodeRelicStacks,relicChoices:d.relicChoices,characters:d.characters,nodes:d.nodes,pageScores:d.pageScores,anchorScores:d.anchorScores,matchedFeatures:d.matchedFeatures};setTextStable(document.getElementById('json'),JSON.stringify(compact,null,2));drawBoxes(d.boxes);if(d.frameVersion!==frameVersion){frameVersion=d.frameVersion;document.getElementById('frame').src='/frame.jpg?v='+frameVersion}}catch(e){setTextStable(document.getElementById('status'),'连接失败')}finally{setTimeout(tick,500)}}tick();
+                let archiveOn=false;
+                async function refreshArchive(){try{const r=await fetch('/api/archive',{cache:'no-store'});const a=await r.json();archiveOn=!!a.enabled;const t=document.getElementById('archiveToggle');t.textContent=a.supported?('逐帧归档：'+(a.enabled?'开('+a.frames+')':'关')):'逐帧归档：不可用';}catch(e){}}
+                document.getElementById('archiveToggle').addEventListener('click',async ev=>{ev.preventDefault();try{await fetch(archiveOn?'/api/archive/off':'/api/archive/on',{cache:'no-store'});}catch(e){}refreshArchive();});
+                refreshArchive();setInterval(refreshArchive,3000);
+                async function tick(){try{const r=await fetch('/api/state',{cache:'no-store'});const d=await r.json();setTextStable(document.getElementById('status'),d.status||'-');setTextStable(document.getElementById('page'),(d.page||'-')+' '+Number(d.pageConfidence||0).toFixed(3));setTextStable(document.getElementById('stamp'),new Date(d.timestamp||Date.now()).toLocaleTimeString());setTextStable(document.getElementById('detail'),d.detail||'');const frameSize=(d.frameWidth??0)+' × '+(d.frameHeight??0);setHtmlStable(document.getElementById('summary'),'<b>原始帧</b><span>'+(d.receivedFrameCount??0)+'</span><b>识别帧</b><span>'+(d.recognizedFrameCount??0)+'</span><b>捕获尺寸</b><span>'+frameSize+'</span><b>宽高比</b><span>'+Number(d.frameAspectRatio||0).toFixed(3)+'</span><b>耗时</b><span>'+(d.elapsedMillis??0)+' ms</span><b>动作</b><span>'+(d.actionCount??0)+'</span><b>消息</b><span>'+esc(d.message??'')+'</span>');const compact={trace:d.trace,stageMillis:d.stageMillis,nodeSearchMode:d.nodeSearchMode,nodeSearchWindowCount:d.nodeSearchWindowCount,finalBossPlatforms:d.finalBossPlatforms,finalBossPlatformCandidates:d.finalBossPlatformCandidates,frame:{width:d.frameWidth,height:d.frameHeight,aspectRatio:d.frameAspectRatio},openingViewport:d.openingViewport,nodeRelicStacks:d.nodeRelicStacks,relicChoices:d.relicChoices,characters:d.characters,nodes:d.nodes,pageScores:d.pageScores,anchorScores:d.anchorScores,matchedFeatures:d.matchedFeatures};setTextStable(document.getElementById('json'),JSON.stringify(compact,null,2));drawBoxes(d.boxes);if(d.frameVersion!==frameVersion){frameVersion=d.frameVersion;document.getElementById('frame').src='/frame.jpg?v='+frameVersion}}catch(e){setTextStable(document.getElementById('status'),'连接失败')}finally{setTimeout(tick,500)}}tick();
               </script>
             </body>
             </html>
