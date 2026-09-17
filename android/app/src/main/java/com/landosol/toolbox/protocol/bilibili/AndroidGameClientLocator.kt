@@ -52,7 +52,10 @@ class AndroidGameClientLocator(
             .firstOrNull { server == null || it.server == server }
 
     fun launchIntent(server: GameServer? = null): Intent? =
-        findInstalled(server)?.packageName?.let(packageManager::getLaunchIntentForPackage)
+        installedClients().asSequence()
+            .filter { server == null || it.server == server }
+            .mapNotNull { packageManager.getLaunchIntentForPackage(it.packageName) }
+            .firstOrNull()
 
     fun installedClients(): List<InstalledGameClient> {
         val result = LinkedHashMap<String, InstalledGameClient>()

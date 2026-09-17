@@ -37,18 +37,18 @@ class BilibiliGameProtocolGateway(
         deviceSeed: String,
         captcha: CaptchaSolution?,
     ): GameLoginResult = withContext(Dispatchers.IO) {
-        val server = sdkSession.server
-        val activeProfile = profileProvider?.invoke(server)
-            ?: requireNotNull(profile) { "游戏协议配置不可用" }
-        val state = ClientState(
-            server = if (server == GameServer.CN_CHANNEL) channelBootstrapEndpoint else bootstrapEndpoint,
-            headers = activeProfile.headers.toMutableMap().apply {
-                put("DEVICE-ID", md5Hex(deviceSeed))
-                put("PLATFORM-ID", server.protocolPlatform)
-                if (server == GameServer.CN_CHANNEL) put("RES-KEY", CHANNEL_RES_KEY)
-            },
-        )
         try {
+            val server = sdkSession.server
+            val activeProfile = profileProvider?.invoke(server)
+                ?: requireNotNull(profile) { "游戏协议配置不可用" }
+            val state = ClientState(
+                server = if (server == GameServer.CN_CHANNEL) channelBootstrapEndpoint else bootstrapEndpoint,
+                headers = activeProfile.headers.toMutableMap().apply {
+                    put("DEVICE-ID", md5Hex(deviceSeed))
+                    put("PLATFORM-ID", server.protocolPlatform)
+                    if (server == GameServer.CN_CHANNEL) put("RES-KEY", CHANNEL_RES_KEY)
+                },
+            )
             discoverServer(state)
             loadMaintenance(state)
             val login = encryptedRequest(

@@ -14,8 +14,7 @@ class AndroidGameProtocolProfileFactory(
 ) {
     fun create(server: GameServer = GameServer.CN_BILIBILI): GameProtocolProfile {
         val client = gameClientLocator.findInstalled(server)
-            ?: gameClientLocator.findInstalled()
-            ?: error("未找到已安装的公主连结国服客户端")
+            ?: error("未找到已安装的${server.displayName}客户端")
         val packageInfo = context.packageManager.getPackageInfo(client.packageName, 0)
         val appVersion = packageInfo.versionName.orEmpty().ifBlank { error("无法读取国服游戏版本") }
         val model = listOf(Build.BRAND, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ")
