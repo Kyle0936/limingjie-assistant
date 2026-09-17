@@ -166,6 +166,21 @@ class LabyrinthPageRuntimePolicyTest {
     }
 
     @Test
+    fun `EX identity probe restarts on every fresh visit to the challenge page`() {
+        val challenge = LabyrinthEntryPageState.BATTLE_CHALLENGE
+        // Back from a lost battle / the map: fresh budget.
+        assertTrue(labyrinthExIdentityProbeRestarts(LabyrinthEntryPageState.BATTLE_FAILED, challenge, false))
+        assertTrue(labyrinthExIdentityProbeRestarts(LabyrinthEntryPageState.NODE_SELECTION, challenge, false))
+        // Still on the page (or its 详情 modal / animation frames): keep the running clock.
+        assertEquals(false, labyrinthExIdentityProbeRestarts(challenge, challenge, false))
+        assertEquals(false, labyrinthExIdentityProbeRestarts(null, challenge, false))
+        // Already identified: nothing to restart.
+        assertEquals(false, labyrinthExIdentityProbeRestarts(LabyrinthEntryPageState.BATTLE_FAILED, challenge, true))
+        // Not a challenge page at all.
+        assertEquals(false, labyrinthExIdentityProbeRestarts(challenge, LabyrinthEntryPageState.BATTLE_FAILED, false))
+    }
+
+    @Test
     fun `single EX detail fallback waits for OCR grace and excludes structured encounters`() {
         assertNull(
             labyrinthSingleExDetailProbeRect(
@@ -720,6 +735,16 @@ class LabyrinthPageRuntimePolicyTest {
                 result(LabyrinthEntryPageState.BATTLE_TEAM_SELECTION, battleTeam = observation),
             ).isEmpty(),
         )
+    }
+
+    @Test
+    fun `拉比林斯 opening grant rides along with the confirmed picks`() {
+        val grant = labyrinthGuildGrantedRosterMatches(5, EntryPixelRect(0, 0, 1920, 1080))
+        assertEquals(listOf("1068"), grant.map { it.characterId })
+        assertEquals(listOf("菈比莉斯塔"), grant.map { it.displayName })
+        assertTrue(grant.single().trusted)
+        assertTrue(labyrinthGuildGrantedRosterMatches(3, EntryPixelRect(0, 0, 1920, 1080)).isEmpty())
+        assertTrue(labyrinthGuildGrantedRosterMatches(null, EntryPixelRect(0, 0, 1920, 1080)).isEmpty())
     }
 
     @Test

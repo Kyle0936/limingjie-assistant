@@ -5,6 +5,8 @@ import com.landosol.toolbox.automation.session.SessionBlockKind
 import com.landosol.toolbox.labyrinth.node.NodeClassification
 import com.landosol.toolbox.labyrinth.node.LabyrinthMapScanDirection
 import com.landosol.toolbox.labyrinth.node.LabyrinthNodeTypes
+import com.landosol.toolbox.labyrinth.node.NodePositionMapping
+import com.landosol.toolbox.labyrinth.node.NodeTopologyBindingKind
 import com.landosol.toolbox.labyrinth.vision.EntryAnchorId
 import com.landosol.toolbox.labyrinth.vision.EntryAnchorMatch
 import com.landosol.toolbox.labyrinth.vision.EntryPixelRect
@@ -227,6 +229,151 @@ class LabyrinthEntryRecognitionPolicyTest {
                 timeoutMillis = 6_000L,
             ),
         )
+    }
+
+    @Test
+    fun `tolerated entry mismatch keeps the pending transition across the page change`() {
+        val confirmedAt = 10_000L
+        // First mismatched frame: tolerance active, transition must survive to see the next frame.
+        assertTrue(
+            labyrinthPreservesPendingNodeTransitionForEntryMismatch(
+                mismatchFrames = 1,
+                stableFrames = 3,
+                confirmationDispatchedAtMillis = confirmedAt,
+                nowMillis = confirmedAt + 1_500L,
+                timeoutMillis = 6_000L,
+            ),
+        )
+        // No mismatch counted: nothing to protect.
+        assertTrue(
+            !labyrinthPreservesPendingNodeTransitionForEntryMismatch(
+                mismatchFrames = 0,
+                stableFrames = 3,
+                confirmationDispatchedAtMillis = confirmedAt,
+                nowMillis = confirmedAt + 1_500L,
+                timeoutMillis = 6_000L,
+            ),
+        )
+        // Tolerance exhausted: the mismatch branch stops the run itself.
+        assertTrue(
+            !labyrinthPreservesPendingNodeTransitionForEntryMismatch(
+                mismatchFrames = 3,
+                stableFrames = 3,
+                confirmationDispatchedAtMillis = confirmedAt,
+                nowMillis = confirmedAt + 1_500L,
+                timeoutMillis = 6_000L,
+            ),
+        )
+        // Entry timeout still bounds how long a tolerated mismatch may hold the transition.
+        assertTrue(
+            !labyrinthPreservesPendingNodeTransitionForEntryMismatch(
+                mismatchFrames = 1,
+                stableFrames = 3,
+                confirmationDispatchedAtMillis = confirmedAt,
+                nowMillis = confirmedAt + 6_000L,
+                timeoutMillis = 6_000L,
+            ),
+        )
+        // Falls back to the tap timestamp when the move dialog was never confirmed by us.
+        assertTrue(
+            labyrinthPreservesPendingNodeTransitionForEntryMismatch(
+                mismatchFrames = 1,
+                stableFrames = 3,
+                confirmationDispatchedAtMillis = null,
+                nowMillis = confirmedAt + 1_500L,
+                timeoutMillis = 6_000L,
+                dispatchedAtMillis = confirmedAt,
+            ),
+        )
+    }
+
+    @Test
+    fun `lone semantic repair cannot move a target just bound by a strong full column`() {
+        // 2026-09-16 19:17 bundle: link#30402 seen at (802,350) inside a full three-node column,
+        // then a single link crop at (820,220) straddling rows 1/2 was adopted by semantic repair.
+        val strongRect = EntryPixelRect(802, 350, 280, 350)
+        val driftedRect = EntryPixelRect(820, 220, 280, 350)
+        val boundAt = 100_000L
+        assertTrue(
+            labyrinthNodeClickContradictsRecentStrongBinding(
+                rememberedRect = strongRect,
+                rememberedAtMillis = boundAt,
+                nowMillis = boundAt + 1_871L,
+                memoryMillis = 8_000L,
+                candidateRect = driftedRect,
+                candidateHasStrongOrderedTopology = false,
+            ),
+        )
+        // The same physical slot re-observed a few px off is not a contradiction.
+        assertTrue(
+            !labyrinthNodeClickContradictsRecentStrongBinding(
+                rememberedRect = strongRect,
+                rememberedAtMillis = boundAt,
+                nowMillis = boundAt + 1_871L,
+                memoryMillis = 8_000L,
+                candidateRect = EntryPixelRect(820, 350, 280, 350),
+                candidateHasStrongOrderedTopology = false,
+            ),
+        )
+        // A new strong full-column binding may legitimately relocate the target.
+        assertTrue(
+            !labyrinthNodeClickContradictsRecentStrongBinding(
+                rememberedRect = strongRect,
+                rememberedAtMillis = boundAt,
+                nowMillis = boundAt + 1_871L,
+                memoryMillis = 8_000L,
+                candidateRect = driftedRect,
+                candidateHasStrongOrderedTopology = true,
+            ),
+        )
+        // Memory expires; afterwards the ordinary stability gate is the only guard again.
+        assertTrue(
+            !labyrinthNodeClickContradictsRecentStrongBinding(
+                rememberedRect = strongRect,
+                rememberedAtMillis = boundAt,
+                nowMillis = boundAt + 8_000L,
+                memoryMillis = 8_000L,
+                candidateRect = driftedRect,
+                candidateHasStrongOrderedTopology = false,
+            ),
+        )
+        // Nothing remembered: nothing to contradict.
+        assertTrue(
+            !labyrinthNodeClickContradictsRecentStrongBinding(
+                rememberedRect = null,
+                rememberedAtMillis = Long.MIN_VALUE,
+                nowMillis = boundAt,
+                memoryMillis = 8_000L,
+                candidateRect = driftedRect,
+                candidateHasStrongOrderedTopology = false,
+            ),
+        )
+    }
+
+    @Test
+    fun `only a confident full column binding counts as strong ordered topology`() {
+        fun mapping(
+            kind: NodeTopologyBindingKind?,
+            confidence: Double?,
+            repair: Boolean = false,
+        ) = NodePositionMapping(
+            blockId = 30402L,
+            blockType = LabyrinthNodeTypes.LINK,
+            column = 4,
+            row = 2,
+            confidence = 0.66,
+            screenRect = EntryPixelRect(802, 350, 280, 350),
+            isClickable = true,
+            topologyConfidence = confidence,
+            topologyBindingKind = kind,
+            routeSemanticRepair = repair,
+        )
+        assertTrue(labyrinthNodeMappingHasStrongOrderedTopology(mapping(NodeTopologyBindingKind.FULL_COLUMN, 0.99)))
+        assertTrue(!labyrinthNodeMappingHasStrongOrderedTopology(mapping(NodeTopologyBindingKind.FULL_COLUMN, 0.89)))
+        assertTrue(!labyrinthNodeMappingHasStrongOrderedTopology(mapping(NodeTopologyBindingKind.PARTIAL_COLUMN, 0.99)))
+        assertTrue(!labyrinthNodeMappingHasStrongOrderedTopology(mapping(NodeTopologyBindingKind.SINGLE_TARGET, 0.99)))
+        assertTrue(!labyrinthNodeMappingHasStrongOrderedTopology(mapping(null, null, repair = true)))
+        assertTrue(!labyrinthNodeMappingHasStrongOrderedTopology(mapping(NodeTopologyBindingKind.FULL_COLUMN, 0.99, repair = true)))
     }
 
     @Test
@@ -464,6 +611,35 @@ class LabyrinthEntryRecognitionPolicyTest {
         assertTrue(
             labyrinthNodeEntryMatchesExpectedType(
                 LabyrinthNodeTypes.EVENT,
+                LabyrinthEntryPageState.ITEM_REWARD,
+            ),
+        )
+    }
+
+    @Test
+    fun `link node entry is confirmed anywhere along its reward chain`() {
+        // LINK_CHOICE can be gone before the next sampled frame; the three-character
+        // ITEM_REWARD and the role reward pages that follow still prove the link node was entered.
+        for (page in listOf(
+            LabyrinthEntryPageState.LINK_CHOICE,
+            LabyrinthEntryPageState.ITEM_REWARD,
+            LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+            LabyrinthEntryPageState.CHARACTER_JOINED,
+        )) {
+            assertTrue(page.name, labyrinthNodeEntryMatchesExpectedType(LabyrinthNodeTypes.LINK, page))
+        }
+        for (page in listOf(
+            LabyrinthEntryPageState.RELIC_CHOICE,
+            LabyrinthEntryPageState.EVENT_CHOICE,
+            LabyrinthEntryPageState.NODE_SELECTION,
+            LabyrinthEntryPageState.UNKNOWN,
+        )) {
+            assertTrue(page.name, !labyrinthNodeEntryMatchesExpectedType(LabyrinthNodeTypes.LINK, page))
+        }
+        // Relic stays strict: its item reward is indistinguishable from a map reward popup.
+        assertTrue(
+            !labyrinthNodeEntryMatchesExpectedType(
+                LabyrinthNodeTypes.RELIC,
                 LabyrinthEntryPageState.ITEM_REWARD,
             ),
         )

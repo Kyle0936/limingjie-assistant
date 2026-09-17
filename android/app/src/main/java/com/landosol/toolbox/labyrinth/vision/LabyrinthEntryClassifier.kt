@@ -215,10 +215,19 @@ class LabyrinthEntryPageClassifier(
                 anchorScores[EntryAnchorId.EVENT_ANIMATION_TITLE],
                 anchorScores[EntryAnchorId.EVENT_ANIMATION_SKIP],
             ),
-            LabyrinthEntryPageState.ITEM_REWARD to minimum(
-                anchorScores[EntryAnchorId.ITEM_REWARD_TITLE],
-                anchorScores[EntryAnchorId.ITEM_REWARD_INSTRUCTION],
-                anchorScores[EntryAnchorId.ITEM_REWARD_CLOSE],
+            // 获得道具 and 迷宫遗物效果 (迷宫大师 opening relic, 2026-09-17) share the modal
+            // shell and the 关闭 button; either title/instruction pair identifies the page.
+            LabyrinthEntryPageState.ITEM_REWARD to maxOf(
+                minimum(
+                    anchorScores[EntryAnchorId.ITEM_REWARD_TITLE],
+                    anchorScores[EntryAnchorId.ITEM_REWARD_INSTRUCTION],
+                    anchorScores[EntryAnchorId.ITEM_REWARD_CLOSE],
+                ),
+                minimum(
+                    anchorScores[EntryAnchorId.RELIC_EFFECT_TITLE],
+                    anchorScores[EntryAnchorId.RELIC_EFFECT_INSTRUCTION],
+                    anchorScores[EntryAnchorId.ITEM_REWARD_CLOSE],
+                ),
             ),
             LabyrinthEntryPageState.SHOP to minimum(
                 anchorScores[EntryAnchorId.SHOP_TITLE],
@@ -300,12 +309,23 @@ class LabyrinthEntryPageClassifier(
             anchorScores[EntryAnchorId.EVENT_SINGLE_CHOICE_TRIGGER_TITLE],
             anchorScores[EntryAnchorId.EVENT_SINGLE_CHOICE_SELECT_BUTTON],
         )
+        // 获得道具 is a centred modal drawn over the map; the map's header and side controls stay
+        // visible and score almost as high as the modal's own anchors (2026-09-17 recording:
+        // ITEM_REWARD 0.88 vs NODE_SELECTION 0.82, inside the ambiguity margin, so the final
+        // reward popup read as UNKNOWN and the run never closed it). When every modal anchor is
+        // strong, the modal owns the frame regardless of what is underneath.
+        val itemRewardModalScore = stateScores.getValue(LabyrinthEntryPageState.ITEM_REWARD)
         val state = when {
             eventOverlayScore >= maxOf(minScore, EVENT_OVERLAY_MIN_SCORE) && best.key in setOf(
                 LabyrinthEntryPageState.NODE_SELECTION,
                 LabyrinthEntryPageState.NODE_MAP_VIEW,
                 LabyrinthEntryPageState.EVENT_CHOICE,
             ) -> LabyrinthEntryPageState.EVENT_CHOICE
+            itemRewardModalScore >= maxOf(minScore, MODAL_OVERLAY_MIN_SCORE) && best.key in setOf(
+                LabyrinthEntryPageState.NODE_SELECTION,
+                LabyrinthEntryPageState.NODE_MAP_VIEW,
+                LabyrinthEntryPageState.ITEM_REWARD,
+            ) -> LabyrinthEntryPageState.ITEM_REWARD
             best.value < minScore -> LabyrinthEntryPageState.UNKNOWN
             bestRankingScore - secondRankingScore < minMargin -> LabyrinthEntryPageState.UNKNOWN
             else -> best.key
@@ -349,6 +369,8 @@ class LabyrinthEntryPageClassifier(
 
     private companion object {
         const val EVENT_OVERLAY_MIN_SCORE = 0.65
+        /** All three item-reward anchors must be this strong before the modal may override the map. */
+        const val MODAL_OVERLAY_MIN_SCORE = 0.80
         const val BATTLE_CHALLENGE_STRONG_BUTTON_SCORE = 0.80
         const val BATTLE_TEAM_STRONG_START_BUTTON_SCORE = 0.80
         const val BATTLE_RESULT_STRONG_NEXT_SCORE = 0.80

@@ -142,6 +142,126 @@ class SessionExpiryTerminator(
     }
 }
 
+/**
+ * 通过一次「会向服务端发请求」的点击触发旧会话失效，再点「返回标题」。
+ *
+ * 触发点由 [triggerPoint] 按当前识别页面给出（黎明界主页的底栏「我的主页」标签模板、战斗失败页
+ * 识别到的「重新挑战」按钮）；识别不到就不点，等到超时返回 TIMEOUT。不存在任何固定坐标
+ * 兜底：2026-09-17 用户指出固定点底栏在其他页面也会落下去。
+ *
+ * 为什么不能点「进入黎明界」：服务端刷开局后，客户端本地仍是上一局结束时的旧状态。
+ * 此时点「进入黎明界」会先进入公会选择页；只有再点任意公会才会触发网络请求并弹出
+ * 会话失效。公会选择页没有识别，正常流程（刷开局跳过该页）也从不经过它，所以这条路
+ * 必然卡死。底栏标签则直接发起页面数据请求，被服务端拒绝后立即弹出会话失效。
+ *
+ * 弹窗出现后的确认与回标题逻辑和 [SessionExpiryTerminator] 相同：点「返回标题」，
+ * 等标题页出现。
+ */
+class AnchorTriggerSessionExpiryTerminator(
+    private val onTap: suspend (ScreenPoint) -> Boolean,
+    /** Frame-space centre of the recognised trigger on the current page, or null. Re-read before every tap. */
+    private val triggerPoint: () -> ScreenPoint?,
+    private val returnTitlePoint: ScreenPoint,
+    private val popupVisible: suspend () -> Boolean,
+    private val titleReached: suspend () -> Boolean,
+    private val frameSize: () -> Pair<Int, Int>,
+    private val coordinateMapper: CoordinateMapper = CoordinateMapper(),
+    private val available: () -> Boolean = { true },
+    private val popupTimeoutMillis: Long = 30_000L,
+    private val titleTimeoutMillis: Long = 30_000L,
+    private val frameReadyTimeoutMillis: Long = 5_000L,
+    private val triggerTapDelayMillis: Long = 2_000L,
+    private val returnTapDelayMillis: Long = 1_500L,
+    /** Upper bound on trigger taps; the failure-page chain is three (结束 → 撤退 → 确认) plus retries. */
+    private val maxTriggerTaps: Int = 6,
+    private val returnTitleAnchorPoint: () -> ScreenPoint? = { null },
+    private val trace: (String) -> Unit = {},
+) : GameClientTerminator {
+    override val kind: ClientTerminationKind get() = ClientTerminationKind.SESSION_EXPIRY
+
+    /** Last step reached, for diagnostics after a non-TERMINATED result. */
+    @Volatile
+    var lastStep: String = "idle"
+        private set
+
+    override suspend fun terminate(): ClientTerminationResult {
+        fun step(name: String) { lastStep = name; trace(name) }
+        step("await-frame")
+        if (!await(frameReadyTimeoutMillis) {
+                frameSize().let { (width, height) -> width > 0 && height > 0 }
+            }
+        ) {
+            step("no-frame")
+            return ClientTerminationResult.UNSUPPORTED
+        }
+        val (width, height) = frameSize()
+        val mapping = coordinateMapper.createMapping(
+            PixelRect(0f, 0f, width.toFloat(), height.toFloat()),
+        )
+
+        // 已在本轮之前弹出过（例如上一步刚失败）：直接进入确认阶段。
+        var popup = popupVisible()
+        var taps = 0
+        val perAttemptTimeout = popupTimeoutMillis / maxTriggerTaps
+        while (!popup && taps < maxTriggerTaps) {
+            step("await-trigger#${taps + 1}")
+            var trigger: ScreenPoint? = null
+            val recognised = await(perAttemptTimeout) {
+                trigger = triggerPoint()
+                trigger != null || popupVisible()
+            }
+            if (!recognised) {
+                step("trigger-not-recognised-after-$taps-taps")
+                return ClientTerminationResult.TIMEOUT
+            }
+            val target = trigger ?: break // popup appeared without our tap
+            step("tap-trigger#${taps + 1}@${target.x.toInt()},${target.y.toInt()}")
+            if (!onTap(target)) {
+                step("trigger-tap-rejected")
+                return ClientTerminationResult.UNSUPPORTED
+            }
+            taps++
+            delay(triggerTapDelayMillis)
+            popup = await(perAttemptTimeout) { popupVisible() }
+        }
+        if (!popup && !popupVisible()) {
+            step("popup-timeout-after-$taps-taps")
+            return ClientTerminationResult.TIMEOUT
+        }
+
+        step("popup-visible")
+        val confirm = returnTitleAnchorPoint() ?: mapping.toScreen(returnTitlePoint)
+            ?: run { step("return-title-unmappable"); return ClientTerminationResult.TIMEOUT }
+        step("tap-return-title@${confirm.x.toInt()},${confirm.y.toInt()}")
+        if (!onTap(confirm)) {
+            step("return-title-tap-rejected")
+            return ClientTerminationResult.TIMEOUT
+        }
+        delay(returnTapDelayMillis)
+        if (!await(titleTimeoutMillis) { titleReached() }) {
+            step("title-timeout")
+            return ClientTerminationResult.TIMEOUT
+        }
+        step("terminated")
+        return ClientTerminationResult.TERMINATED
+    }
+
+    override fun isSupported(): Boolean = available()
+
+    private suspend fun await(timeoutMillis: Long, probe: suspend () -> Boolean): Boolean {
+        val deadline = System.currentTimeMillis() + timeoutMillis
+        while (System.currentTimeMillis() < deadline) {
+            if (probe()) return true
+            delay(POLL_INTERVAL_MILLIS)
+        }
+        return false
+    }
+
+    private companion object {
+        const val POLL_INTERVAL_MILLIS = 500L
+    }
+}
+
 /** 不可用的空终止器（例如发布版本关闭了所有降级策略） */
 class UnsupportedTerminator(
     override val kind: ClientTerminationKind,

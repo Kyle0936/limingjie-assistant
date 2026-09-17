@@ -116,6 +116,14 @@ object EntryAnchorId {
     const val RUN_CLEAR_CHEST_ANIMATION_TITLE = "run.clear.chest_animation.title"
     const val RUN_CLEAR_CHEST_RESULT_TITLE = "run.clear.chest_result.title"
     const val RUN_CLEAR_CHEST_CONFIRM_BUTTON = "run.clear.chest_confirm_button"
+    /**
+     * 黎明界主页底栏最左的「我的主页」标签；会话失效触发点，只在识别到时点击。
+     * 2026-09-17 实测：点当前已选中的「冒险」标签不联网，不会触发返回标题；「我的主页」会。
+     */
+    const val DAWN_HOME_MY_HOME_TAB = "dawn.home.my_home_tab"
+    /** 主页面板顶部的「迷宫遗物效果」标题（迷宫大师开局赠送遗物弹窗）。 */
+    const val RELIC_EFFECT_TITLE = "entry.relic_effect.title"
+    const val RELIC_EFFECT_INSTRUCTION = "entry.relic_effect.instruction"
 
     val required = setOf(
         TITLE_LOGO,
@@ -319,6 +327,8 @@ data class LabyrinthEntryFrameResult(
     val shopObservation: LabyrinthShopObservation? = null,
     val nodeMoveConfirmation: LabyrinthNodeMoveConfirmationObservation? = null,
     val battleFailure: LabyrinthBattleFailureObservation? = null,
+    /** 结束确认 dialog over the failure page; non-null only while such a dialog is open. */
+    val battleEndConfirmation: LabyrinthBattleEndConfirmationObservation? = null,
     val exChallenge: LabyrinthExChallengeObservation? = null,
     val exEncounter: LabyrinthExEncounterObservation? = null,
     val frameWidth: Int = 0,
@@ -354,6 +364,8 @@ class LabyrinthEntryFrameProcessor(
     private val nodeMoveConfirmationDetector: LabyrinthNodeMoveConfirmationDetector =
         LabyrinthNodeMoveConfirmationDetector(),
     private val battleFailureDetector: LabyrinthBattleFailureDetector = LabyrinthBattleFailureDetector(),
+    private val battleEndConfirmationDetector: LabyrinthBattleEndConfirmationDetector =
+        LabyrinthBattleEndConfirmationDetector(),
     private val exChallengeDetector: LabyrinthExChallengeDetector = LabyrinthExChallengeDetector(),
     private val finalBossOnly: () -> Boolean = { false },
     private val nodeSearchHint: () -> NodeSearchHint? = { null },
@@ -388,6 +400,7 @@ class LabyrinthEntryFrameProcessor(
         var shopObservation: LabyrinthShopObservation? = null
         var nodeMoveConfirmation: LabyrinthNodeMoveConfirmationObservation? = null
         var battleFailure: LabyrinthBattleFailureObservation? = null
+        var battleEndConfirmation: LabyrinthBattleEndConfirmationObservation? = null
         var exChallenge: LabyrinthExChallengeObservation? = null
         var nodesNanos = 0L
         var bossPlatformNanos = 0L
@@ -429,6 +442,13 @@ class LabyrinthEntryFrameProcessor(
             val anchorScores = LabyrinthAnchorScores(scores)
             val classified = classifier.classify(anchorScores)
             battleFailure = battleFailureDetector.detect(frame)
+            // The dialog dims the page behind it; only probe when the page still looks like a
+            // failure page (or classified as nothing), never over a recognised unrelated page.
+            battleEndConfirmation = if (battleFailure != null || classified.state == LabyrinthEntryPageState.UNKNOWN) {
+                battleEndConfirmationDetector.detect(frame)
+            } else {
+                null
+            }
             observation = battleFailure?.let { failure ->
                 classified.copy(
                     state = LabyrinthEntryPageState.BATTLE_FAILED,
@@ -562,6 +582,7 @@ class LabyrinthEntryFrameProcessor(
             shopObservation = shopObservation,
             nodeMoveConfirmation = nodeMoveConfirmation,
             battleFailure = battleFailure,
+            battleEndConfirmation = battleEndConfirmation,
             exChallenge = exChallenge,
             frameWidth = frame.width,
             frameHeight = frame.height,
@@ -739,8 +760,17 @@ class LabyrinthEntryFrameProcessor(
             standard(EntryAnchorId.RUN_CLEAR_NEXT_BUTTON, 1452, 946, 388, 92),
             standard(EntryAnchorId.RUN_CLEAR_REWARD_ANIMATION_TITLE, 650, 80, 620, 120),
             standard(EntryAnchorId.RUN_CLEAR_CHEST_ANIMATION_TITLE, 650, 80, 620, 120),
-            standard(EntryAnchorId.RUN_CLEAR_CHEST_RESULT_TITLE, 650, 80, 620, 110),
-            standard(EntryAnchorId.RUN_CLEAR_CHEST_CONFIRM_BUTTON, 1452, 946, 388, 92),
+            // 宝箱开封结果 title bar: blue band y 60..112 on the 2026-09-17 recording; crop matches this rect exactly.
+            standard(EntryAnchorId.RUN_CLEAR_CHEST_RESULT_TITLE, 650, 52, 620, 60),
+            // 宝箱开封结果 is a centred modal; its 确认 sits bottom-centre like 获得道具's 关闭.
+            standard(EntryAnchorId.RUN_CLEAR_CHEST_CONFIRM_BUTTON, 745, 910, 430, 110),
+            // 我的主页 tab on the labyrinth home bottom bar (2026-09-17 recording t10.5). The
+            // selected 冒险 tab is not used: tapping the active tab makes no server request.
+            standard(EntryAnchorId.DAWN_HOME_MY_HOME_TAB, 85, 945, 175, 125),
+            // 迷宫遗物效果 popup (迷宫大师 opening relic). Same modal shell as 获得道具, but the
+            // title and the two-line instruction differ; the close button is shared.
+            standard(EntryAnchorId.RELIC_EFFECT_TITLE, 760, 50, 400, 75),
+            standard(EntryAnchorId.RELIC_EFFECT_INSTRUCTION, 770, 150, 380, 65),
         )
         val DEFINITIONS_BY_ID = DEFINITIONS.groupBy(EntryAnchorDefinition::id)
     }

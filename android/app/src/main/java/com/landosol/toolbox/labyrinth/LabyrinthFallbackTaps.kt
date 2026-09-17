@@ -98,9 +98,11 @@ internal val LABYRINTH_FALLBACK_TAP_POLICIES: List<LabyrinthFallbackTapPolicy> =
         LabyrinthFallbackTap.BOTTOM_RIGHT,
         setOf(EntryAnchorId.RUN_CLEAR_NEXT_BUTTON),
     ),
+    // 宝箱开封结果 is a centred modal whose 确认 sits bottom-centre (2026-09-17 screenshot); the
+    // bottom-right point belongs to the character summary's 下一步 and misses this dialog.
     LabyrinthFallbackTapPolicy(
         LabyrinthEntryPageState.RUN_CLEAR_CHEST_RESULT,
-        LabyrinthFallbackTap.BOTTOM_RIGHT,
+        LabyrinthFallbackTap.BOTTOM_CENTER,
         setOf(EntryAnchorId.RUN_CLEAR_CHEST_CONFIRM_BUTTON),
     ),
     // Same situation as ITEM_REWARD: EVENT_ANIMATION_SKIP is declared at y 850..970 while the

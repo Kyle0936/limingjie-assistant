@@ -1231,6 +1231,23 @@ class LabyrinthTeamOptimizer(
         ).firstOrNull()
     }
 
+    /**
+     * Best formation with the frontmost-tank gate switched off. Used only to fill Boss follow-up
+     * slots that would otherwise stay empty: an unsafe team that lands a few hits is strictly
+     * better than no team when the Boss is down to a sliver.
+     */
+    fun bestSupplementFormation(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+    ): LabyrinthTeamEvaluation? = rankedFormationsInternal(
+        roster = roster,
+        context = context,
+        requiredCharacterId = null,
+        systemOnly = false,
+        limit = 1,
+        requireFrontmostTank = false,
+    ).firstOrNull()
+
     fun bestSystemFormation(
         roster: Collection<LabyrinthRoleProfile>,
         context: LabyrinthRoleDecisionContext,
@@ -1699,6 +1716,8 @@ enum class LabyrinthTeamPlanKind {
     THREE_TEAM_FALLBACK,
     INSUFFICIENT_ROLES,
     RESTART_RECOMMENDED,
+    /** Boss follow-up teams formed without a qualified vanguard, purely to add damage. */
+    SUPPLEMENT_FILL,
 }
 
 @Serializable
@@ -1730,6 +1749,8 @@ data class LabyrinthTeamPlan(
     val kind: LabyrinthTeamPlanKind,
     val teams: List<LabyrinthTeamEvaluation>,
     val reason: String,
+    /** Leading teams that passed the vanguard survival gate; any team after them is a damage supplement. */
+    val safeTeamCount: Int = teams.size,
 )
 
 /**
@@ -1797,6 +1818,13 @@ class LabyrinthTeamPlanSearcher(
         requestedTeams: Int = 3,
         excludedTeamSignatures: Set<String> = emptySet(),
         survivalRecovery: Boolean = false,
+        /**
+         * Fill the slots the safe search cannot cover with vanguard-less damage teams instead of
+         * leaving them empty. 2026-09-17 user: a Boss survived on a sliver because the third slot
+         * was left blank when no third qualified tank existed. Safe teams always come first, so
+         * the tank-led teams still take the opening hits.
+         */
+        supplementTeams: Boolean = true,
     ): LabyrinthTeamPlan {
         require(requestedTeams in 1..3)
         val unique = roster.distinctBy(LabyrinthRoleProfile::characterId)
@@ -1811,6 +1839,17 @@ class LabyrinthTeamPlanSearcher(
         val ranked = optimizer.rankedBattleFormations(unique, searchContext)
             .filterNot { evaluation -> evaluation.teamSignature() in excludedTeamSignatures }
         if (ranked.isEmpty()) {
+            if (supplementTeams) {
+                val fill = supplementFill(emptyList(), unique, searchContext, requestedTeams, excludedTeamSignatures)
+                if (fill.isNotEmpty()) {
+                    return LabyrinthTeamPlan(
+                        LabyrinthTeamPlanKind.SUPPLEMENT_FILL,
+                        fill,
+                        "Boss当前角色池没有合格一号位；按输出补刀队填充${fill.size}队，不留空队",
+                        safeTeamCount = 0,
+                    )
+                }
+            }
             return LabyrinthTeamPlan(
                 LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
                 emptyList(),
@@ -1863,11 +1902,17 @@ class LabyrinthTeamPlanSearcher(
             } else {
                 LabyrinthTeamPlanKind.TWO_STABLE_TEAMS
             }
+            val fill = if (supplementTeams) {
+                supplementFill(teams, unique, searchContext, requestedTeams, excludedTeamSignatures)
+            } else {
+                emptyList()
+            }
             return LabyrinthTeamPlan(
                 kind,
-                teams,
+                teams + fill,
                 "Boss多队安全容量${targetTeams}队（请求${requestedTeams}队；可靠一号位${qualifiedVanguards}名；完整队伍容量${fullTeamCapacity}$gateNote），" +
-                    "按${targetTeams}队总评分优化，总分${formatScore(combined)}",
+                    "按${targetTeams}队总评分优化，总分${formatScore(combined)}" + supplementNote(fill.size),
+                safeTeamCount = teams.size,
             )
         }
 
@@ -1880,12 +1925,47 @@ class LabyrinthTeamPlanSearcher(
         } else {
             ranked.first()
         }
+        val fill = if (supplementTeams) {
+            supplementFill(listOf(single), unique, searchContext, requestedTeams, excludedTeamSignatures)
+        } else {
+            emptyList()
+        }
         return LabyrinthTeamPlan(
             LabyrinthTeamPlanKind.FIRST_ATTEMPT_ONE_TEAM,
-            listOf(single),
-            "Boss仅能安全组成1队（可靠一号位${qualifiedVanguards}名$gateNote），按单队评分优化，评分${formatScore(single.score)}",
+            listOf(single) + fill,
+            "Boss仅能安全组成1队（可靠一号位${qualifiedVanguards}名$gateNote），按单队评分优化，评分${formatScore(single.score)}" +
+                supplementNote(fill.size),
+            safeTeamCount = 1,
         )
     }
+
+    /**
+     * Follow-up teams for the slots [safeTeams] leaves open, built from the leftover roster with
+     * the frontmost-tank gate off. Never reorders or replaces a safe team.
+     */
+    private fun supplementFill(
+        safeTeams: List<LabyrinthTeamEvaluation>,
+        unique: List<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        requestedTeams: Int,
+        excludedTeamSignatures: Set<String>,
+    ): List<LabyrinthTeamEvaluation> {
+        val used = safeTeams.flatMapTo(hashSetOf()) { team -> team.members.map(LabyrinthRoleProfile::characterId) }
+        val fill = mutableListOf<LabyrinthTeamEvaluation>()
+        while (safeTeams.size + fill.size < requestedTeams) {
+            val remaining = unique.filterNot { it.characterId in used }
+            if (remaining.size < TEAM_SIZE) break
+            val next = optimizer.bestSupplementFormation(remaining, context)
+                ?.takeUnless { it.teamSignature() in excludedTeamSignatures }
+                ?: break
+            fill += next
+            next.members.forEach { used += it.characterId }
+        }
+        return fill
+    }
+
+    private fun supplementNote(count: Int): String =
+        if (count == 0) "" else "；其后${count}队无合格一号位，作为输出补刀队填充而不留空"
 
     fun fallbackSearch(
         roster: Collection<LabyrinthRoleProfile>,

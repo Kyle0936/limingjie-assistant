@@ -108,6 +108,18 @@ internal data class LabyrinthCurrentOpeningCriteria(
     val attempt: Int,
 )
 
+/**
+ * The game client's own login (返回标题 → 登录, every batch cycle) kicks the app's API session;
+ * the next read answers "连接中断。回到标题界面。" as a REJECTED failure. top() is read-only, so a
+ * fresh login and a retry is always safe; only a rejection that survives the retries is real.
+ * 2026-09-17 user: 「读取当前开局」有时显示该提示并停在待验证状态。
+ */
+internal fun labyrinthReadRetriesWithFreshLogin(
+    kind: LabyrinthFailureKind,
+    sessionResets: Int,
+    maxSessionResets: Int,
+): Boolean = kind == LabyrinthFailureKind.REJECTED && sessionResets < maxSessionResets
+
 internal fun labyrinthCurrentOpeningCriteria(
     selectedGuildId: Int,
     selectedDifficulty: Int,
@@ -279,7 +291,7 @@ class LabyrinthController(
             return false
         }
         val config = parseConfig(account.id) ?: return false
-        frozenStart = account to config.copy(retireExisting = true)
+        frozenStart = account to config.copy(retireExisting = true, abandonExisting = true)
         chrome.update {
             it.copy(
                 startedAtMillis = System.currentTimeMillis(),
@@ -299,6 +311,84 @@ class LabyrinthController(
             frozenStart = null
             chrome.update { state -> state.copy(isWorking = false, progress = null,
                 message = "无法启动后台服务，请返回前台检查通知权限后重试：${it.message}") }
+        }
+    }
+
+    /**
+     * Batch-owned reroll: runs the same network workflow as the service path, awaits it, and
+     * returns the enterId. The batch supplies guild/difficulty; every other saved criterion
+     * (perfect start, allowance, Boss ids) comes from the account's saved reroll settings.
+     * retireExisting is forced because the batch has already recorded the previous run.
+     *
+     * Not started via the foreground service: the batch runs inside the capture foreground
+     * service's lifetime, which already keeps the process alive.
+     */
+    suspend fun rerollForBatch(
+        accountId: Long,
+        guildId: Int,
+        difficulty: Int,
+    ): com.landosol.toolbox.labyrinth.batch.LabyrinthBatchRerollResult {
+        val failure = { message: String -> com.landosol.toolbox.labyrinth.batch.LabyrinthBatchRerollResult.Failure(message) }
+        if (chrome.value.isWorking || chrome.value.captcha != null || !chrome.value.settingsReady) {
+            return failure("刷开局任务尚未就绪或已有任务运行")
+        }
+        val account = uiState.value.selectedAccount
+        if (account == null || account.id != accountId || account.id != settingsAccountId) {
+            return failure("当前账号已变化")
+        }
+        val base = parseConfig(account.id) ?: return failure(chrome.value.message ?: "刷开局配置无效")
+        // The batch has already recorded the previous run (cleared or lost); whatever the server
+        // still holds is that run and must be retired, never resumed as "a matching opening".
+        val config = base.copy(guildId = guildId, difficulty = difficulty, retireExisting = true, abandonExisting = true)
+        chrome.update { it.copy(isWorking = true, message = null, progress = "批量：正在刷取 $guildId", routeBlockIds = emptyList()) }
+        try {
+            var sessionResets = 0
+            while (true) {
+                val session = ensureGameSession(account, PendingLoginAction.START)
+                    ?: return failure(chrome.value.message ?: "无法登录游戏服")
+                val workflow = LabyrinthRerollWorkflow(
+                    api = BilibiliLabyrinthApi(session),
+                    routeStore = RoomLabyrinthRouteStore(database),
+                    checkpointStore = RoomLabyrinthRerollCheckpointStore(database),
+                )
+                val result = workflow.run(config) { progress ->
+                    chrome.update {
+                        val limit = if (progress.rerollUntilFound) "不限" else progress.maxAttempts.toString()
+                        it.copy(progress = "批量 ${progress.attempt}/$limit · ${progress.stage}")
+                    }
+                }
+                when (result) {
+                    is LabyrinthRerollResult.Success -> {
+                        chrome.update {
+                            it.copy(
+                                routeBlockIds = result.route.blockIds,
+                                currentGuildId = config.guildId,
+                                currentDifficulty = config.difficulty,
+                                message = "批量：第 ${result.attempt} 次刷到目标路线",
+                            )
+                        }
+                        return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchRerollResult.Success(result.route.enterId)
+                    }
+                    is LabyrinthRerollResult.NeedsExistingRunDecision ->
+                        return failure("检测到已有黎明界开局但未被撤退")
+                    is LabyrinthRerollResult.Exhausted ->
+                        return failure("已完成 ${result.attempts} 次尝试，未找到目标路线")
+                    is LabyrinthRerollResult.Failure -> {
+                        if (result.kind != LabyrinthFailureKind.REJECTED || sessionResets >= MAX_SESSION_RESETS) {
+                            return failure(result.message)
+                        }
+                        sessionResets += 1
+                        sessionRegistry.delete(account.id)
+                    }
+                }
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Throwable) {
+            return failure(error.message.orEmpty().ifBlank { "黎明界刷取失败" }.take(200))
+        } finally {
+            withContext(NonCancellable) { runCatching { refreshCheckpoint(account.id) } }
+            chrome.update { it.copy(isWorking = false, progress = null) }
         }
     }
 
@@ -400,11 +490,24 @@ class LabyrinthController(
         runningJob = scope.launch {
             chrome.update { it.copy(isWorking = true, message = null, progress = "读取黎明界状态") }
             try {
-                val session = ensureGameSession(account, PendingLoginAction.CHECK_STATUS) ?: return@launch
-                val api = BilibiliLabyrinthApi(session)
+                var session = ensureGameSession(account, PendingLoginAction.CHECK_STATUS) ?: return@launch
+                var api = BilibiliLabyrinthApi(session)
                 val checkpointStore = RoomLabyrinthRerollCheckpointStore(database)
                 val savedCheckpoint = checkpointStore.load(account.id)
-                when (val result = api.top()) {
+                var sessionResets = 0
+                var topResult = api.top()
+                while (true) {
+                    val rejected = topResult as? LabyrinthOperationResult.Failure ?: break
+                    if (!labyrinthReadRetriesWithFreshLogin(rejected.kind, sessionResets, MAX_SESSION_RESETS)) break
+                    sessionResets += 1
+                    val detail = rejected.message
+                    chrome.update { it.copy(progress = "游戏服会话已失效（$detail），重新登录后重读") }
+                    sessionRegistry.delete(account.id)
+                    session = ensureGameSession(account, PendingLoginAction.CHECK_STATUS) ?: return@launch
+                    api = BilibiliLabyrinthApi(session)
+                    topResult = api.top()
+                }
+                when (val result = topResult) {
                     is LabyrinthOperationResult.Success -> {
                         val top = result.value
                         val maxUnlocked = LabyrinthRerollOptions.maxUnlockedDifficulty(top.clearedDifficulties)

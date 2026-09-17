@@ -1,6 +1,7 @@
 package com.landosol.toolbox.labyrinth.vision
 
 import android.graphics.Bitmap
+import com.landosol.toolbox.clanbattle.recognition.PixelImage
 import com.landosol.toolbox.labyrinth.LabyrinthExEncounterCatalog
 import com.landosol.toolbox.labyrinth.LabyrinthExEncounterStrategy
 
@@ -40,7 +41,7 @@ class AndroidLabyrinthExEncounterResolver(
             resetChallengeTracking()
             val nameRect = map(bitmap, DETAIL_NAME_RECT) ?: return result
             val closeRect = map(bitmap, DETAIL_CLOSE_RECT) ?: return result
-            val read = ocr.read(bitmap, DETAIL_OCR_SLOT, nameRect, scale = 2)
+            val read = ocr.read(bitmap, DETAIL_OCR_SLOT, tightenToInk(bitmap, nameRect), scale = 2)
             val text = read?.text
             val matched = LabyrinthExEncounterCatalog.matchObservedName(text)
             val trustedStrategy = updateDetailStability(matched, read?.id)
@@ -200,6 +201,18 @@ class AndroidLabyrinthExEncounterResolver(
             y += SAMPLE_STEP
         }
         return if (samples == 0) 0.0 else matched.toDouble() / samples
+    }
+
+    /**
+     * The modal name row sits on a flat white panel, so ink bounds are reliable here and a short
+     * name stops being a speck in a wide crop. Deliberately not applied to the challenge-page name,
+     * which is drawn over animated artwork where dark pixels carry no text signal.
+     */
+    private fun tightenToInk(bitmap: Bitmap, rect: EntryPixelRect): EntryPixelRect {
+        val pixels = IntArray(rect.width * rect.height)
+        bitmap.getPixels(pixels, 0, rect.width, rect.left, rect.top, rect.width, rect.height)
+        val ink = labyrinthOcrInkBounds(PixelImage(rect.width, rect.height, pixels)) ?: return rect
+        return EntryPixelRect(rect.left + ink.left, rect.top + ink.top, ink.width, ink.height)
     }
 
     private fun map(bitmap: Bitmap, rect: EntryReferenceRect): EntryPixelRect? =

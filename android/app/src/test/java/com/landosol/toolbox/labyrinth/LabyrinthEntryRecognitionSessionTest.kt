@@ -5,6 +5,11 @@ import com.landosol.toolbox.automation.AutomationMode
 import com.landosol.toolbox.automation.AutomationBackendResult
 import com.landosol.toolbox.automation.SessionBoundActionExecutor
 import com.landosol.toolbox.automation.capture.CaptureFrameBus
+import com.landosol.toolbox.labyrinth.batch.LabyrinthRunTerminalEvent
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -33,6 +38,117 @@ class LabyrinthEntryRecognitionSessionTest {
         assertFalse(session.state.value.running)
         assertTrue(manager.current() == null)
         assertTrue(captureStopCalls == 1)
+    }
+
+    @Test
+    fun `stop can end the run while keeping the capture session for the next run`() = runTest {
+        val manager = AutomationSessionManager()
+        var captureStopCalls = 0
+        val session = LabyrinthEntryRecognitionSession(
+            sessionManager = manager,
+            captureActive = { true },
+            captureStop = { captureStopCalls++ },
+            processorFactory = { { error("test does not dispatch frames") } },
+        )
+
+        assertTrue(session.start() is LabyrinthEntryRecognitionStartResult.Started)
+        assertTrue(session.stop("handing off to reroll", releaseCapture = false))
+
+        // Run lifetime ended: shared automation session and frame ownership are released.
+        assertFalse(session.state.value.running)
+        assertTrue(manager.current() == null)
+        assertTrue(CaptureFrameBus.currentOwner() == null)
+        // Capture lifetime continues: the projection is untouched.
+        assertTrue(captureStopCalls == 0)
+
+        // A second run can start on the same capture without a new authorization.
+        assertTrue(session.start() is LabyrinthEntryRecognitionStartResult.Started)
+        assertTrue(session.stop())
+        assertTrue(captureStopCalls == 1)
+    }
+
+    @Test
+    fun `stop without an active run still honours the capture flag`() = runTest {
+        var captureStopCalls = 0
+        val session = LabyrinthEntryRecognitionSession(
+            sessionManager = AutomationSessionManager(),
+            captureActive = { true },
+            captureStop = { captureStopCalls++ },
+            processorFactory = { { error("test does not dispatch frames") } },
+        )
+
+        assertFalse(session.stop(releaseCapture = false))
+        assertTrue(captureStopCalls == 0)
+        assertFalse(session.stop())
+        assertTrue(captureStopCalls == 1)
+    }
+
+    @Test
+    fun `run logic stops keep capture alive while a batch owns the run`() = runTest {
+        val manager = AutomationSessionManager()
+        var captureStopCalls = 0
+        val events = mutableListOf<LabyrinthRunTerminalEvent>()
+        val session = LabyrinthEntryRecognitionSession(
+            sessionManager = manager,
+            captureActive = { true },
+            captureStop = { captureStopCalls++ },
+            processorFactory = { { error("test does not dispatch frames") } },
+            actionExecutor = SessionBoundActionExecutor(manager) { AutomationBackendResult.Completed },
+            actionsAvailable = { true },
+            runTerminalListener = { events += it },
+        )
+
+        // Batch-owned: a planner/terminal-page stop must not touch capture.
+        assertTrue(session.startAutomation(accountId = 1L, runId = "b1-run001") is LabyrinthEntryRecognitionStartResult.Started)
+        assertTrue(session.stopFromRunLogic("已完成最终结算并返回黎明界主页"))
+        awaitEvent(events)
+        assertTrue(captureStopCalls == 0)
+        assertTrue(manager.current() == null)
+        assertTrue(events.single().runId == "b1-run001")
+
+        // Interactive: the same stop releases capture as before.
+        events.clear()
+        assertTrue(session.startAutomation(accountId = 1L) is LabyrinthEntryRecognitionStartResult.Started)
+        assertTrue(session.stopFromRunLogic("点击被拒绝：test"))
+        settle()
+        assertTrue(captureStopCalls == 1)
+        assertTrue(events.isEmpty())
+    }
+
+    @Test
+    fun `batch run reports a formal terminal event and an interactive run reports none`() = runTest {
+        val manager = AutomationSessionManager()
+        val events = mutableListOf<LabyrinthRunTerminalEvent>()
+        val session = LabyrinthEntryRecognitionSession(
+            sessionManager = manager,
+            captureActive = { true },
+            processorFactory = { { error("test does not dispatch frames") } },
+            actionExecutor = SessionBoundActionExecutor(manager) { AutomationBackendResult.Completed },
+            actionsAvailable = { true },
+            runTerminalListener = { events += it },
+        )
+
+        // Batch-owned run stopped by the user (capture released, no explicit outcome).
+        assertTrue(session.startAutomation(accountId = 1L, runId = "b1-run001") is LabyrinthEntryRecognitionStartResult.Started)
+        assertTrue(session.stop("用户停止"))
+        awaitEvent(events)
+        assertTrue(events.single() is LabyrinthRunTerminalEvent.UserStopped)
+        assertTrue(events.single().runId == "b1-run001")
+
+        // Batch-owned run stopped for the reroll handoff: capture retained, no explicit outcome
+        // set by the test path, so it is an unexplained stop the batch must not count.
+        events.clear()
+        assertTrue(session.startAutomation(accountId = 1L, runId = "b1-run002") is LabyrinthEntryRecognitionStartResult.Started)
+        assertTrue(session.stop("环境异常", releaseCapture = false))
+        awaitEvent(events)
+        assertTrue(events.single() is LabyrinthRunTerminalEvent.FatalUnknown)
+
+        // Interactive run: no run id, no event.
+        events.clear()
+        assertTrue(session.startAutomation(accountId = 1L) is LabyrinthEntryRecognitionStartResult.Started)
+        assertTrue(session.stop())
+        settle()
+        assertTrue(events.isEmpty())
     }
 
     @Test
@@ -141,4 +257,15 @@ class LabyrinthEntryRecognitionSessionTest {
         assertTrue(CaptureFrameBus.currentOwner() == null)
         assertTrue(captureStopCalls == 1)
     }
+
+    /**
+     * Terminal events are delivered from the session's own Dispatchers.Default scope, so runTest's
+     * virtual-time delay proves nothing about them; wait on the wall clock instead.
+     */
+    private suspend fun awaitEvent(events: List<LabyrinthRunTerminalEvent>) =
+        withContext(Dispatchers.Default) {
+            withTimeout(5_000L) { while (events.isEmpty()) delay(10L) }
+        }
+
+    private suspend fun settle() = withContext(Dispatchers.Default) { delay(200L) }
 }

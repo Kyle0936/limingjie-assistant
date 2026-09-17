@@ -106,6 +106,24 @@ internal fun labyrinthSingleChoiceEventButtonRect(
  * way to move identity OCR onto the much more stable detail-modal name row.  Multi-monster and
  * special-dual EX use their own structurally detected info buttons and never enter this path.
  */
+/**
+ * The EX identity probe (name OCR, then the bounded 详情 fallback) is budgeted per *visit* to the
+ * challenge page, not per run. 2026-09-17 live (bundle 152039): the EX challenge page was first
+ * seen at 15:13:58, the battle was lost, and 重新挑战 brought the page back at 15:16:05; the
+ * probe clock still held the first visit, so the 10 s budget was already spent and the run
+ * stopped 0.4 s later with "未建立可信身份" before OCR could read 好朋友X even once.
+ * UNKNOWN frames (animations, the 详情 modal) never count as leaving the page.
+ */
+internal fun labyrinthExIdentityProbeRestarts(
+    lastKnownPage: LabyrinthEntryPageState?,
+    page: LabyrinthEntryPageState,
+    encounterResolved: Boolean,
+): Boolean =
+    page == LabyrinthEntryPageState.BATTLE_CHALLENGE &&
+        !encounterResolved &&
+        lastKnownPage != null &&
+        lastKnownPage != LabyrinthEntryPageState.BATTLE_CHALLENGE
+
 internal fun labyrinthSingleExDetailProbeRect(
     pageState: LabyrinthEntryPageState,
     isEx: Boolean,
@@ -439,6 +457,25 @@ internal fun labyrinthRosterReconciliationMatches(
     else -> emptyList()
 }
     .distinctBy { match -> canonicalLabyrinthRoleId(requireNotNull(match.characterId)) }
+
+/**
+ * Roster evidence for the guild's opening grant. The confirmed three picks replace the roster;
+ * the granted character rides along so the run never plans without it. Only the guild is
+ * needed: the grant is unconditional and its 角色加入 popup may not be recognised.
+ */
+internal fun labyrinthGuildGrantedRosterMatches(
+    guildId: Int?,
+    frameRect: EntryPixelRect,
+): List<LabyrinthCharacterMatch> = LabyrinthOpeningRosterCatalog.grantedCharactersFor(guildId).map { granted ->
+    LabyrinthCharacterMatch(
+        slotId = "guild_grant_${granted.characterId}",
+        characterId = granted.characterId,
+        displayName = granted.displayName,
+        confidence = 1.0,
+        screenRect = frameRect,
+        trusted = true,
+    )
+}
 
 internal fun labyrinthRosterReplacesExisting(
     result: LabyrinthEntryFrameResult,

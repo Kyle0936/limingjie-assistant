@@ -542,6 +542,16 @@ class LabyrinthBattleTeamRecommendationTest {
     }
 
     @Test
+    fun `batch owned run ends at the retry limit regardless of the reroll toggle`() {
+        // 2026-09-17 live: 刷开局 off, EX limit 2 reached → must still be FAILED_MAX_RETRY for a batch.
+        assertTrue(labyrinthBatchOwnedRunEndsAtRetryLimit(batchOwnsRun = true, battleRetryCount = 2, retryLimit = 2))
+        assertFalse(labyrinthBatchOwnedRunEndsAtRetryLimit(batchOwnsRun = true, battleRetryCount = 1, retryLimit = 2))
+        // Interactive runs keep the old "stay on the failure page" behaviour.
+        assertFalse(labyrinthBatchOwnedRunEndsAtRetryLimit(batchOwnsRun = false, battleRetryCount = 2, retryLimit = 2))
+        assertFalse(labyrinthShouldRerollAfterBattleFailure(false, 2))
+    }
+
+    @Test
     fun `single boss fallback retry count is configurable and switches before reroll`() {
         assertEquals(
             4,
@@ -596,6 +606,28 @@ class LabyrinthBattleTeamRecommendationTest {
                 retryCountBeforeMulti = 4,
             ),
         )
+    }
+
+    @Test fun `boss follow-up slot fields a supplement team when the residual roster has no tank`() {
+        // 2026-09-17: teams 1/2 took both tanks; slot 3 must still be filled with the leftover
+        // damage dealers instead of leaving the Boss on a sliver.
+        val residual = (1..5).map { i -> role("d$i", "输出$i", i + 1, 70.0, 80.0) }
+            .associateBy { it.characterId }
+        val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4)
+
+        val strict = recommendationPlanner(residual).initialRecommendation(residual.keys, context, requestedBossTeamCount = 1)
+        assertTrue(strict is LabyrinthBattleTeamRecommendationResult.Unavailable)
+
+        val filled = recommendationPlanner(residual).initialRecommendation(
+            residual.keys, context, requestedBossTeamCount = 1, allowSupplementLead = true,
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertEquals(5, filled.recommendation.members.size)
+        assertTrue(filled.recommendation.reasons.any { it.contains("补刀队") })
+
+        val retry = recommendationPlanner(residual).retryRecommendation(
+            residual.keys, context, failedTeamSignatures = emptySet(), requestedBossTeamCount = 1, allowSupplementLead = true,
+        )
+        assertTrue(retry is LabyrinthBattleTeamRecommendationResult.Ready)
     }
 
     private fun recommendationPlanner(

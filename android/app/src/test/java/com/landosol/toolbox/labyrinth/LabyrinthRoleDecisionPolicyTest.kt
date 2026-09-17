@@ -790,10 +790,12 @@ class LabyrinthRoleDecisionPolicyTest {
         )
 
         val strictPlan = searcher.bossMultiTeamSearch(roster, strict, requestedTeams = 3)
-        assertEquals(1, strictPlan.teams.size)
+        assertEquals(1, strictPlan.safeTeamCount)
+        assertEquals(2, strictPlan.teams.size) // second slot filled by a supplement team
 
         val relaxedPlan = searcher.bossMultiTeamSearch(roster, relaxed, requestedTeams = 3, survivalRecovery = true)
         assertEquals(2, relaxedPlan.teams.size)
+        assertEquals(2, relaxedPlan.safeTeamCount)
         assertEquals(setOf("t1", "t2"), relaxedPlan.teams.map { it.vanguardCharacterId }.toSet())
         assertTrue(relaxedPlan.reason, relaxedPlan.reason.contains("放宽一号位生存线至40.00"))
         val firstIds = relaxedPlan.teams[0].members.map(LabyrinthRoleProfile::characterId).toSet()
@@ -828,12 +830,51 @@ class LabyrinthRoleDecisionPolicyTest {
                 multiTeamBeamWidth = 300,
             ),
         )
-        val plan = searcher.bossMultiTeamSearch(roster, context, requestedTeams = 3)
-        assertEquals(1, plan.teams.size)
-        assertEquals("t1", plan.teams.single().vanguardCharacterId)
-        assertTrue(plan.reason.contains("仅能安全组成1队"))
+        val strictOnly = searcher.bossMultiTeamSearch(roster, context, requestedTeams = 3, supplementTeams = false)
+        assertEquals(1, strictOnly.teams.size)
+        assertEquals("t1", strictOnly.teams.single().vanguardCharacterId)
+        assertTrue(strictOnly.reason.contains("仅能安全组成1队"))
         val bestSingle = requireNotNull(optimizer.bestBattleFormation(roster, context))
-        assertEquals(bestSingle.score, plan.teams.single().score, 0.000001)
+        assertEquals(bestSingle.score, strictOnly.teams.single().score, 0.000001)
+
+        // 2026-09-17: the open slot is filled with a vanguard-less damage team, not left empty.
+        val plan = searcher.bossMultiTeamSearch(roster, context, requestedTeams = 3)
+        assertEquals(2, plan.teams.size)
+        assertEquals(1, plan.safeTeamCount)
+        assertEquals("t1", plan.teams[0].vanguardCharacterId)
+        assertEquals(bestSingle.score, plan.teams[0].score, 0.000001)
+        val firstIds = plan.teams[0].members.map(LabyrinthRoleProfile::characterId).toSet()
+        assertTrue(plan.teams[1].members.none { it.characterId in firstIds })
+        assertEquals(5, plan.teams[1].members.size)
+        assertTrue(plan.reason, plan.reason.contains("补刀队填充"))
+    }
+
+    @Test
+    fun `boss follow-up slot with no qualified vanguard at all is still filled`() {
+        val roster = listOf(
+            physical("d1", "输出一", position = 2, damage = 100.0),
+            physical("d2", "输出二", position = 3, damage = 98.0),
+            physical("d3", "输出三", position = 4, damage = 96.0),
+            physical("d4", "输出四", position = 5, damage = 94.0),
+            physical("d5", "输出五", position = 6, damage = 92.0),
+        )
+        val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4)
+        val searcher = LabyrinthTeamPlanSearcher(
+            optimizer,
+            LabyrinthTeamPlanSearchConfig(
+                oneTeamKillScore = 0.0, mainTeamScore = 0.0, cleanupTeamScore = 0.0,
+                mainPlusCleanupCombinedScore = 0.0, stableTeamScore = 0.0, fallbackTeamScore = 0.0,
+                threeTeamCombinedScore = 0.0, multiTeamBeamWidth = 300,
+            ),
+        )
+        val plan = searcher.bossMultiTeamSearch(roster, context, requestedTeams = 1)
+        assertEquals(LabyrinthTeamPlanKind.SUPPLEMENT_FILL, plan.kind)
+        assertEquals(1, plan.teams.size)
+        assertEquals(0, plan.safeTeamCount)
+        assertEquals(5, plan.teams.single().members.size)
+
+        val strict = searcher.bossMultiTeamSearch(roster, context, requestedTeams = 1, supplementTeams = false)
+        assertEquals(LabyrinthTeamPlanKind.INSUFFICIENT_ROLES, strict.kind)
     }
 
     @Test

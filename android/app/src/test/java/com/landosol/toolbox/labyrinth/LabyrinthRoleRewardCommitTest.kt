@@ -38,7 +38,10 @@ class LabyrinthRoleRewardCommitTest {
             val dispatch = session.javaClass.declaredMethods.single {
                 it.name.startsWith("dispatchPostEntryTap-") && !it.name.endsWith("\$default")
             }.apply { isAccessible = true }
-            dispatch.invoke(session, manager.current()!!.id.value, "选择角色：千歌（礼服）", rect,
+            // The label is display text only; the commit path keys on the action kind. A label
+            // that looks nothing like the UI copy must still persist the selection.
+            dispatch.invoke(session, manager.current()!!.id.value,
+                LabyrinthPostEntryActionKind.SELECT_ROLE_REWARD, "random-label-9f3a", rect,
                 System.currentTimeMillis(), "left:1002", "1002", null, null, null, false)
             val inFlight = field(session, "actionInFlight").get(session) as AtomicBoolean
             withTimeout(5_000) { while (inFlight.get()) delay(10) }

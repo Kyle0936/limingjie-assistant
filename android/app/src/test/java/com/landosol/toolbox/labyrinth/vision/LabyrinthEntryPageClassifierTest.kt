@@ -99,6 +99,35 @@ class LabyrinthEntryPageClassifierTest {
     }
 
     @Test
+    fun `strong item reward modal owns the frame over a visible map`() {
+        // Scores taken from the 2026-09-17 final-settlement recording (t7.5).
+        val result = classifier.classify(
+            scores(
+                EntryAnchorId.ITEM_REWARD_TITLE to 1.00,
+                EntryAnchorId.ITEM_REWARD_INSTRUCTION to 0.88,
+                EntryAnchorId.ITEM_REWARD_CLOSE to 1.00,
+                EntryAnchorId.NODE_HEADER_STANDARD to 0.82,
+                EntryAnchorId.NODE_CHARACTERS_STANDARD to 0.90,
+                EntryAnchorId.NODE_RETURN_STANDARD to 0.87,
+            ),
+        )
+        assertEquals(LabyrinthEntryPageState.ITEM_REWARD, result.state)
+
+        // A weak modal does not get to override the map.
+        val weak = classifier.classify(
+            scores(
+                EntryAnchorId.ITEM_REWARD_TITLE to 0.60,
+                EntryAnchorId.ITEM_REWARD_INSTRUCTION to 0.55,
+                EntryAnchorId.ITEM_REWARD_CLOSE to 0.62,
+                EntryAnchorId.NODE_HEADER_STANDARD to 0.82,
+                EntryAnchorId.NODE_CHARACTERS_STANDARD to 0.90,
+                EntryAnchorId.NODE_RETURN_STANDARD to 0.87,
+            ),
+        )
+        assertEquals(LabyrinthEntryPageState.NODE_SELECTION, weak.state)
+    }
+
+    @Test
     fun `event choice and animation are distinct trusted states when optional anchors exist`() {
         val choice = classifier.classify(
             scores(

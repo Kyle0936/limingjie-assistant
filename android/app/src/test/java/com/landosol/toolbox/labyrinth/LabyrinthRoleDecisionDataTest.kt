@@ -82,7 +82,9 @@ class LabyrinthRoleDecisionDataTest {
         )
         val strictPlan = planner.initialRecommendation(acquired, strict, requestedBossTeamCount = 3)
             as LabyrinthBattleTeamRecommendationResult.Ready
-        assertEquals(1, strictPlan.recommendation.plannedBossTeamCount)
+        // One tank-led team; the other two slots are filled with damage supplements (2026-09-17).
+        assertEquals(1, strictPlan.recommendation.safeBossTeamCount)
+        assertEquals(3, strictPlan.recommendation.plannedBossTeamCount)
         assertEquals("1145", strictPlan.recommendation.vanguard.characterId)
 
         val relaxed = strict.copy(relaxedVanguardGate = true)
@@ -233,7 +235,8 @@ class LabyrinthRoleDecisionDataTest {
             requestedBossTeamCount = 3,
         ) as LabyrinthBattleTeamRecommendationResult.Ready
         val firstIds = first.recommendation.members.map { it.characterId }.toSet()
-        assertEquals(2, first.recommendation.plannedBossTeamCount)
+        assertEquals(2, first.recommendation.safeBossTeamCount)
+        assertEquals(3, first.recommendation.plannedBossTeamCount)
         assertTrue(first.recommendation.vanguard.characterId in setOf("1045", "1145"))
         assertTrue(first.recommendation.reasons.any { it.contains("安全容量2队") && it.contains("总评分") })
 
@@ -255,7 +258,8 @@ class LabyrinthRoleDecisionDataTest {
             ),
             requestedBossTeamCount = 3,
         ) as LabyrinthBattleTeamRecommendationResult.Ready
-        assertEquals(2, frostWolf.recommendation.plannedBossTeamCount)
+        assertEquals(2, frostWolf.recommendation.safeBossTeamCount)
+        assertEquals(3, frostWolf.recommendation.plannedBossTeamCount)
     }
 
     @Test
