@@ -1,7 +1,6 @@
 package com.landosol.toolbox.security
 
 import android.content.Context
-import com.landosol.toolbox.protocol.bilibili.GameServer
 import com.landosol.toolbox.protocol.bilibili.SdkSession
 import com.landosol.toolbox.protocol.bilibili.SdkSessionStore
 import java.io.ByteArrayInputStream
@@ -13,11 +12,11 @@ class InMemorySdkSessionStore : SdkSessionStore {
     private val sessions = mutableMapOf<String, SdkSession>()
 
     override suspend fun save(key: String, session: SdkSession) {
-        sessions[key] = SdkSession(session.uid, session.accessKey, session.updatedAt, session.server)
+        sessions[key] = SdkSession(session.uid, session.accessKey, session.updatedAt)
     }
 
     override suspend fun read(key: String): SdkSession? = sessions[key]?.let {
-        SdkSession(it.uid, it.accessKey, it.updatedAt, it.server)
+        SdkSession(it.uid, it.accessKey, it.updatedAt)
     }
 
     override suspend fun delete(key: String) {
@@ -46,16 +45,11 @@ class AndroidKeystoreSdkSessionStore(
             output.writeUTF(session.uid)
             output.writeUTF(session.accessKey)
             output.writeLong(session.updatedAt)
-            output.writeUTF(session.server.storageId)
         }
         buffer.toByteArray()
     }
 
     private fun decode(bytes: ByteArray): SdkSession = DataInputStream(ByteArrayInputStream(bytes)).use { input ->
-        val uid = input.readUTF()
-        val accessKey = input.readUTF()
-        val updatedAt = input.readLong()
-        val server = if (input.available() > 0) GameServer.fromStorageId(input.readUTF()) else GameServer.CN_BILIBILI
-        SdkSession(uid, accessKey, updatedAt, server)
+        SdkSession(input.readUTF(), input.readUTF(), input.readLong())
     }
 }

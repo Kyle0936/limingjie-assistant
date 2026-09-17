@@ -10,12 +10,9 @@ data class GameProtocolProfile(
 
 class AndroidGameProtocolProfileFactory(
     private val context: Context,
-    private val gameClientLocator: AndroidGameClientLocator = AndroidGameClientLocator(context),
 ) {
-    fun create(server: GameServer = GameServer.CN_BILIBILI): GameProtocolProfile {
-        val client = gameClientLocator.findInstalled(server)
-            ?: error("未找到已安装的${server.displayName}客户端")
-        val packageInfo = context.packageManager.getPackageInfo(client.packageName, 0)
+    fun create(): GameProtocolProfile {
+        val packageInfo = context.packageManager.getPackageInfo(GAME_PACKAGE, 0)
         val appVersion = packageInfo.versionName.orEmpty().ifBlank { error("无法读取国服游戏版本") }
         val model = listOf(Build.BRAND, Build.MODEL).filter { it.isNotBlank() }.joinToString(" ")
         return GameProtocolProfile(
@@ -47,6 +44,7 @@ class AndroidGameProtocolProfileFactory(
     }
 
     private companion object {
+        const val GAME_PACKAGE = "com.bilibili.priconne"
         const val UNITY_VERSION = "2021.3.20f1c1"
         const val RES_KEY = "ab00a0a6dd915a052a2ef7fd649083e5"
         const val DEFAULT_RES_VERSION = "10002200"

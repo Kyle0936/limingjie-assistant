@@ -6,7 +6,6 @@ import com.landosol.toolbox.data.local.AppDatabase
 import com.landosol.toolbox.security.AccountCredentials
 import com.landosol.toolbox.security.CredentialStore
 import com.landosol.toolbox.protocol.bilibili.AccountLoginMaterial
-import com.landosol.toolbox.protocol.bilibili.GameServer
 import com.landosol.toolbox.protocol.bilibili.SdkSessionStore
 import com.landosol.toolbox.protocol.bilibili.GameSessionRegistry
 import java.util.UUID
@@ -26,7 +25,6 @@ data class AccountEditorData(
     val alias: String,
     val loginId: String,
     val gameUid: String,
-    val server: GameServer,
 )
 
 class AccountRepository(
@@ -48,11 +46,6 @@ class AccountRepository(
         }
     }
 
-    suspend fun resolveServer(id: Long?): GameServer {
-        val account = if (id != null) database.accountDao().getById(id) else database.accountDao().getSelected()
-        return account?.let { GameServer.fromStorageId(it.serverId) } ?: GameServer.CN_BILIBILI
-    }
-
     suspend fun loadEditor(id: Long): AccountEditorData {
         val account = requireNotNull(database.accountDao().getById(id)) { "账号不存在" }
         val credentials = requireNotNull(credentialStore.read(account.credentialKey)) { "账号凭据不可用" }
@@ -61,7 +54,6 @@ class AccountRepository(
             alias = account.alias,
             loginId = credentials.loginId,
             gameUid = account.gameUid.orEmpty(),
-            server = GameServer.fromStorageId(account.serverId),
         )
     }
 
@@ -73,7 +65,6 @@ class AccountRepository(
             credentialKey = account.credentialKey,
             loginId = credentials.loginId,
             password = credentials.password,
-            server = GameServer.fromStorageId(account.serverId),
         )
     }
 
@@ -86,7 +77,7 @@ class AccountRepository(
                 database.accountDao().insert(
                     AccountEntity(
                         alias = input.alias,
-                        serverId = input.server.storageId,
+                        serverId = SERVER_CN_BILIBILI,
                         gameUid = input.gameUid,
                         credentialKey = credentialKey,
                         isSelected = database.accountDao().count() == 0,
@@ -103,7 +94,6 @@ class AccountRepository(
 
     suspend fun update(id: Long, input: NormalizedAccountInput) {
         val account = requireNotNull(database.accountDao().getById(id)) { "账号不存在" }
-        require(input.server.storageId == account.serverId) { "暂不支持直接修改账号服务器，请新建账号" }
         val previous = requireNotNull(credentialStore.read(account.credentialKey)) { "账号凭据不可用" }
         val replacement = AccountCredentials(
             loginId = input.loginId,
@@ -163,8 +153,11 @@ class AccountRepository(
     }
 
     private fun serverDisplayName(serverId: String): String = when (serverId) {
-        GameServer.CN_BILIBILI.storageId -> GameServer.CN_BILIBILI.displayName
-        GameServer.CN_CHANNEL.storageId -> GameServer.CN_CHANNEL.displayName
+        SERVER_CN_BILIBILI -> "国服 Bilibili"
         else -> serverId
+    }
+
+    private companion object {
+        const val SERVER_CN_BILIBILI = "cn-bilibili"
     }
 }

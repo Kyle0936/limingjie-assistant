@@ -4,7 +4,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.landosol.toolbox.protocol.bilibili.CaptchaChallenge
-import com.landosol.toolbox.protocol.bilibili.GameServer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -18,12 +17,8 @@ data class AccountEditorState(
     val loginId: String = "",
     val password: String = "",
     val gameUid: String = "",
-    val server: GameServer = GameServer.CN_BILIBILI,
 ) {
     val isEditing: Boolean get() = id != null
-
-    fun selectServer(server: GameServer): AccountEditorState =
-        if (isEditing) this else copy(server = server)
 }
 
 data class AccountUiState(
@@ -82,7 +77,6 @@ class AccountViewModel(
                         loginId = value.loginId,
                         password = "",
                         gameUid = value.gameUid,
-                        server = value.server,
                     ),
                 )
             }
@@ -106,7 +100,6 @@ class AccountViewModel(
                 password = editor.password,
                 gameUid = editor.gameUid,
                 passwordRequired = !editor.isEditing,
-                server = editor.server,
             )
         ) {
             is AccountValidationResult.Invalid -> chrome.update { it.copy(message = validation.message) }

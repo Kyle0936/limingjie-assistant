@@ -10,15 +10,6 @@
 
     <queries>
         <package android:name="com.bilibili.priconne" />
-        <package android:name="com.bilibili.priconne.mi" />
-        <package android:name="com.bilibili.priconne.huawei" />
-        <package android:name="com.bilibili.priconne.vivo" />
-        <package android:name="com.tencent.tmgp.bilibili.priconne" />
-        <package android:name="com.bilibili.priconne.aligames" />
-        <intent>
-            <action android:name="android.intent.action.MAIN" />
-            <category android:name="android.intent.category.LAUNCHER" />
-        </intent>
     </queries>
 
     <application

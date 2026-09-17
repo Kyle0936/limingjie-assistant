@@ -657,7 +657,7 @@ class LabyrinthEntryRecognitionSession(
     private val actionExecutor: SessionBoundActionExecutor? = null,
     private val actionsAvailable: () -> Boolean = { actionExecutor != null },
     private val actionTargetReady: () -> Boolean = { true },
-    private val gameLauncher: suspend (Long?) -> Boolean = { true },
+    private val gameLauncher: () -> Boolean = { true },
     private val actionPlannerFactory: () -> LabyrinthEntryActionPlanner = { LabyrinthEntryActionPlanner() },
     private var relicChoicePolicy: LabyrinthRelicChoicePolicy = LabyrinthRelicChoicePolicy(),
     private var shopPolicy: LabyrinthShopPolicy = LabyrinthShopPolicy(relicChoicePolicy),
@@ -1132,7 +1132,7 @@ class LabyrinthEntryRecognitionSession(
             return LabyrinthEntryRecognitionStartResult.Blocked(reason)
         }
         armFirstFrameWatchdog(session.id)
-        if (!dryRun && !gameLauncher(accountId)) {
+        if (!dryRun && !gameLauncher()) {
             firstFrameWatchdog?.cancel()
             firstFrameWatchdog = null
             lease?.let(CaptureFrameBus::unregister)
