@@ -168,6 +168,12 @@ class AnchorTriggerSessionExpiryTerminator(
     private val coordinateMapper: CoordinateMapper = CoordinateMapper(),
     private val available: () -> Boolean = { true },
     private val popupTimeoutMillis: Long = 30_000L,
+    /**
+     * Wait for the expiry popup after a trigger tap. The tap starts a server round trip
+     * (retreat / page data request) whose rejection is what raises the popup, so this is
+     * longer than the per-attempt trigger wait.
+     */
+    private val popupAfterTapTimeoutMillis: Long = 12_000L,
     private val titleTimeoutMillis: Long = 30_000L,
     private val frameReadyTimeoutMillis: Long = 5_000L,
     private val triggerTapDelayMillis: Long = 2_000L,
@@ -222,7 +228,7 @@ class AnchorTriggerSessionExpiryTerminator(
             }
             taps++
             delay(triggerTapDelayMillis)
-            popup = await(perAttemptTimeout) { popupVisible() }
+            popup = await(popupAfterTapTimeoutMillis) { popupVisible() }
         }
         if (!popup && !popupVisible()) {
             step("popup-timeout-after-$taps-taps")

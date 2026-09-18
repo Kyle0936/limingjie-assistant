@@ -637,7 +637,11 @@ class LabyrinthNodeClassifier(
             // remaining budget concentrates on the predicted column and its two neighbours.
             val directedCenterX = searchHint?.expectedCenterX?.takeIf { searchMode == NodeSearchMode.DIRECTED }
             val directedToleranceX = labyrinthReferenceColumnPitch(frame.height) * DIRECTED_CENTER_PITCH_TOLERANCE
-            val offsets = NodeAnchorDefinitions.searchOffsets(frame.width, frame.height)
+            val offsets = NodeAnchorDefinitions.searchOffsets(
+                frameWidth = frame.width,
+                frameHeight = frame.height,
+                dense = directedCenterX == null,
+            )
             val detections = NodeAnchorDefinitions.NODE_ICON_RECTS.flatMap { definition ->
                 val rectangles = offsets.asSequence()
                     .mapNotNull { (offsetX, offsetY) ->

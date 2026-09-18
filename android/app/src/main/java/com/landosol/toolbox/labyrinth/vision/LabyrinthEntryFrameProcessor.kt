@@ -98,6 +98,8 @@ object EntryAnchorId {
     const val BATTLE_TEAM_CURRENT_MEMBERS_SUMMARY = "entry.battle_team.current_members_summary"
     const val BATTLE_TEAM_CANCEL_BUTTON = "entry.battle_team.cancel_button"
     const val BATTLE_TEAM_START_BUTTON = "entry.battle_team.start_button"
+    /** 「未搜索到该角色。」 in the roster area: the current filter (e.g. 有效效果) lists nobody. */
+    const val BATTLE_TEAM_ROSTER_EMPTY_NOTICE = "entry.battle_team.roster_empty_notice"
     const val SESSION_ERROR_TITLE = "session.error.title"
     const val SESSION_RETURN_TITLE = "session.return.title"
     const val SESSION_DATE_CHANGE_TITLE = "session.date_change.title"
@@ -731,6 +733,8 @@ class LabyrinthEntryFrameProcessor(
             standard(EntryAnchorId.BATTLE_TEAM_CURRENT_MEMBERS_SUMMARY, 75, 748, 1100, 60),
             standard(EntryAnchorId.BATTLE_TEAM_CANCEL_BUTTON, 1285, 850, 270, 110),
             standard(EntryAnchorId.BATTLE_TEAM_START_BUTTON, 1565, 850, 270, 110),
+            // 未搜索到该角色 notice, centred in the empty roster area (2026-09-18 screenshot).
+            standard(EntryAnchorId.BATTLE_TEAM_ROSTER_EMPTY_NOTICE, 802, 527, 297, 38),
             standard(EntryAnchorId.SESSION_ERROR_TITLE, 485, 259, 948, 66),
             standard(EntryAnchorId.SESSION_RETURN_TITLE, 756, 692, 410, 94),
             standard(EntryAnchorId.SESSION_DATE_CHANGE_TITLE, 790, 258, 340, 70),

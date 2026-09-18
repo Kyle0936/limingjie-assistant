@@ -5,6 +5,7 @@ import com.landosol.toolbox.automation.session.SessionBlockKind
 import com.landosol.toolbox.labyrinth.node.NodeClassification
 import com.landosol.toolbox.labyrinth.node.LabyrinthMapScanDirection
 import com.landosol.toolbox.labyrinth.node.LabyrinthNodeTypes
+import com.landosol.toolbox.labyrinth.node.labyrinthReferenceColumnPitch
 import com.landosol.toolbox.labyrinth.node.NodePositionMapping
 import com.landosol.toolbox.labyrinth.node.NodeTopologyBindingKind
 import com.landosol.toolbox.labyrinth.vision.EntryAnchorId
@@ -151,6 +152,20 @@ class LabyrinthEntryRecognitionPolicyTest {
         assertEquals(1760 to 780, labyrinthEventUnknownFallbackPoint(1))
         assertEquals(160 to 780, labyrinthEventUnknownFallbackPoint(2))
         assertEquals(1760 to 780, labyrinthEventUnknownFallbackPoint(3))
+    }
+
+    @Test
+    fun `event free role picks another only while 去邀请 stays disabled after a settled pick`() {
+        // One-pick event: the button lights up right after the first pick → never a second pick.
+        assertTrue(!labyrinthEventFreeRoleNeedsAnotherPick(1, inviteEnabled = true, inviteDisabled = false, millisSinceLastSelect = 5_000L))
+        // Two-pick event (2026-09-17): still disabled after the pick settled → pick again.
+        assertTrue(labyrinthEventFreeRoleNeedsAnotherPick(1, inviteEnabled = false, inviteDisabled = true, millisSinceLastSelect = 2_500L))
+        // Not settled yet, or the disabled button is not even recognised: wait.
+        assertTrue(!labyrinthEventFreeRoleNeedsAnotherPick(1, inviteEnabled = false, inviteDisabled = true, millisSinceLastSelect = 800L))
+        assertTrue(!labyrinthEventFreeRoleNeedsAnotherPick(1, inviteEnabled = false, inviteDisabled = false, millisSinceLastSelect = 5_000L))
+        // The shell has three slots; never pick a fourth, and nothing to settle before the first.
+        assertTrue(!labyrinthEventFreeRoleNeedsAnotherPick(3, inviteEnabled = false, inviteDisabled = true, millisSinceLastSelect = 5_000L))
+        assertTrue(!labyrinthEventFreeRoleNeedsAnotherPick(0, inviteEnabled = false, inviteDisabled = true, millisSinceLastSelect = 5_000L))
     }
 
     @Test
@@ -380,11 +395,45 @@ class LabyrinthEntryRecognitionPolicyTest {
     fun `forward map swipe stays inside the map and moves toward later columns`() {
         val swipe = labyrinthForwardMapSwipe(1920, 1080) as AutomationAction.Swipe
 
-        assertEquals(1459.2f, swipe.start.x, 0.01f)
+        // 0.8 of one 540 px column: centred on 0.56W, so 1075.2 +/- 216.
+        assertEquals(1291.2f, swipe.start.x, 0.01f)
         assertEquals(626.4f, swipe.start.y, 0.01f)
-        assertEquals(691.2f, swipe.end.x, 0.01f)
+        assertEquals(859.2f, swipe.end.x, 0.01f)
         assertEquals(626.4f, swipe.end.y, 0.01f)
         assertEquals(450L, swipe.durationMillis)
+        assertEquals(220L, swipe.holdMillis)
+    }
+
+    @Test
+    fun `one scan step never travels a whole node column`() {
+        // 2026-09-18 bundle: the old 40%-of-frame drag moved 768 px against a ~513 px
+        // measured pitch, so a column could cross the viewport between two scans and the
+        // scanner reported geometryReliable=false. Every step must stay under one pitch.
+        for ((w, h) in listOf(1920 to 1080, 2340 to 1080, 1280 to 720)) {
+            val pitch = labyrinthReferenceColumnPitch(h)
+            for (direction in LabyrinthMapScanDirection.values()) {
+                val swipe = requireNotNull(labyrinthMapSwipe(w, h, direction)) as AutomationAction.Swipe
+                val travel = kotlin.math.abs(swipe.start.x - swipe.end.x)
+                assertTrue("${'$'}w x ${'$'}h travel=${'$'}travel pitch=${'$'}pitch", travel < pitch)
+                assertTrue("${'$'}w x ${'$'}h start", swipe.start.x in 0f..w.toFloat())
+                assertTrue("${'$'}w x ${'$'}h end", swipe.end.x in 0f..w.toFloat())
+                // A drag that lifts at speed is turned into a fling by the game.
+                assertTrue("${'$'}w x ${'$'}h hold", swipe.holdMillis > 0)
+            }
+        }
+    }
+
+    @Test
+    fun `local nudging gives up after whole cycles instead of oscillating forever`() {
+        // The cycle is BACKWARD, FORWARD, FORWARD, BACKWARD: it returns the camera to the
+        // start, so repeating it cannot reveal anything new. Live bundles reached attempt
+        // 90 and 170 on a single node.
+        assertTrue(!labyrinthNodeRecoveryNudgeExhausted(0))
+        assertTrue(!labyrinthNodeRecoveryNudgeExhausted(MAX_NODE_RECOVERY_NUDGES - 1))
+        assertTrue(labyrinthNodeRecoveryNudgeExhausted(MAX_NODE_RECOVERY_NUDGES))
+        assertTrue(labyrinthNodeRecoveryNudgeExhausted(90))
+        // Whole cycles only, so the camera ends a round where it began.
+        assertEquals(0, MAX_NODE_RECOVERY_NUDGES % 4)
     }
 
     @Test
@@ -399,12 +448,27 @@ class LabyrinthEntryRecognitionPolicyTest {
             avoidRects = listOf(eventRect),
         ) as AutomationAction.Swipe
 
-        assertEquals(691.2f, swipe.start.x, 0.01f)
-        assertEquals(1459.2f, swipe.end.x, 0.01f)
-        assertTrue(swipe.end.y < eventRect.top || swipe.end.y > eventRect.top + eventRect.height)
-        assertTrue(swipe.start.y < eventRect.top || swipe.start.y > eventRect.top + eventRect.height)
+        assertEquals(859.2f, swipe.start.x, 0.01f)
+        assertEquals(1291.2f, swipe.end.x, 0.01f)
+        // The shortened step no longer reaches this node's column at all.
+        assertTrue(!eventRect.containsPoint(swipe.start.x, swipe.start.y))
+        assertTrue(!eventRect.containsPoint(swipe.end.x, swipe.end.y))
         assertEquals(450L, swipe.durationMillis)
+
+        // A node sitting on the new, shorter lane must still push the gesture to another row.
+        val onLane = EntryPixelRect(left = 800, top = 560, width = 560, height = 340)
+        val moved = labyrinthMapSwipe(
+            frameWidth = 1920,
+            frameHeight = 1080,
+            direction = LabyrinthMapScanDirection.BACKWARD,
+            avoidRects = listOf(onLane),
+        ) as AutomationAction.Swipe
+        assertTrue(!onLane.containsPoint(moved.start.x, moved.start.y))
+        assertTrue(!onLane.containsPoint(moved.end.x, moved.end.y))
     }
+
+    private fun EntryPixelRect.containsPoint(x: Float, y: Float): Boolean =
+        x >= left && x <= left + width && y >= top && y <= top + height
 
     @Test
     fun `map recovery nudge is short alternating and stays clear of a visible node lane`() {
@@ -432,6 +496,7 @@ class LabyrinthEntryRecognitionPolicyTest {
         assertTrue(kotlin.math.abs(backward.start.x - backward.end.x) < 1920 * 0.20f)
         assertTrue(forward.start.y < nodeRect.top || forward.start.y > nodeRect.top + nodeRect.height)
         assertEquals(220L, forward.durationMillis)
+        assertEquals(220L, forward.holdMillis)
         assertEquals(
             listOf(
                 LabyrinthMapScanDirection.BACKWARD,
@@ -452,9 +517,9 @@ class LabyrinthEntryRecognitionPolicyTest {
             direction = LabyrinthMapScanDirection.BACKWARD,
         ) as AutomationAction.Swipe
 
-        assertEquals(691.2f, swipe.start.x, 0.01f)
+        assertEquals(859.2f, swipe.start.x, 0.01f)
         assertEquals(626.4f, swipe.start.y, 0.01f)
-        assertEquals(1459.2f, swipe.end.x, 0.01f)
+        assertEquals(1291.2f, swipe.end.x, 0.01f)
         assertEquals(626.4f, swipe.end.y, 0.01f)
         assertEquals(450L, swipe.durationMillis)
     }
@@ -493,6 +558,72 @@ class LabyrinthEntryRecognitionPolicyTest {
         assertEquals(SessionBlockKind.RECONNECT_PROMPTED, block.kind)
         assertTrue(block.blocksNormalActions)
         assertEquals(returnRect, block.returnTitleRect)
+    }
+
+    @Test
+    fun `generic confirm dialog is never a session block even with a scoring title bar`() {
+        // 2026-09-18 live scores: error title 0.64, 确认 button 0.96, no 返回标题, page NODE_SELECTION.
+        val confirmRect = EntryPixelRect(left = 750, top = 690, width = 415, height = 102)
+        val scores = LabyrinthAnchorScores(
+            mapOf(
+                EntryAnchorId.SESSION_ERROR_TITLE to 0.64,
+                EntryAnchorId.SESSION_RETURN_TITLE to 0.0,
+                EntryAnchorId.SESSION_DATE_CHANGE_TITLE to 0.47,
+                EntryAnchorId.SESSION_DATE_CHANGE_CONFIRM to 0.96,
+            ),
+        )
+        val result = LabyrinthEntryFrameResult(
+            observation = LabyrinthEntryPageObservation(
+                state = LabyrinthEntryPageState.NODE_SELECTION,
+                confidence = 0.90,
+                stateScores = mapOf(LabyrinthEntryPageState.NODE_SELECTION to 0.90),
+                anchorScores = scores,
+            ),
+            matchedFeatures = emptyList(),
+            elapsedMillis = 1,
+            anchorMatches = mapOf(EntryAnchorId.SESSION_DATE_CHANGE_CONFIRM to EntryAnchorMatch(0.96, confirmRect)),
+            frameWidth = 1920,
+            frameHeight = 1080,
+        )
+        assertEquals(confirmRect, labyrinthGenericConfirmDialogRect(result))
+        assertEquals(SessionBlockKind.NONE, labyrinthSessionBlockObservation(result).kind)
+
+        // The real expiry popup keeps blocking: blue 返回标题 present, pale 确认 absent.
+        val expiry = frameResult(errorScore = 0.91, returnScore = 0.88, returnRect = EntryPixelRect(756, 692, 410, 94))
+        assertNull(labyrinthGenericConfirmDialogRect(expiry))
+        assertEquals(SessionBlockKind.RECONNECT_PROMPTED, labyrinthSessionBlockObservation(expiry).kind)
+    }
+
+    @Test
+    fun `shop transition frames are never a session block without an actionable return-title`() {
+        // 2026-09-18 live: every purchase produced "检测到账号会话失效" because the shop dialog's
+        // blue title bar scores on the broad reconnect template.
+        fun shopFrame(returnScore: Double) = LabyrinthEntryFrameResult(
+            observation = LabyrinthEntryPageObservation(
+                state = LabyrinthEntryPageState.UNKNOWN,
+                confidence = 0.0,
+                stateScores = emptyMap(),
+                anchorScores = LabyrinthAnchorScores(
+                    mapOf(
+                        EntryAnchorId.SHOP_TITLE to 0.99,
+                        EntryAnchorId.SHOP_CLOSE to 1.0,
+                        EntryAnchorId.SESSION_ERROR_TITLE to 0.55,
+                        EntryAnchorId.SESSION_RETURN_TITLE to returnScore,
+                    ),
+                ),
+            ),
+            matchedFeatures = emptyList(),
+            elapsedMillis = 1,
+            anchorMatches = mapOf(
+                EntryAnchorId.SESSION_RETURN_TITLE to EntryAnchorMatch(returnScore, EntryPixelRect(756, 692, 410, 94)),
+            ),
+            frameWidth = 1920,
+            frameHeight = 1080,
+        )
+
+        assertEquals(SessionBlockKind.NONE, labyrinthSessionBlockObservation(shopFrame(0.10)).kind)
+        // A real expiry over the shop still shows 返回标题 and stays actionable.
+        assertEquals(SessionBlockKind.RECONNECT_PROMPTED, labyrinthSessionBlockObservation(shopFrame(0.88)).kind)
     }
 
     @Test

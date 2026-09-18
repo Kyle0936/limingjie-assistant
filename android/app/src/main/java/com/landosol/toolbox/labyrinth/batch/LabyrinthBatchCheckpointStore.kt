@@ -40,9 +40,7 @@ class AndroidLabyrinthBatchCheckpointStore(context: Context) : LabyrinthBatchChe
     private val storage = JsonLabyrinthBatchCheckpointStore(
         read = { key -> preferences.getString(key, null) },
         write = { key, value ->
-            check(preferences.edit().apply {
-                if (value == null) remove(key) else putString(key, value)
-            }.commit()) { "无法保存黎明界批量任务检查点" }
+            preferences.edit().apply { if (value == null) remove(key) else putString(key, value) }.apply()
         },
     )
 

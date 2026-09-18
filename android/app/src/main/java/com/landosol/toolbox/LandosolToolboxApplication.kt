@@ -312,7 +312,10 @@ class LandosolToolboxApplication : Application() {
             ),
             captureActive = CaptureStateRegistry::isActive,
             processorFactory = {
-                val processor = AndroidLabyrinthEntryFrameProcessor.create(this)
+                // The reset only needs page/dialog anchors. 2026-09-18 live: with the default
+                // map-node scan on, one map frame behind the expiry popup took 6.9 s, the frame
+                // tracker saw nothing for 10 s and the terminator timed out on a visible popup.
+                val processor = AndroidLabyrinthEntryFrameProcessor.create(this, nodeScanRequested = { false })
                 val processFrame: (CapturedFrame) -> LabyrinthEntryFrameResult = { frame ->
                     frameTracker.trackFrame(frame.bitmap.width, frame.bitmap.height)
                     processor.process(frame).also(frameTracker::record)

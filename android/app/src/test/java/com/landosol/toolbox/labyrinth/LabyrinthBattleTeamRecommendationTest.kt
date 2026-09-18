@@ -490,7 +490,7 @@ class LabyrinthBattleTeamRecommendationTest {
     }
 
     @Test
-    fun `second ex failure refuses fallback when all non tanks are effective effect roles`() {
+    fun `second ex failure swaps out the lowest effective role when every non tank is effective`() {
         val profiles = listOf(
             role("tank", "T", 1, 95.0, 20.0, reliableVanguard = 100.0),
             role("a", "A", 2, 96.0, 96.0),
@@ -517,11 +517,45 @@ class LabyrinthBattleTeamRecommendationTest {
             failedTeamSignatures = setOf(failed),
             retryNumber = 2,
             lastFailedTeamSignature = failed,
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        val ids = retry.recommendation.members.map(LabyrinthRecommendedTeamMember::characterId).toSet()
+
+        // 2026-09-17: refusing here stalled the run. The lowest-scored effective role yields.
+        assertTrue("tank must be kept: $ids", "tank" in ids)
+        assertFalse("lowest effective role must leave: $ids", "d" in ids)
+        assertTrue("healer must be added: $ids", "heal" in ids)
+        assertTrue(retry.recommendation.reasons.any { it.contains("有效效果角色不得不换出") })
+    }
+
+    @Test
+    fun `second ex failure without any healer falls through to the ordinary fallback`() {
+        val profiles = listOf(
+            role("tank", "T", 1, 95.0, 20.0, reliableVanguard = 100.0),
+            role("a", "A", 2, 96.0, 96.0),
+            role("b", "B", 3, 90.0, 90.0),
+            role("c", "C", 4, 80.0, 80.0),
+            role("d", "D", 5, 70.0, 70.0),
+            role("e", "E", 6, 60.0, 60.0),
+        ).associateBy(LabyrinthRoleProfile::characterId)
+        val planner = recommendationPlanner(profiles)
+        val context = LabyrinthRoleDecisionContext(
+            defenseMarkStacks = 1,
+            encounterStrategy = LabyrinthExEncounterStrategy(id = "test-ex-no-healer", identityName = "无奶EX", targetCount = 1),
+            effectiveCharacterIds = setOf("a", "b", "c", "d"),
+        )
+        val failed = labyrinthBattleTeamSignature(listOf("tank", "a", "b", "c", "d"))
+
+        val retry = planner.retryRecommendation(
+            acquiredCharacterIds = profiles.keys,
+            context = context,
+            failedTeamSignatures = setOf(failed),
+            retryNumber = 2,
+            lastFailedTeamSignature = failed,
         )
 
-        assertTrue(retry is LabyrinthBattleTeamRecommendationResult.Unavailable)
-        val reason = (retry as LabyrinthBattleTeamRecommendationResult.Unavailable).reason
-        assertTrue("reason=$reason", reason.contains("有效效果角色禁止换出"))
+        assertTrue("retry=$retry", retry is LabyrinthBattleTeamRecommendationResult.Ready)
+        val ids = (retry as LabyrinthBattleTeamRecommendationResult.Ready).recommendation.members.map { it.characterId }
+        assertFalse(labyrinthBattleTeamSignature(ids) == failed)
     }
 
     @Test

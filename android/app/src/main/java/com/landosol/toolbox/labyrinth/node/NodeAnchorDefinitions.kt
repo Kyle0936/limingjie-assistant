@@ -128,7 +128,11 @@ object NodeAnchorDefinitions {
      * 参考区域的中心附近搜索偏移。偏移按参考系缩放，覆盖地图滚动造成的纵向漂移，
      * 又不会把搜索扩大到整个画面。
      */
-    fun searchOffsets(frameWidth: Int, frameHeight: Int): List<Pair<Int, Int>> {
+    fun searchOffsets(
+        frameWidth: Int,
+        frameHeight: Int,
+        dense: Boolean = false,
+    ): List<Pair<Int, Int>> {
         val scale = if (frameWidth.toDouble() / frameHeight > WIDE_ASPECT_THRESHOLD) {
             frameHeight.toDouble() / WIDE_REFERENCE.height
         } else {
@@ -138,17 +142,45 @@ object NodeAnchorDefinitions {
         // reference pixels. Keep fine offsets near the anchor and coarse
         // offsets for the camera shift; overlap suppression removes duplicate
         // detections when two search windows cover the same node.
-        val xOffsets = listOf(
+        // Node templates only score above the acceptance bar within about five pixels of the
+        // node's true position, and the local refinement below reaches roughly +/-17. Any hole
+        // wider than that in this list is a horizontal band where a perfectly visible node is
+        // invisible to the scan. The old list jumped 80 reference pixels between 80 and 320, so
+        // a node could sit 40 pixels from every rectangle ever scored and never be detected;
+        // which band the map stopped in was decided by the previous swipe, which is why the miss
+        // looked intermittent. Keep every gap at or below 28.
+        // A node template only clears its acceptance bar within a few pixels of the node, and the
+        // local refinement afterwards reaches about +/-17 reference pixels from a proposal. A gap
+        // wider than 34 in this list is therefore a horizontal band in which a perfectly visible
+        // node is invisible to the scan. The coarse list below jumps 80 between 160 and 320, so a
+        // node could sit 40 pixels from every rectangle ever scored and never be detected; which
+        // band the map came to rest in was decided by the previous swipe, which is why the miss
+        // looked intermittent rather than systematic (2026-09-16 live: two unobstructed EVENT
+        // nodes went undetected for minutes while the run reported the target as geometrically
+        // visible but unclassifiable).
+        //
+        // The gap-free list is used when the search has no camera prediction to aim at. A directed
+        // search is already centred on the target and runs against a fixed window budget, so it
+        // keeps the coarse list; two directed misses fall back to the modes that use the dense one.
+        val coarseXOffsets = listOf(
             -320, -240, -160, -112, -80, -70, -56, -28,
             0,
             28, 56, 80, 112, 160, 240, 320,
         )
+        val xOffsets = if (dense) {
+            (coarseXOffsets + GAP_FILLING_X_OFFSETS + GAP_FILLING_X_OFFSETS.map { -it }).sorted()
+        } else {
+            coarseXOffsets
+        }
         val yOffsets = listOf(
             -168, -140, -112, -100, -84, -56, -28, 0,
             20, 28, 40, 56, 84, 112, 140, 160, 168,
         )
         return yOffsets.flatMap { y -> xOffsets.map { x -> (x * scale).toInt() to (y * scale).toInt() } }
     }
+
+    /** Points that break the 48/80-wide holes in the coarse offsets down to at most 34. */
+    private val GAP_FILLING_X_OFFSETS = listOf(136, 187, 213, 267, 293)
 
     /** 特殊节点的移动范围比普通节点小，避免每帧扩大成全屏穷举。 */
     fun specialSearchOffsets(

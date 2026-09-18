@@ -162,6 +162,8 @@ class AndroidLabyrinthEntryTemplateLoader(
                 "$ROOT/run_clear/run_clear_chest_result_title.png",
             EntryAnchorId.RUN_CLEAR_CHEST_CONFIRM_BUTTON to
                 "$ROOT/run_clear/run_clear_chest_confirm_button.png",
+            EntryAnchorId.BATTLE_TEAM_ROSTER_EMPTY_NOTICE to
+                "$ROOT/battle_team_selection/roster_empty_notice.png",
             EntryAnchorId.DAWN_HOME_MY_HOME_TAB to
                 "$ROOT/dawn_home/dawn_home_my_home_tab.png",
             EntryAnchorId.RELIC_EFFECT_TITLE to "$ROOT/item_reward/relic_effect_title.png",
