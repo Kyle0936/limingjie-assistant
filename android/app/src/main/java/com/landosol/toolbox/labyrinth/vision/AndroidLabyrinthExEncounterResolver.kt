@@ -3,7 +3,6 @@ package com.landosol.toolbox.labyrinth.vision
 import android.graphics.Bitmap
 import com.landosol.toolbox.clanbattle.recognition.PixelImage
 import com.landosol.toolbox.labyrinth.LabyrinthExEncounterCatalog
-import com.landosol.toolbox.labyrinth.LabyrinthExEncounterStrategy
 
 /**
  * Android-only OCR resolver for EX encounter identity.
@@ -17,12 +16,6 @@ class AndroidLabyrinthExEncounterResolver(
     submitTextRead: (Bitmap, (String?) -> Unit) -> Unit = AndroidChineseRoleNameOcr::readAsync,
 ) {
     private val ocr = AndroidRelicRoiOcr(submitTextRead)
-    private var lastChallengeEncounterId: String? = null
-    private var lastChallengeEvidenceId = Long.MIN_VALUE
-    private var challengeStableReads = 0
-    private var lastDetailEncounterId: String? = null
-    private var lastDetailEvidenceId = Long.MIN_VALUE
-    private var detailStableReads = 0
 
     @Synchronized
     fun resolve(bitmap: Bitmap, result: LabyrinthEntryFrameResult): LabyrinthEntryFrameResult {
@@ -38,13 +31,12 @@ class AndroidLabyrinthExEncounterResolver(
                 page == LabyrinthEntryPageState.UNKNOWN) &&
             looksLikeMonsterDetail(bitmap)
         ) {
-            resetChallengeTracking()
             val nameRect = map(bitmap, DETAIL_NAME_RECT) ?: return result
             val closeRect = map(bitmap, DETAIL_CLOSE_RECT) ?: return result
             val read = ocr.read(bitmap, DETAIL_OCR_SLOT, tightenToInk(bitmap, nameRect), scale = 2)
             val text = read?.text
             val matched = LabyrinthExEncounterCatalog.matchObservedName(text)
-            val trustedStrategy = updateDetailStability(matched, read?.id)
+            val trustedStrategy = matched.takeIf { confirmed(read) }
             return result.copy(
                 exEncounter = LabyrinthExEncounterObservation(
                     monsterDetailOpen = true,
@@ -60,7 +52,6 @@ class AndroidLabyrinthExEncounterResolver(
         }
 
         if (page == LabyrinthEntryPageState.BATTLE_CHALLENGE) {
-            resetDetailTracking()
             val structural = result.exChallenge
             val difficulty = LabyrinthChallengeDifficultyResolver.resolve(
                 normalScore = result.observation.anchorScores[EntryAnchorId.BATTLE_CHALLENGE_SUFFIX_NORMAL],
@@ -86,7 +77,7 @@ class AndroidLabyrinthExEncounterResolver(
             } else {
                 null
             }
-            val trustedStrategy = updateChallengeStability(matched, nameRead?.id)
+            val trustedStrategy = matched.takeIf { confirmed(nameRead) }
             return result.copy(
                 exEncounter = LabyrinthExEncounterObservation(
                     challengeText = nameText,
@@ -105,68 +96,23 @@ class AndroidLabyrinthExEncounterResolver(
             )
         }
 
-        resetChallengeTracking()
         // Do not clear the physical OCR scheduler on every unrelated animation; its own ROI
         // fingerprints prevent stale reads from applying to a changed frame.
-        resetDetailTracking()
         return result
     }
 
-    @Synchronized
-    private fun updateChallengeStability(
-        strategy: LabyrinthExEncounterStrategy?,
-        evidenceId: Long?,
-    ): LabyrinthExEncounterStrategy? {
-        val id = strategy?.id ?: run {
-            lastChallengeEncounterId = null
-            challengeStableReads = 0
-            return null
-        }
-        if (id != lastChallengeEncounterId) {
-            lastChallengeEncounterId = id
-            lastChallengeEvidenceId = Long.MIN_VALUE
-            challengeStableReads = 0
-        }
-        if (evidenceId != null && evidenceId != lastChallengeEvidenceId) {
-            lastChallengeEvidenceId = evidenceId
-            challengeStableReads++
-        }
-        return strategy.takeIf { challengeStableReads >= REQUIRED_STABLE_OCR_READS }
-    }
-
-    @Synchronized
-    private fun updateDetailStability(
-        strategy: LabyrinthExEncounterStrategy?,
-        evidenceId: Long?,
-    ): LabyrinthExEncounterStrategy? {
-        val id = strategy?.id ?: run {
-            lastDetailEncounterId = null
-            detailStableReads = 0
-            return null
-        }
-        if (id != lastDetailEncounterId) {
-            lastDetailEncounterId = id
-            lastDetailEvidenceId = Long.MIN_VALUE
-            detailStableReads = 0
-        }
-        if (evidenceId != null && evidenceId != lastDetailEvidenceId) {
-            lastDetailEvidenceId = evidenceId
-            detailStableReads++
-        }
-        return strategy.takeIf { detailStableReads >= REQUIRED_STABLE_OCR_READS }
-    }
-
-    private fun resetChallengeTracking() {
-        lastChallengeEncounterId = null
-        lastChallengeEvidenceId = Long.MIN_VALUE
-        challengeStableReads = 0
-    }
-
-    private fun resetDetailTracking() {
-        lastDetailEncounterId = null
-        lastDetailEvidenceId = Long.MIN_VALUE
-        detailStableReads = 0
-    }
+    /**
+     * An identity is trusted only once two independent OCR completions have agreed on the same
+     * crop.  The scheduler owns that count because it owns the reads, and because the count has to
+     * outlive one visit to the panel: an encounter met twice in a run presents pixel-identical
+     * text, so the second visit is served entirely from the cached read and issues no new OCR at
+     * all.  Counting evidence ids here instead saw that single cached id as one look and waited
+     * for a second that the scheduler would never schedule (2026-09-20: 美空 appeared twice in one
+     * run; the second encounter read the name correctly on the first frame and the run still
+     * stopped with the identity untrusted).
+     */
+    private fun confirmed(read: RelicOcrScheduler.Read?): Boolean =
+        (read?.confirmations ?: 0) >= REQUIRED_STABLE_OCR_READS
 
     private fun looksLikeMonsterDetail(bitmap: Bitmap): Boolean {
         val header = map(bitmap, DETAIL_HEADER_SAMPLE) ?: return false

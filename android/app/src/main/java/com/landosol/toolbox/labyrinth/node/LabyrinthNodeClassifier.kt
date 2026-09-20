@@ -290,11 +290,12 @@ class LabyrinthNodeClassifier(
         val cyanGlowScore = cyanGlowEvidence.score
         val purpleGlowEvidence = activePurpleGlowEvidence(frame, iconRect)
         val purpleGlowScore = purpleGlowEvidence.score
-        val hasPurpleActivation =
-            purpleGlowScore >= PURPLE_ACTIVE_GLOW_MIN_RATIO &&
-                purpleGlowEvidence.sideScore >= PURPLE_ACTIVE_SIDE_MIN_RATIO &&
-                purpleGlowEvidence.lowerScore >= PURPLE_ACTIVE_LOWER_MIN_RATIO &&
-                purpleGlowEvidence.rowCoverage >= PURPLE_ACTIVE_ROW_MIN_COVERAGE
+        val hasPurpleActivation = labyrinthNodePurpleActivation(
+            score = purpleGlowScore,
+            sideScore = purpleGlowEvidence.sideScore,
+            lowerScore = purpleGlowEvidence.lowerScore,
+            rowCoverage = purpleGlowEvidence.rowCoverage,
+        )
         val hasActiveGlow = cyanGlowScore >= ACTIVE_GLOW_MIN_RATIO || hasPurpleActivation
         val colorCandidates = buildSet {
             scores.entries
@@ -642,6 +643,14 @@ class LabyrinthNodeClassifier(
                 frameHeight = frame.height,
                 dense = directedCenterX == null,
             )
+            // Anchors overlap by design: each one sweeps +/-320 reference pixels, which is more
+            // than the distance to its neighbour, so the same rectangle is proposed from several
+            // anchors. Each of those repeats used to pay for a full 2400-sample classification.
+            // The result depends only on (frame, rect, templates), all fixed for this pass, so one
+            // memo per frame removes the repeats without changing a single decision.
+            val classified = HashMap<EntryPixelRect, Optional>(1024)
+            fun classifyOnce(rect: EntryPixelRect): NodeClassification? =
+                classified.getOrPut(rect) { Optional(classifyNode(frame, rect, regularTemplates)) }.value
             val detections = NodeAnchorDefinitions.NODE_ICON_RECTS.flatMap { definition ->
                 val rectangles = offsets.asSequence()
                     .mapNotNull { (offsetX, offsetY) ->
@@ -713,10 +722,8 @@ class LabyrinthNodeClassifier(
                     }
                 }
                 val candidateWindows = (proposals + refined).distinct()
-                scoredWindows += candidateWindows.size
-                val candidateDetections = candidateWindows.mapNotNull {
-                    classifyNode(frame, it, regularTemplates)
-                }
+                scoredWindows += candidateWindows.count { it !in classified }
+                val candidateDetections = candidateWindows.mapNotNull(::classifyOnce)
                 selectSpatiallyDistinct(candidateDetections, MAX_DETECTIONS_PER_SEARCH_ANCHOR)
                     .map { it.copy(column = definition.column, row = definition.row) }
             }
@@ -1038,10 +1045,6 @@ class LabyrinthNodeClassifier(
         private const val MIN_BOSS_GRADIENT_CONFIDENCE = 0.60
         private const val ACTIVE_TEMPLATE_TIE_MARGIN = 0.06
         private const val ACTIVE_GLOW_MIN_RATIO = 0.12
-        private const val PURPLE_ACTIVE_GLOW_MIN_RATIO = 0.06
-        private const val PURPLE_ACTIVE_SIDE_MIN_RATIO = 0.06
-        private const val PURPLE_ACTIVE_LOWER_MIN_RATIO = 0.05
-        private const val PURPLE_ACTIVE_ROW_MIN_COVERAGE = 0.30
         private const val ACTIVE_GLOW_SAMPLE_STEP = 6
         private const val CYAN_GLOW_ROW_MIN_RATIO = 0.08
         private const val CYAN_GLOW_FULL_COVERAGE_RATIO = 0.30
@@ -1215,6 +1218,9 @@ internal fun isRegularNodeTemplate(templateId: String): Boolean =
  * crop has a center near x=400. A 22% cutoff discarded that legitimate column before semantic
  * validation; keep only the truly overlay-dominated strip excluded.
  */
+/** Lets the per-frame classification memo store a real null result instead of recomputing it. */
+private class Optional(val value: NodeClassification?)
+
 internal fun isInsideRegularNodeRecognitionRegion(rect: EntryPixelRect, frameWidth: Int): Boolean {
     if (frameWidth <= 0) return false
     val centerX = rect.left + rect.width / 2
@@ -1234,3 +1240,38 @@ private fun EntryPixelRect.offsetInside(
     if (left < 0 || top < 0 || left + width > frameWidth || top + height > frameHeight) return null
     return EntryPixelRect(left, top, width, height)
 }
+
+/**
+ * Whether a node's purple aura says it is selectable right now.
+ *
+ * The aura is an animation, so a single frame samples it at an arbitrary phase and the four
+ * measurements rise and fall together. The thresholds therefore have to sit below the trough of a
+ * lit node, not inside its range — an unlit node reads ~0.00 on all four, so there is room.
+ *
+ * 2026-09-20 bundle 142732 measured EX战斗#40301 over 14 node frames, against the normal-battle
+ * crops of those same frames:
+ *
+ *     metric         unlit crops     this lit node
+ *     score          0.00 .. 0.02    0.04 .. 0.18
+ *     sideScore      0.00            0.04 .. 0.14
+ *     lowerScore     0.00 .. 0.03    0.04 .. 0.21
+ *     rowCoverage    0.00            0.28 .. 0.53
+ *
+ * The old gates (0.06 / 0.06 / 0.05 / 0.30) each cut through the lit range, so the node read as
+ * selectable on 3 of 14 frames. Requiring three *consecutive* selectable frames before tapping
+ * then turned a flickering gate into no tap at all for ten minutes.
+ */
+internal fun labyrinthNodePurpleActivation(
+    score: Double,
+    sideScore: Double,
+    lowerScore: Double,
+    rowCoverage: Double,
+): Boolean = score >= LABYRINTH_PURPLE_ACTIVE_GLOW_MIN_RATIO &&
+    sideScore >= LABYRINTH_PURPLE_ACTIVE_SIDE_MIN_RATIO &&
+    lowerScore >= LABYRINTH_PURPLE_ACTIVE_LOWER_MIN_RATIO &&
+    rowCoverage >= LABYRINTH_PURPLE_ACTIVE_ROW_MIN_COVERAGE
+
+internal const val LABYRINTH_PURPLE_ACTIVE_GLOW_MIN_RATIO = 0.035
+internal const val LABYRINTH_PURPLE_ACTIVE_SIDE_MIN_RATIO = 0.035
+internal const val LABYRINTH_PURPLE_ACTIVE_LOWER_MIN_RATIO = 0.030
+internal const val LABYRINTH_PURPLE_ACTIVE_ROW_MIN_COVERAGE = 0.22

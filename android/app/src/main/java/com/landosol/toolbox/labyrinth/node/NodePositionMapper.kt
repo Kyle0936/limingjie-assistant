@@ -212,6 +212,23 @@ class NodePositionMapper {
                     classification.blockType == target.blockType &&
                     classification.screenRect != null
             }.singleOrNull() ?: return@let null
+            // One crop is one node. If topology has already bound this very crop to a different
+            // block, adopting it here would put two block ids on one rect, and the only thing
+            // saying it belongs to the target is the crop's own type read — which is precisely
+            // what topology is disputing. Believing it because it matches what the route wants is
+            // circular.
+            //
+            // 2026-09-20 bundle 020234: the crop at (820,220) was bound to event#30403 by a
+            // PARTIAL_COLUMN binding at 0.810 and logged as a TYPE_CONFLICT (expected 事件,
+            // detected 连结 at 0.664). The route wanted link#30402, the repair adopted that crop,
+            // and the tap entered the event. Topology's own rows said as much: it had 30403 at
+            // visual row 1 and 30401 at row 3, so 30402 could only be the undetected middle cell.
+            val rectClaimedByAnotherBlock = actionableTopology.any { topology ->
+                topology.blockId != targetId &&
+                    topology.topologyConfidence >= SEMANTIC_REPAIR_RECT_OWNER_MIN_CONFIDENCE &&
+                    labyrinthNodeRectsOverlapSameCrop(topology.screenRect, uniqueVisual.screenRect)
+            }
+            if (rectClaimedByAnotherBlock) return@let null
             val topologyTarget = actionableTopology.firstOrNull { it.blockId == targetId }
             // A multi-node full column has enough cardinality and vertical order to identify the
             // route slot. A one-node column has no row-order evidence: an isolated background
@@ -584,9 +601,24 @@ class NodePositionMapper {
         // A topology/type disagreement remains a first-class conflict, while a type agreement is
         // immediately usable as the action rect. Unresolved blocks can still use the old mapper
         // until the topology model covers every map state.
+        // The rects topology already claimed are also off-limits to the legacy fallback.
+        //
+        // Without this, the fallback can pick the same crop that topology assigned to a
+        // different block and put two block ids on one screen position. When the two ids have
+        // different types the route-planner prefers the one it wants and taps the wrong node.
+        //
+        // 2026-09-20 bundle 020234: topology bound (820,220) to event#30403. The fallback then
+        // type-matched the same crop to link#30402, which is what the route wanted. The session
+        // adopted the fallback mapping, tapped row 1, and entered the event instead of the link.
+        val topologyClaimedRects = topologyMappings.mapNotNullTo(hashSetOf(), NodePositionMapping::screenRect)
         val resolvedActionableBlockIds = topologyResolvedBlockIds + semanticallyRepairedBlockIds
-        val mergedMappings = topologyMappings + listOfNotNull(preferredTargetSemanticRepair) + bestMappingsByBlockId.values
-            .filterNot { it.blockId in resolvedActionableBlockIds }
+        val mergedMappings = topologyMappings + listOfNotNull(preferredTargetSemanticRepair) +
+            bestMappingsByBlockId.values.filterNot { legacy ->
+                legacy.blockId in resolvedActionableBlockIds ||
+                    (legacy.screenRect != null && topologyClaimedRects.any { claimed ->
+                        labyrinthNodeRectsOverlapSameCrop(legacy.screenRect, claimed)
+                    })
+            }
         val mergedConflicts = topologyConflicts + bestConflictsByBlockId.values
             .filterNot { it.blockId in resolvedActionableBlockIds }
 
@@ -696,5 +728,31 @@ class NodePositionMapper {
         const val TOPOLOGY_ORDERED_ROUTE_TARGET_MIN_CONFIDENCE = 0.90
         const val SINGLE_NODE_SEMANTIC_REPAIR_MIN_CONFIDENCE = 0.85
         const val SINGLE_NODE_SEMANTIC_REPAIR_MIN_MARGIN = 0.12
+
+        /**
+         * How sure topology must be about a crop before a semantic repair has to leave it alone.
+         *
+         * Below this the binding is weak enough that the repair is the better reading; at or above
+         * it the two readings contradict each other and the run should look again rather than tap.
+         */
+        const val SEMANTIC_REPAIR_RECT_OWNER_MIN_CONFIDENCE = 0.70
     }
+}
+
+/**
+ * Whether two rects are the same crop of the map rather than two neighbouring nodes.
+ *
+ * Node crops are a fixed 280x350 and their rows sit ~300 px apart, so comparing centres against a
+ * fraction of the crop separates "the same detection, re-measured" from "the cell above".
+ */
+internal fun labyrinthNodeRectsOverlapSameCrop(
+    first: EntryPixelRect?,
+    second: EntryPixelRect?,
+): Boolean {
+    if (first == null || second == null) return false
+    val xTolerance = maxOf(16, minOf(first.width, second.width) * 30 / 100)
+    val yTolerance = maxOf(16, minOf(first.height, second.height) * 30 / 100)
+    val dx = kotlin.math.abs((first.left + first.width / 2) - (second.left + second.width / 2))
+    val dy = kotlin.math.abs((first.top + first.height / 2) - (second.top + second.height / 2))
+    return dx <= xTolerance && dy <= yTolerance
 }

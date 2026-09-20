@@ -96,6 +96,26 @@ internal const val MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS = 3
 internal const val ORPHAN_MOVE_CONFIRMATION_DISMISS_INTERVAL_MILLIS = 2_000L
 
 /**
+ * Whether the dismissal budget may be handed back after the dialog went away.
+ *
+ * [MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS] exists to stop pressing 取消 at a dialog that
+ * refuses to close. It was also, accidentally, a per-run cap: the counter only ever reset when a
+ * session error restarted entry navigation, so after three stray dialogs had been cancelled
+ * successfully the fourth was never tapped at all and the run stopped with
+ * "移动确认弹窗多次取消无效，请手动关闭后继续" without a single cancel tap (2026-09-19 report).
+ *
+ * A cleared screen is proof the previous cancel worked, so the budget is restored. Proof means
+ * several consecutive dialog-free frames: one frame can be a fade-out, and a dialog that flickers
+ * must not refill the budget forever.
+ */
+internal fun labyrinthOrphanMoveConfirmationBudgetRestored(
+    clearFrames: Int,
+    requiredClearFrames: Int = ORPHAN_MOVE_CONFIRMATION_CLEAR_FRAMES,
+): Boolean = clearFrames >= requiredClearFrames
+
+internal const val ORPHAN_MOVE_CONFIRMATION_CLEAR_FRAMES = 3
+
+/**
  * A one-choice event has no strategic ambiguity.  Two independent current-frame anchors are
  * required before exposing its sole button so this cannot turn an unrelated UNKNOWN/map frame
  * into a blind click.
@@ -590,3 +610,20 @@ private fun toRosterMatch(match: LabyrinthBattleCharacterMatch) = LabyrinthChara
 
 private const val ROLE_PAGE_ANCHOR_MIN_SCORE = 0.45
 private const val REQUIRED_OPENING_ROSTER_SIZE = 3
+
+/**
+ * Whether a committed event-choice tap has waited long enough to be considered lost.
+ *
+ * A real selection leaves the event page within a second or two, so a page that is still the same
+ * event after this long means the tap never landed. Retrying is safe because the event page only
+ * accepts one selection: if the tap did land and the page simply lagged, the page has changed by
+ * the time the retry is planned.
+ */
+internal fun labyrinthEventChoiceCommitExpired(
+    committedAtMillis: Long,
+    nowMillis: Long,
+    retryAfterMillis: Long = EVENT_CHOICE_COMMIT_RETRY_MILLIS,
+): Boolean = committedAtMillis != Long.MIN_VALUE &&
+    (nowMillis - committedAtMillis).coerceAtLeast(0L) >= retryAfterMillis
+
+internal const val EVENT_CHOICE_COMMIT_RETRY_MILLIS = 6_000L

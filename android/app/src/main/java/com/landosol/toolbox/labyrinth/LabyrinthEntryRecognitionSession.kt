@@ -977,6 +977,10 @@ class LabyrinthEntryRecognitionSession(
     /** Chosen safe team count for the current Boss multi-team attempt; 1/2 teams leave later tabs empty. */
     private var bossMultiTeamTargetCount: Int? = null
     private var configuredBossTeamMode: LabyrinthBossTeamMode = LabyrinthBossTeamMode.MULTI_TEAM
+    /** User-configured opening picks per guild; empty means every guild keeps its shipped plan. */
+    private var configuredOpeningRosters: Map<Int, List<List<String>>> = emptyMap()
+    /** Names for ids an override may reference, so opening progress messages stay readable. */
+    private var roleDisplayNames: Map<String, String> = emptyMap()
     private var bossTeamMode: LabyrinthBossTeamMode = LabyrinthBossTeamMode.MULTI_TEAM
     private var preferPureBossDamageSystem: Boolean = true
     private var singleBossFallbackToMultiAfterThreeFailures: Boolean = false
@@ -1034,6 +1038,8 @@ class LabyrinthEntryRecognitionSession(
     private val relicAcquisitionGate = LabyrinthRelicAcquisitionGate()
     @Volatile
     private var eventChoiceCommitted = false
+    private var eventChoiceCommittedAt = Long.MIN_VALUE
+    private var eventChoiceCommitAttempts = 0
     @Volatile
     private var relicFocusMark: LabyrinthRelicMark? = null
     /** Latest game-visible "当前：N" values. These override history-derived stacks when known. */
@@ -1102,6 +1108,8 @@ class LabyrinthEntryRecognitionSession(
     private var orphanMoveConfirmationStableFrames = 0
     @Volatile
     private var orphanMoveConfirmationDismissAttempts = 0
+    /** Consecutive frames with no movement dialog; proof a cancel worked, which refills the budget. */
+    private var orphanMoveConfirmationClearFrames = 0
     @Volatile
     private var lastOrphanMoveConfirmationDismissAt = Long.MIN_VALUE
     @Volatile
@@ -1273,6 +1281,10 @@ class LabyrinthEntryRecognitionSession(
                 buyRelics = snapshot.settings.buyRelics,
                 refreshEnabled = snapshot.settings.refreshShop,
             )
+            configuredOpeningRosters = snapshot.settings.openingRosters
+            roleDisplayNames = snapshot.roleRuntime?.document?.characters
+                ?.associate { it.characterId to it.displayName }
+                .orEmpty()
             roleRewardChoicePlanner = snapshot.roleRuntime?.rewardChoicePlanner
             eventChoicePlanner = snapshot.roleRuntime?.eventChoicePlanner
             battleTeamRecommendationPlanner = snapshot.roleRuntime?.battleTeamRecommendationPlanner
@@ -1851,6 +1863,7 @@ class LabyrinthEntryRecognitionSession(
                 // The shop exit dialog shares this chrome; while shop controls are visible the
                 // dialog is the shop handler's and must be left alone.
                 val shopBackground = labyrinthShopBackgroundVisible(result)
+                orphanMoveConfirmationClearFrames = 0
                 if (shopBackground) {
                     orphanMoveConfirmationStableFrames = 0
                 } else {
@@ -1885,6 +1898,13 @@ class LabyrinthEntryRecognitionSession(
             }
         } else if (result.nodeMoveConfirmation == null) {
             orphanMoveConfirmationStableFrames = 0
+            // The screen cleared, so the previous cancel worked. Give the budget back: it is there
+            // to stop tapping at a dialog that will not close, not to cap how many separate stray
+            // dialogs one run may recover from.
+            orphanMoveConfirmationClearFrames++
+            if (labyrinthOrphanMoveConfirmationBudgetRestored(orphanMoveConfirmationClearFrames)) {
+                resetOrphanMoveConfirmationTracking()
+            }
         }
         if (!current.dryRun && labyrinthNodeMoveConfirmationOwnsFrame(
                 pageState = pageState,
@@ -2178,7 +2198,11 @@ class LabyrinthEntryRecognitionSession(
     }
 
     private fun createActionPlanner(): LabyrinthEntryActionPlanner = actionPlannerFactory().also { planner ->
-        planner.configureOpeningRoster(validatedRoute?.guildId)
+        planner.configureOpeningRoster(
+            guildId = validatedRoute?.guildId,
+            openingRosters = configuredOpeningRosters,
+            displayNameFor = { id -> roleDisplayNames[id] },
+        )
         planner.start(clock())
     }
 
@@ -2633,7 +2657,7 @@ class LabyrinthEntryRecognitionSession(
         }
         if (pageState != LabyrinthEntryPageState.EVENT_CHOICE) {
             _state.value = _state.value.copy(eventChoiceDecision = null)
-            eventChoiceCommitted = false
+            resetEventChoiceCommit()
         }
         if (labyrinthPageUiOwner(pageState) != LabyrinthPageUiOwner.SHOP) {
             pendingShopPurchase = null
@@ -3350,6 +3374,12 @@ class LabyrinthEntryRecognitionSession(
     internal suspend fun stopFromRunLogic(reason: String): Boolean =
         stop(reason, releaseCapture = currentRunId == null)
 
+    private fun resetEventChoiceCommit() {
+        eventChoiceCommitted = false
+        eventChoiceCommittedAt = Long.MIN_VALUE
+        eventChoiceCommitAttempts = 0
+    }
+
     private fun finishFromPlanner(sessionId: AutomationSessionId, reason: String) {
         if (!actionInFlight.compareAndSet(false, true)) return
         actionScope.launch {
@@ -3978,7 +4008,7 @@ class LabyrinthEntryRecognitionSession(
             lastPostEntryState = pageState
             postEntryStableFrames = 0
             postEntryAttempts = 0
-            eventChoiceCommitted = false
+            resetEventChoiceCommit()
             if (pageState == LabyrinthEntryPageState.RELIC_CHOICE) {
                 pendingRelicSelection = null
                 relicChoiceCommitted = false
@@ -4507,9 +4537,30 @@ class LabyrinthEntryRecognitionSession(
                 }
             }
 
-            LabyrinthEntryPageState.EVENT_CHOICE -> if (eventChoiceCommitted) {
+            LabyrinthEntryPageState.EVENT_CHOICE -> if (
+                eventChoiceCommitted &&
+                !labyrinthEventChoiceCommitExpired(eventChoiceCommittedAt, timestampMillis)
+            ) {
+                null
+            } else if (
+                eventChoiceCommitted &&
+                eventChoiceCommitAttempts >= MAX_EVENT_CHOICE_COMMIT_ATTEMPTS
+            ) {
+                finishFromPlanner(
+                    sessionId,
+                    "事件选项已点击${eventChoiceCommitAttempts}次仍停留在事件页；停止以免反复空点",
+                )
                 null
             } else {
+                // A committed tap that the game ignored used to latch this page forever: the flag
+                // only cleared on a page change, and the page never changed. The run then sat on
+                // "事件推荐已生成，等待按钮稳定" — a message that describes waiting for a button,
+                // while the truth was that the tap had already been sent and lost (2026-09-20
+                // bundle 133934: 323 s on one EVENT_CHOICE page, actionCount frozen at 271).
+                if (eventChoiceCommitted) {
+                    eventChoiceCommitted = false
+                    eventChoiceCommitAttempts++
+                }
                 when (val decision = _state.value.eventChoiceDecision) {
                     is LabyrinthEventChoiceDecision.Select -> if (decision.actionSafe) {
                         LabyrinthPostEntryTapPlan(
@@ -5293,6 +5344,7 @@ class LabyrinthEntryRecognitionSession(
                     }
                     if (kind == LabyrinthPostEntryActionKind.SELECT_EVENT) {
                         eventChoiceCommitted = true
+                        eventChoiceCommittedAt = clock()
                     }
                     if (kind == LabyrinthPostEntryActionKind.SELECT_RELIC) {
                         relicChoiceCommitted = true
@@ -6511,6 +6563,7 @@ class LabyrinthEntryRecognitionSession(
     private fun resetOrphanMoveConfirmationTracking() {
         orphanMoveConfirmationStableFrames = 0
         orphanMoveConfirmationDismissAttempts = 0
+        orphanMoveConfirmationClearFrames = 0
         lastOrphanMoveConfirmationDismissAt = Long.MIN_VALUE
     }
 
@@ -7912,6 +7965,8 @@ class LabyrinthEntryRecognitionSession(
         const val MAX_NODE_ERROR_STREAK = 20
         const val POST_ENTRY_STABLE_FRAMES = 2
         const val POST_ENTRY_ACTION_INTERVAL_MILLIS = 1_500L
+
+        const val MAX_EVENT_CHOICE_COMMIT_ATTEMPTS = 3
         const val SHOP_PURCHASE_TRANSITION_TIMEOUT_MILLIS = 8_000L
         const val SHOP_REFRESH_TRANSITION_TIMEOUT_MILLIS = 8_000L
         const val SHOP_REFRESH_SETTLE_MILLIS = 500L

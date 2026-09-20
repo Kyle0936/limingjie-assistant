@@ -107,11 +107,12 @@ class LabyrinthBattleTeamRecommendationPlanner(
         if (resolved.isEmpty()) {
             return LabyrinthBattleTeamRecommendationResult.Unavailable("没有已获得的可用角色")
         }
-        if (!allowSupplementLead && resolved.none { it.isEligibleBattleVanguard(context) }) {
-            return LabyrinthBattleTeamRecommendationResult.Unavailable(
-                "当前角色池中没有满足生存资格的一号位；不再仅按掩护者职阶强行上T",
-            )
-        }
+        // A pool with nobody fit to lead is not a reason to skip the fight: the run still has to
+        // play it. Fall back to the vanguard-less composition the Boss follow-up slots already use
+        // rather than blocking 编组 (2026-09-19, by request). The planner still never promotes a
+        // 掩护者 who fails the survival line into a "safe" lead; it just says so and plays on.
+        val poolHasVanguard = resolved.any { it.isEligibleBattleVanguard(context) }
+        val supplementLead = allowSupplementLead || !poolHasVanguard
 
         val plan = if (requestedBossTeamCount > 1 || allowSupplementLead) {
             teamPlanSearcher.bossMultiTeamSearch(
@@ -122,7 +123,7 @@ class LabyrinthBattleTeamRecommendationPlanner(
         } else {
             teamPlanSearcher.initialSearch(resolved, context)
         }
-        if (!allowSupplementLead && plan.teams.isNotEmpty() && plan.safeTeamCount == 0) {
+        if (!supplementLead && plan.teams.isNotEmpty() && plan.safeTeamCount == 0) {
             return LabyrinthBattleTeamRecommendationResult.Unavailable(
                 "当前角色池中没有满足生存资格的一号位；不再仅按掩护者职阶强行上T",
             )
@@ -154,7 +155,15 @@ class LabyrinthBattleTeamRecommendationPlanner(
             if (incompleteIds.isNotEmpty()) {
                 add("部分角色资料不完整，按已有信息参与编组评分：${incompleteIds.joinToString()}")
             }
-            if (leadIsSupplement) add("Boss后续队伍：无合格一号位，作为输出补刀队上场而不留空")
+            if (leadIsSupplement) {
+                add(
+                    if (poolHasVanguard) {
+                        "Boss后续队伍：无合格一号位，作为输出补刀队上场而不留空"
+                    } else {
+                        "角色池中没有满足生存资格的一号位；按无T阵容上场，不再空等"
+                    },
+                )
+            }
             add(plan.reason)
         }.distinct()
         return LabyrinthBattleTeamRecommendationResult.Ready(
@@ -298,11 +307,10 @@ class LabyrinthBattleTeamRecommendationPlanner(
                 "战斗失败后可用角色不足${TEAM_SIZE}名，无法生成完整重试队伍",
             )
         }
-        if (!allowSupplementLead && resolved.none { it.isEligibleBattleVanguard(context) }) {
-            return LabyrinthBattleTeamRecommendationResult.Unavailable(
-                "战斗失败后角色池中没有满足生存资格的一号位；不能生成安全重试队伍",
-            )
-        }
+        // A retry with a vanguard-less team beats leaving the run parked on the failure page
+        // (2026-09-19, by request; same fallback as the first attempt).
+        val retryPoolHasVanguard = resolved.any { it.isEligibleBattleVanguard(context) }
+        val retrySupplementLead = allowSupplementLead || !retryPoolHasVanguard
 
         if (context.encounterStrategy != null && retryNumber >= 2 && lastFailedTeamSignature != null) {
             val recovery = exSecondFailureHealerRecovery(
@@ -332,7 +340,7 @@ class LabyrinthBattleTeamRecommendationPlanner(
                 excludedTeamSignatures = failedTeamSignatures,
             )
         }
-        if (!allowSupplementLead && plan.teams.isNotEmpty() && plan.safeTeamCount == 0) {
+        if (!retrySupplementLead && plan.teams.isNotEmpty() && plan.safeTeamCount == 0) {
             return LabyrinthBattleTeamRecommendationResult.Unavailable(
                 "战斗失败后角色池中没有满足生存资格的一号位；不能生成安全重试队伍",
             )
@@ -369,7 +377,14 @@ class LabyrinthBattleTeamRecommendationPlanner(
                 score = evaluation.score,
                 vanguard = vanguard,
                 survivalAnchor = evaluation.survivalAnchorCharacterId?.let(memberById::get),
-                reasons = (evaluation.reasons + plan.reason + "失败重试：禁止复用已失败的完整阵容").distinct(),
+                reasons = (
+                    evaluation.reasons + plan.reason + "失败重试：禁止复用已失败的完整阵容" +
+                        if (retryLeadIsSupplement && !retryPoolHasVanguard) {
+                            listOf("角色池中没有满足生存资格的一号位；按无T阵容重试")
+                        } else {
+                            emptyList()
+                        }
+                    ).distinct(),
                 defenseMarkStacks = context.defenseMarkStacks,
                 targetCount = context.targetCount,
                 plannedBossTeamCount = plan.teams.size.coerceIn(1, 3),

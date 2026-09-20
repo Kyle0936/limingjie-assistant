@@ -10,12 +10,14 @@ import org.junit.Test
 class LabyrinthDecisionPolicyTest {
     @Test
     fun `opening roster always resolves exactly three configured slots`() {
-        val policy = requireNotNull(LabyrinthOpeningRosterCatalog.policyFor(3))
+        // 王宫骑士团: its third slot still ships alternates, so it exercises the fallback ordering.
+        // 咲恋救济院 used to play that role until its picks were fixed to one candidate each.
+        val policy = requireNotNull(LabyrinthOpeningRosterCatalog.policyFor(4))
 
-        val decision = policy.choose(setOf("1145", "1085", "1023")) as LabyrinthOpeningRosterDecision.Ready
+        val decision = policy.choose(setOf("1242", "1339", "1115")) as LabyrinthOpeningRosterDecision.Ready
 
-        assertEquals(listOf("1145", "1085", "1023"), decision.characters.map { it.characterId })
-        assertTrue(decision.reasons[1].contains("第2顺位替代"))
+        assertEquals(listOf("1242", "1339", "1115"), decision.characters.map { it.characterId })
+        assertTrue(decision.reasons[2].contains("第2顺位替代"))
     }
 
     @Test

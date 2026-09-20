@@ -1,7 +1,9 @@
 package com.landosol.toolbox.labyrinth
 
 import com.landosol.toolbox.labyrinth.vision.LabyrinthRelicMatch
+import kotlinx.serialization.Serializable
 
+@Serializable
 enum class LabyrinthRelicMark(val label: String) {
     ACCELERATION("加速"),
     CRITICAL("会心"),
@@ -31,6 +33,15 @@ data class LabyrinthRelicChoicePolicyConfig(
     val debuffPivotMinimum: Int = 12,
     val debuffPivotTolerance: Int = 2,
     val baselineLastArea: Int = 3,
+    /**
+     * User's preferred marks, strongest first. Empty keeps the built-in behaviour.
+     *
+     * This orders the marks the policy is otherwise indifferent about; it does not override the
+     * parts that follow from the game's own tiers. An immediate jump to [capstoneTarget] still
+     * wins, and a mark already at the cap is still never chosen, because both are about actual
+     * payoff rather than taste.
+     */
+    val markPriority: List<LabyrinthRelicMark> = emptyList(),
 ) {
     init {
         require(baselineTarget > 0)
@@ -38,6 +49,22 @@ data class LabyrinthRelicChoicePolicyConfig(
         require(debuffPivotMinimum in (baselineTarget + 1)..capstoneTarget)
         require(debuffPivotTolerance >= 0)
         require(baselineLastArea in 0..5)
+        require(markPriority.distinct().size == markPriority.size) {
+            "遗物优先级不能重复"
+        }
+    }
+
+    /** Bonus applied to a candidate of [mark]; 0 when the user expressed no preference. */
+    fun priorityBonus(mark: LabyrinthRelicMark): Double {
+        val rank = markPriority.indexOf(mark)
+        if (rank < 0) return 0.0
+        // Ranks are worth less than finishing a 15 tier and roughly on par with the focus bonus,
+        // so a preference steers ties without overriding a clearly better stack.
+        return (markPriority.size - rank) * PRIORITY_RANK_WEIGHT
+    }
+
+    private companion object {
+        const val PRIORITY_RANK_WEIGHT = 1.2
     }
 }
 
@@ -84,7 +111,14 @@ class LabyrinthRelicChoicePolicy(
             (highestUnfinished == null ||
                 stacks.getValue(debuff) + config.debuffPivotTolerance >= stacks.getValue(highestUnfinished))
         val retainedFocus = lockedFocus?.takeIf { stacks.getValue(it) < config.capstoneTarget }
-        val focus = if (debuffCanPivot) debuff else retainedFocus ?: highestUnfinished ?: debuff
+        // With a user order, the highest-ranked unfinished mark is what the run chases; without
+        // one, the existing "whichever stack is already tallest" rule stands.
+        val preferredUnfinished = config.markPriority.firstOrNull { it in unfinished }
+        val focus = if (debuffCanPivot) {
+            debuff
+        } else {
+            retainedFocus ?: preferredUnfinished ?: highestUnfinished ?: debuff
+        }
 
         val immediateCapstone = recognized
             .filter { candidate ->
@@ -109,7 +143,8 @@ class LabyrinthRelicChoicePolicy(
                 (if (finishesBaseline) if (early) 4.0 else 2.0 else 0.0) +
                 (if (useful > 0) before.coerceAtMost(config.capstoneTarget) * 0.5 else 0.0) +
                 (if (candidate.mark == focus && useful > 0) 3.0 else 0.0) +
-                (if (candidate.mark == debuff && debuffCanPivot && useful > 0) 1.0 else 0.0)
+                (if (candidate.mark == debuff && debuffCanPivot && useful > 0) 1.0 else 0.0) +
+                (if (useful > 0) config.priorityBonus(candidate.mark) else 0.0)
         }
         val choice = immediateCapstone ?: recognized.maxWithOrNull(
             compareBy<Candidate> { score(it) }.thenBy { it.bonus },

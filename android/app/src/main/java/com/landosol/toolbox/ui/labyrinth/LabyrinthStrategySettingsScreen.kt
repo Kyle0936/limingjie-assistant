@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.landosol.toolbox.labyrinth.LabyrinthBossTeamMode
+import com.landosol.toolbox.labyrinth.LabyrinthRelicMark
 import com.landosol.toolbox.labyrinth.LabyrinthStrategySettings
 import com.landosol.toolbox.labyrinth.LabyrinthStrategySettingsCodec
 import com.landosol.toolbox.labyrinth.LabyrinthRoleRatingItem
@@ -42,6 +43,7 @@ fun LabyrinthStrategySettingsScreen(
     var confirmDiscard by remember { mutableStateOf(false) }
     var confirmReset by remember { mutableStateOf(false) }
     var showRoleRatings by rememberSaveable { mutableStateOf(false) }
+    var showOpeningRoster by rememberSaveable { mutableStateOf(false) }
     val close = { if (!saving) { if (draft != saved) confirmDiscard = true else onClose() } }
     Dialog(onDismissRequest = close, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Scaffold(
@@ -172,6 +174,17 @@ fun LabyrinthStrategySettingsScreen(
                     StrategyNumber("转追削弱的最低层数", draft.debuffPivotMinimum, 5..15, "层", !saving) { draft = draft.copy(debuffPivotMinimum = it) }
                     StrategyNumber("削弱落后主印记的容忍量", draft.debuffPivotTolerance, 0..5, "层", !saving) { draft = draft.copy(debuffPivotTolerance = it) }
                 }
+                StrategySection("遗物优先级", relicPrioritySummary(draft.relicMarkPriority), section, { section = it }) {
+                    Text(
+                        "按你的顺序主追印记。留空时沿用内置顺序（以当前层数最高的未满印记为主追）。" +
+                            "能一次跨到 15 层的选项仍然优先，这条不受顺序影响。",
+                    )
+                    RelicPriorityEditor(
+                        priority = draft.relicMarkPriority,
+                        enabled = !saving,
+                        onChange = { draft = draft.copy(relicMarkPriority = it) },
+                    )
+                }
                 StrategySection("商店", if (draft.buyRelics) "购买遗物 · ${if (draft.refreshShop) "区域 ${draft.refreshFromArea} 起刷新" else "不刷新"}" else "不购买", section, { section = it }) {
                     Text("遗物始终优先；一轮三个遗物买完且可刷新时继续刷新买遗物。只有遗物/刷新都无法继续时，才用剩余金币购买已确认的职能印记。无法确认的商品不会盲买。")
                     StrategySwitch("购买遗物", "关闭后退出商店，也不会刷新。", draft.buyRelics, !saving) { draft = draft.copy(buyRelics = it) }
@@ -179,6 +192,22 @@ fun LabyrinthStrategySettingsScreen(
                     if (draft.buyRelics && draft.refreshShop) {
                         StrategyNumber("允许刷新起始区域", draft.refreshFromArea, 1..5, "", !saving) { draft = draft.copy(refreshFromArea = it) }
                         if (draft.refreshFromArea < 5) Text("提前刷新会消耗后续商店的金币，请谨慎调整。", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+                StrategySection("开局", openingRosterSummary(draft.openingRosters), section, { section = it }) {
+                    Text(
+                        "每个公会开局固定选 3 名角色。槽位内可以排多个候选，按顺序取第一个能在列表里找到的；" +
+                            "公会附赠的角色由游戏决定，不可编辑。",
+                    )
+                    OutlinedButton(
+                        onClick = { showOpeningRoster = true },
+                        enabled = !saving,
+                        modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                    ) {
+                        Text("编辑开局角色 · ${openingRosterSummary(draft.openingRosters)}")
+                    }
+                    draft.openingRosterError()?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
                 }
                 StrategySection("事件", "普通 ${draft.normalWinRate}% · 极难 ${draft.extremeWinRate}%", section, { section = it }) {
@@ -198,6 +227,20 @@ fun LabyrinthStrategySettingsScreen(
             if (value == null) draft.personalRoleScores - id else draft.personalRoleScores + (id to value)) },
         onClose = { showRoleRatings = false },
     )
+    if (showOpeningRoster) LabyrinthOpeningRosterScreen(
+        rosters = draft.openingRosters,
+        loadCatalog = loadRoleRatings,
+        onChange = { guildId, slots ->
+            draft = draft.copy(
+                openingRosters = if (slots == null) {
+                    draft.openingRosters - guildId
+                } else {
+                    draft.openingRosters + (guildId to slots)
+                },
+            )
+        },
+        onClose = { showOpeningRoster = false },
+    )
     if (confirmDiscard) AlertDialog(onDismissRequest = { confirmDiscard = false },
         title = { Text("放弃未保存的修改？") }, text = { Text("已保存的配置不会改变。") },
         confirmButton = { TextButton(onClick = { confirmDiscard = false; onClose() }) { Text("放弃修改") } },
@@ -206,6 +249,46 @@ fun LabyrinthStrategySettingsScreen(
         title = { Text("恢复全部默认策略？") }, text = { Text("恢复后仍需点击保存，才会替换已保存的配置。") },
         confirmButton = { TextButton(onClick = { draft = LabyrinthStrategySettings(); confirmReset = false }) { Text("恢复默认") } },
         dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("取消") } })
+}
+
+private fun relicPrioritySummary(priority: List<LabyrinthRelicMark>): String =
+    if (priority.isEmpty()) "使用内置顺序" else priority.joinToString(" > ") { it.label }
+
+@Composable
+private fun RelicPriorityEditor(
+    priority: List<LabyrinthRelicMark>,
+    enabled: Boolean,
+    onChange: (List<LabyrinthRelicMark>) -> Unit,
+) {
+    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        priority.forEachIndexed { index, mark ->
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("${index + 1}. ${mark.label}", Modifier.weight(1f))
+                TextButton(
+                    onClick = { onChange(priority.toMutableList().also { it.add(index - 1, it.removeAt(index)) }) },
+                    enabled = enabled && index > 0,
+                ) { Text("上移") }
+                TextButton(onClick = { onChange(priority - mark) }, enabled = enabled) { Text("移除") }
+            }
+        }
+        val remaining = LabyrinthRelicMark.entries.filterNot { it in priority }
+        if (remaining.isNotEmpty()) {
+            Text("添加：", style = MaterialTheme.typography.bodySmall)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                remaining.forEach { mark ->
+                    OutlinedButton(onClick = { onChange(priority + mark) }, enabled = enabled) {
+                        Text(mark.label)
+                    }
+                }
+            }
+        }
+        if (priority.isNotEmpty()) {
+            TextButton(onClick = { onChange(emptyList()) }, enabled = enabled) { Text("恢复内置顺序") }
+        }
+    }
 }
 
 @Composable

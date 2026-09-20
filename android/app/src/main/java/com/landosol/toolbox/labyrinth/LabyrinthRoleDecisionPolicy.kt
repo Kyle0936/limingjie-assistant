@@ -1783,11 +1783,25 @@ class LabyrinthTeamPlanSearcher(
         }
         val guideCore = labyrinthEncounterGuideCore(roster, context)
         val coreFirst = if (guideCore.isEmpty()) null else optimizer.bestBattleFormationIncluding(roster, context, guideCore)
-        val first = coreFirst ?: optimizer.bestBattleFormation(roster, context) ?: return LabyrinthTeamPlan(
-            LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
-            emptyList(),
-            "自动战斗要求实际一号位满足生存资格；当前角色池无法组成满足条件的队伍",
-        )
+        val first = coreFirst
+            ?: optimizer.bestBattleFormation(roster, context)
+            // Nobody in this pool can lead. Refusing leaves the run with nothing to send and the
+            // fight still has to be played, so compose the best team the pool allows and say
+            // plainly that it leads without a qualified tank (2026-09-19, by request). Boss
+            // follow-up slots have filled this way since 2026-09-17.
+            //
+            // Deliberately narrow: a pool that *does* hold a qualified vanguard but still cannot
+            // form a team has a different problem (unknown 站位, too few roles), and its specific
+            // reason below is what tells the user which. Only a genuinely tankless pool falls back.
+            ?: return if (hasAnyEligibleVanguard(roster, context)) {
+                LabyrinthTeamPlan(
+                    LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
+                    emptyList(),
+                    "自动战斗要求实际一号位满足生存资格；当前角色池无法组成满足条件的队伍",
+                )
+            } else {
+                vanguardlessPlan(roster, context)
+            }
         val coreNames = guideCore.joinToString("、") { id ->
             roster.firstOrNull { it.characterId == id }?.displayName ?: id
         }
@@ -1943,6 +1957,42 @@ class LabyrinthTeamPlanSearcher(
      * Follow-up teams for the slots [safeTeams] leaves open, built from the leftover roster with
      * the frontmost-tank gate off. Never reorders or replaces a safe team.
      */
+    /**
+     * One damage-only team for a pool with no qualified vanguard at all.
+     *
+     * [LabyrinthTeamPlanKind.SUPPLEMENT_FILL] with `safeTeamCount = 0` is the existing contract
+     * for "this team leads without a tank"; callers already surface that instead of treating it
+     * as a normal safe team.
+     */
+    private fun hasAnyEligibleVanguard(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+    ): Boolean {
+        val gate = optimizer.scoringConfig.vanguardGate(context)
+        return roster.any { it.isEligibleBattleVanguard(context, gate) }
+    }
+
+    private fun vanguardlessPlan(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        excludedTeamSignatures: Set<String> = emptySet(),
+    ): LabyrinthTeamPlan {
+        val unique = roster.distinctBy(LabyrinthRoleProfile::characterId)
+        val team = optimizer.bestSupplementFormation(unique, context)
+            ?.takeUnless { it.teamSignature() in excludedTeamSignatures }
+            ?: return LabyrinthTeamPlan(
+                LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
+                emptyList(),
+                "自动战斗要求实际一号位满足生存资格；当前角色池无法组成满足条件的队伍",
+            )
+        return LabyrinthTeamPlan(
+            LabyrinthTeamPlanKind.SUPPLEMENT_FILL,
+            listOf(team),
+            "当前角色池没有满足生存资格的一号位；按无T阵容上场，评分${formatScore(team.score)}",
+            safeTeamCount = 0,
+        )
+    }
+
     private fun supplementFill(
         safeTeams: List<LabyrinthTeamEvaluation>,
         unique: List<LabyrinthRoleProfile>,
@@ -1988,6 +2038,12 @@ class LabyrinthTeamPlanSearcher(
                     .joinToString(",") in excludedTeamSignatures
             }
         if (ranked.isEmpty()) {
+            // Same reasoning as the first attempt: with nobody fit to lead, a vanguard-less retry
+            // beats leaving the run parked on the failure page. A pool that does have a tank but
+            // exhausted its untried formations keeps the original message.
+            if (!hasAnyEligibleVanguard(roster, context)) {
+                return vanguardlessPlan(roster, context, excludedTeamSignatures)
+            }
             return LabyrinthTeamPlan(
                 LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
                 emptyList(),

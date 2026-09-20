@@ -31,6 +31,7 @@ internal class LabyrinthBattleRosterSearch {
     private var unchangedProbeDirection: LabyrinthBattleRosterScrollDirection? = null
     private var unchangedProbes = 0
     private var probing = false
+    private var blankProbes = 0
 
     private data class PendingScroll(
         val direction: LabyrinthBattleRosterScrollDirection,
@@ -49,6 +50,7 @@ internal class LabyrinthBattleRosterSearch {
         unchangedProbeDirection = null
         unchangedProbes = 0
         probing = false
+        blankProbes = 0
     }
 
     /**
@@ -85,6 +87,7 @@ internal class LabyrinthBattleRosterSearch {
             unchangedProbes = 0
             unchangedProbeDirection = null
             probing = false
+            blankProbes = 0
         }
         lastVisibleSignature = observation.takeIf {
             it.recognitionState == LabyrinthBattleTeamRecognitionState.STABLE && it.visibleCharacters.isNotEmpty() &&
@@ -201,6 +204,27 @@ internal class LabyrinthBattleRosterSearch {
         if (observation.currentFilter == LabyrinthBattleElementFilter.UNKNOWN) return LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE
         val direction = pending?.direction ?: if (topObserved) LabyrinthBattleRosterScrollDirection.NEXT_PAGE
             else LabyrinthBattleRosterScrollDirection.TO_TOP
+
+        // A probe concludes by comparing the portraits before and after a swipe, so a stable
+        // viewport that resolves no portrait at all produces no signature and can never conclude.
+        // 2026-09-19 live: the 有效效果 filter listed a single card the roster recogniser could not
+        // resolve, its one tall thumb reported canScroll=false, and the scan rewound the list
+        // every 17 seconds for the rest of the session. Count only swipes that actually completed
+        // over a viewport the recogniser calls stable: an unstable or mid-scroll frame carries no
+        // information, and repeated frames between two swipes must not burn the budget either.
+        if (pending != null && observation.recognitionState == LabyrinthBattleTeamRecognitionState.STABLE) {
+            if (observation.visibleCharacters.isEmpty()) {
+                blankProbes++
+                if (blankProbes >= MAX_BLANK_PROBES) {
+                    blankProbes = 0
+                    probing = false
+                    return LabyrinthBattleRosterSearchDecision.EXHAUSTED
+                }
+            } else {
+                blankProbes = 0
+            }
+        }
+
         if (pending?.isProbe == true && lastVisibleSignature != null && lastVisibleSignature == pending.originVisibleSignature) {
             unchangedProbes = if (unchangedProbeDirection == direction) unchangedProbes + 1 else 1
             unchangedProbeDirection = direction
@@ -275,6 +299,14 @@ internal class LabyrinthBattleRosterSearch {
         const val MAX_SCROLL_SETTLE_OBSERVATIONS = 12
         const val MIN_VISUAL_EDGE_GAP_PX = 14
         const val VISUAL_EDGE_GAP_RATIO = 0.04
+
+        /**
+         * Swipes spent on a stable viewport that shows no resolvable portrait.
+         *
+         * Enough that a genuinely slow list still gets several chances to render, few enough that
+         * a roster which simply has nothing to resolve ends the scan instead of rewinding forever.
+         */
+        const val MAX_BLANK_PROBES = 4
     }
 }
 

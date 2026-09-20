@@ -15,6 +15,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.runtime.LaunchedEffect
+import com.landosol.toolbox.AppVersion
 import com.landosol.toolbox.labyrinth.LabyrinthRerollSettings
 import com.landosol.toolbox.labyrinth.rerollSettings
 import com.landosol.toolbox.labyrinth.labyrinthRerollStatusText
@@ -127,7 +128,15 @@ fun LabyrinthScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("黎明界") },
+                title = {
+                    Column {
+                        Text("黎明界")
+                        Text(
+                            AppVersion.display,
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                    }
+                },
                 navigationIcon = {
                     onBack?.let { back -> TextButton(onClick = back) { Text("返回") } }
                 },

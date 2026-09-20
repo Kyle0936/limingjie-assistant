@@ -190,9 +190,12 @@ class LabyrinthNodeActionPlanner {
                 // same screen rect must be independently bound by ordered topology, and partial
                 // columns require a second mapped sibling to prove the vertical ordering.
                 if (
-                    strongOrderedTopology != null ||
-                    purpleExConflict ||
-                    (linkRelicSemanticSwap && linkRelicTopology)
+                    !labyrinthBossSemanticConflict(conflict.expectedBlockType, conflict.detectedBlockType) &&
+                    (
+                        strongOrderedTopology != null ||
+                            purpleExConflict ||
+                            (linkRelicSemanticSwap && linkRelicTopology)
+                        )
                 ) return@let
                 return NodeAction.TypeConflict(
                     blockId = conflict.blockId,
@@ -278,3 +281,21 @@ class LabyrinthNodeActionPlanner {
         const val INACTIVE_ROUTE_SIBLING_MIN_TOPOLOGY_CONFIDENCE = 0.80
     }
 }
+
+/**
+ * Whether a route/vision disagreement involves the Boss platform, which no override may waive.
+ *
+ * The ordered-topology override exists because the semantic template classifier confuses visually
+ * similar *regular* node icons; column cardinality and row order are better evidence than the icon
+ * in those cases. The Boss platform is not one of those cases. It is a separate, much larger map
+ * asset detected through its own special-node anchor, so reading it as a 商店 or a 普通战斗 is not
+ * template noise but a real disagreement about where the camera is.
+ *
+ * 2026-09-19 live: the route wanted 商店#30601 while the only crop on screen was the area's Boss
+ * platform, bound FULL_COLUMN at 0.99 because a one-node logical column trivially matches a single
+ * detection. The override waived the conflict and the run tapped the Boss platform repeatedly,
+ * waiting for a movement dialog that never came; the shop was only reached after a manual swipe.
+ */
+internal fun labyrinthBossSemanticConflict(expected: Int, detected: Int): Boolean =
+    expected != detected &&
+        (expected == LabyrinthNodeTypes.BOSS || detected == LabyrinthNodeTypes.BOSS)
