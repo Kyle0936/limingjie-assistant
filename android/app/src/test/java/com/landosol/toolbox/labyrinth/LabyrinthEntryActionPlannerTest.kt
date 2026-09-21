@@ -22,6 +22,19 @@ import org.junit.Test
 
 class LabyrinthEntryActionPlannerTest {
     @Test
+    fun `title fallback taps the visible start prompt centre when its template is absent`() {
+        val planner = LabyrinthEntryActionPlanner(
+            LabyrinthEntryActionPlannerConfig(stableFrames = 1),
+        )
+
+        val decision = decide(planner, LabyrinthEntryPageState.TITLE_WAITING_TAP, 0L) as
+            LabyrinthEntryActionDecision.Execute
+
+        assertEquals(LabyrinthEntryActionKind.TITLE_CONTINUE, decision.kind)
+        assertEquals(AutomationAction.Tap(ScreenPoint(960f, 995f)), decision.action)
+    }
+
+    @Test
     fun `full screen unknown after the opening roster advances the character presentation`() {
         val planner = LabyrinthEntryActionPlanner(
             LabyrinthEntryActionPlannerConfig(stableFrames = 1, manualCharacterSelection = true),

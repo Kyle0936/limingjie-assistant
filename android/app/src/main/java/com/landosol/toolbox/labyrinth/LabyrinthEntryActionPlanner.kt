@@ -855,7 +855,11 @@ class LabyrinthEntryActionPlanner(
     }
 
     private companion object {
-        val TITLE_CONTINUE = ScreenPoint(950f, 950f)
+        // The title prompt's centre is y≈995 on the 1920x1080 client. The previous y=950
+        // fallback landed above the tappable "点击屏幕开始游戏" band when the prompt template
+        // missed, so a batch reset could keep recognizing the title page without ever leaving it.
+        // Keep this independently of the template match: titles are safe to tap at this point.
+        val TITLE_CONTINUE = ScreenPoint(960f, 995f)
         val PRE_ANNOUNCEMENT_CONTINUE = ScreenPoint(950f, 930f)
         val ANNOUNCEMENT_CLOSE = ScreenPoint(955f, 960f)
         val HOME_ADVENTURE = ScreenPoint(1070f, 1030f)
