@@ -18,7 +18,11 @@ internal class LabyrinthBattleWaitPolicy {
     }
 
     @Synchronized
-    fun observe(page: LabyrinthEntryPageState, now: Long): LabyrinthBattleWaitDecision {
+    fun observe(
+        page: LabyrinthEntryPageState,
+        now: Long,
+        battleResultNextReady: Boolean = false,
+    ): LabyrinthBattleWaitDecision {
         if (page == LabyrinthEntryPageState.BATTLE_IN_PROGRESS && startedAt == null) {
             // Also support resuming automation during an already recognized battle.
             startedAt = now
@@ -30,6 +34,10 @@ internal class LabyrinthBattleWaitPolicy {
             LabyrinthEntryPageState.GAME_LOADING_PROGRESS,
             LabyrinthEntryPageState.PRE_HOME_DATA_LOADING,
             LabyrinthEntryPageState.BATTLE_IN_PROGRESS -> true
+            // WIN can classify as BATTLE_RESULT before its “下一步” button is drawn. Preserve
+            // the battle deadline through that transient state so the following UNKNOWN frames
+            // remain under battle waiting instead of reaching the generic 30-second stop.
+            LabyrinthEntryPageState.BATTLE_RESULT -> !battleResultNextReady
             // Permit a short stale editor frame after injection, but do not hide a failed start.
             LabyrinthEntryPageState.BATTLE_TEAM_SELECTION -> startPageGrace && elapsed < 3_000L
             else -> false

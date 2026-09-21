@@ -3401,7 +3401,14 @@ class LabyrinthEntryRecognitionSession(
             }
             return false
         }
-        when (battleWait.observe(result.observation.state, timestampMillis)) {
+        val battleResultNextReady = result.observation.state == LabyrinthEntryPageState.BATTLE_RESULT &&
+            (result.anchorMatches[EntryAnchorId.BATTLE_RESULT_NEXT_BUTTON]?.score ?: 0.0) >=
+            POST_ENTRY_ANCHOR_MIN_SCORE
+        when (battleWait.observe(
+            page = result.observation.state,
+            now = timestampMillis,
+            battleResultNextReady = battleResultNextReady,
+        )) {
             LabyrinthBattleWaitDecision.NONE -> return false
             LabyrinthBattleWaitDecision.TIMED_OUT -> {
                 finishFromPlanner(sessionId, "等待战斗结算超过5分钟，已停止并保留诊断状态")
@@ -4333,22 +4340,6 @@ class LabyrinthEntryRecognitionSession(
                                 combatContext = combatContext,
                                 nextButtonMatch = result.anchorMatches[EntryAnchorId.BATTLE_RESULT_NEXT_BUTTON],
                                 bossSummaryNextButtonMatch = result.anchorMatches[EntryAnchorId.BATTLE_RESULT_BOSS_SUMMARY_NEXT_BUTTON],
-                            ),
-                        ),
-                    )
-                labyrinthUnknownBattleResultNextButtonRect(
-                    pageState = pageState,
-                    combatContext = combatContext,
-                    nextButtonMatch = result.anchorMatches[EntryAnchorId.BATTLE_RESULT_NEXT_BUTTON],
-                ) != null ->
-                    LabyrinthPostEntryTapPlan(
-                        LabyrinthPostEntryActionKind.BATTLE_RESULT_NEXT,
-                        "战斗结算：下一步（UNKNOWN 页面按钮确认）",
-                        requireNotNull(
-                            labyrinthUnknownBattleResultNextButtonRect(
-                                pageState = pageState,
-                                combatContext = combatContext,
-                                nextButtonMatch = result.anchorMatches[EntryAnchorId.BATTLE_RESULT_NEXT_BUTTON],
                             ),
                         ),
                     )

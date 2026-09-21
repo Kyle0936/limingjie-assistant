@@ -409,43 +409,6 @@ class LabyrinthPageRuntimePolicyTest {
     }
 
     @Test
-    fun `ordinary unknown battle next requires a reliable next button and active combat`() {
-        val rect = EntryPixelRect(1412, 966, 414, 92)
-        val reliable = EntryAnchorMatch(0.72, rect)
-
-        assertEquals(
-            rect,
-            labyrinthUnknownBattleResultNextButtonRect(
-                pageState = LabyrinthEntryPageState.UNKNOWN,
-                combatContext = LabyrinthCombatContext(LabyrinthCombatKind.NORMAL),
-                nextButtonMatch = reliable,
-            ),
-        )
-        assertEquals(
-            rect,
-            labyrinthUnknownBattleResultNextButtonRect(
-                pageState = LabyrinthEntryPageState.UNKNOWN,
-                combatContext = LabyrinthCombatContext(LabyrinthCombatKind.EX),
-                nextButtonMatch = reliable,
-            ),
-        )
-        assertNull(
-            labyrinthUnknownBattleResultNextButtonRect(
-                pageState = LabyrinthEntryPageState.UNKNOWN,
-                combatContext = null,
-                nextButtonMatch = reliable,
-            ),
-        )
-        assertNull(
-            labyrinthUnknownBattleResultNextButtonRect(
-                pageState = LabyrinthEntryPageState.UNKNOWN,
-                combatContext = LabyrinthCombatContext(LabyrinthCombatKind.NORMAL),
-                nextButtonMatch = EntryAnchorMatch(0.67, rect),
-            ),
-        )
-    }
-
-    @Test
     fun `opening roster reclaims premature route handoff but reward choices do not`() {
         val opening = result(
             LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
