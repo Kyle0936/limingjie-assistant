@@ -2,8 +2,9 @@ name: Android CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, "codex/**"]
   pull_request:
+  workflow_dispatch:
 
 jobs:
   verify:
@@ -22,11 +23,17 @@ jobs:
 
       - name: Verify Android project
         working-directory: android
-        run: ./gradlew lintDebug testDebugUnitTest assembleDebug
+        run: ./gradlew lintDebug testDebugUnitTest assembleDebug assembleRelease
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: limingjie-assistant-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload installable test release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: limingjie-assistant-test-release
+          path: android/app/build/outputs/apk/release/app-release.apk
 

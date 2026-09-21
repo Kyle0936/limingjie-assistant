@@ -22,6 +22,10 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = false
+            // This project does not keep a production upload key in source control.  Signing the
+            // release variant with Android's debug key makes a release-mode APK installable for
+            // emulator/device verification, without ever pretending it is a publishable build.
+            signingConfig = signingConfigs.getByName("debug")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
