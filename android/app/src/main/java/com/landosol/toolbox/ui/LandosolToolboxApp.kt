@@ -96,7 +96,16 @@ fun LandosolToolboxApp() {
                     .filterIsInstance<CaptureState.Running>()
                     .first()
             }
-            if (running != null) action()
+            if (running != null) {
+                action()
+            } else {
+                // Previously this path silently discarded the action. From the batch button that
+                // looked exactly like a dead tap: the user had approved screen capture but the
+                // service had not reached Running before the watchdog expired.
+                application.labyrinthController.reportMessage(
+                    "录屏服务未能在规定时间内启动；请停止系统录屏后重新授权",
+                )
+            }
         }
     }
     val beginCaptureRequest: ((() -> Unit) -> Unit) = { action ->
@@ -407,10 +416,13 @@ private fun LabyrinthRoute(
                 labyrinthViewModel.reportMessage("无障碍服务未连接；若系统开关显示已开启，请关闭后重新开启")
             } else {
                 onRequestCapture {
-                    application.startLabyrinthAutoRun(
+                    val started = application.startLabyrinthAutoRun(
                         accountId = state.selectedAccount?.id,
                         goals = goals,
                     )
+                    if (!started) {
+                        labyrinthViewModel.reportMessage("批量任务未启动：请确认账号、目标和当前任务状态")
+                    }
                 }
             }
         },

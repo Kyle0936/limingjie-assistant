@@ -482,12 +482,17 @@ class LandosolToolboxApplication : Application() {
             .format(java.util.Date())
         autoRunJob?.cancel()
         autoRunJob = autoRunScope.launch {
-            labyrinthBatchController.start(
+            val started = labyrinthBatchController.start(
                 batchId = batchId,
                 accountId = id,
                 goals = goals,
                 difficulty = ui.selectedDifficulty,
             )
+            if (!started) {
+                // A restored or still-cancelling batch owns the controller. Do not silently
+                // discard the user's second tap; explain why the new batch was not scheduled.
+                labyrinthController.reportMessage("已有批量任务尚未停止，请先停止后再开始")
+            }
         }
         return true
     }

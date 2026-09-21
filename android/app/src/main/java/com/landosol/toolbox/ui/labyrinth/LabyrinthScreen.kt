@@ -214,6 +214,20 @@ fun LabyrinthScreen(
                         if (state.selectedAccount == null) Text("请先在账号库选择账号。", style = MaterialTheme.typography.bodySmall)
                         if (!state.settingsReady) Text("刷开局设置尚未就绪；可在“更多工具”中补充。", style = MaterialTheme.typography.bodySmall)
                     }
+                    // The primary workflow must reveal start failures here. Keeping messages
+                    // exclusively under “更多工具” made a rejected capture/start request look
+                    // like the batch button had ignored the tap.
+                    state.message?.let { message ->
+                        Card(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth().padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Text(message, modifier = Modifier.weight(1f))
+                                TextButton(onClick = onDismissMessage) { Text("关闭") }
+                            }
+                        }
+                    }
                     EntryRecognitionCard(
                         state = entryRecognitionState,
                         onStart = onStartEntryRecognition,
