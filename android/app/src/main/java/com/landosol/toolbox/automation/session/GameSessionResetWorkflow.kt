@@ -284,12 +284,7 @@ class GameSessionResetWorkflow(
                 setMessage("保存本局结果")
                 saveRoundResult()
 
-                // 2. 批量操作从助手界面发起时，助手本身必然会短暂处于前台。先显式拉起
-                //    公主连结并确认无障碍服务已观察到游戏前台，不能拿助手画面做旧会话
-                //    失效的模板匹配；否则触发点为 null，终止器最终只会报 TIMEOUT。
-                ensureGameForeground(sessionId)
-
-                // 3. 先看清客户端此刻在哪一页。批次首轮可能从标题/主页/冒险页发起，那些页面
+                // 2. 先看清客户端此刻在哪一页。批次首轮可能从标题/主页/冒险页发起，那些页面
                 //    尚未载入黎明界状态，没有旧会话可失效，直接走入口导航即可。
                 setMessage("识别客户端当前页面")
                 val observedPage = awaitObservedPage(sessionId, PAGE_PEEK_TIMEOUT_MILLIS)
@@ -297,7 +292,7 @@ class GameSessionResetWorkflow(
                 if (gameSessionResetSkipsTermination(observedPage)) {
                     setMessage("客户端在 ${observedPage.name}，尚未载入黎明界，无需触发会话失效")
                 } else {
-                    // 4. 关闭/退出客户端（ADB force-stop 或会话失效触发弹窗返回标题）
+                    // 3. 关闭/退出客户端（ADB force-stop 或会话失效触发弹窗返回标题）
                     val terminationLabel = when (backend.kind) {
                         ClientTerminationKind.SESSION_EXPIRY -> "触发会话失效并返回标题页"
                         else -> "关闭/退出公主连结客户端"
@@ -322,7 +317,7 @@ class GameSessionResetWorkflow(
                     }
                 }
 
-                // 5-8. 入口规划器根据识别帧实际点击：标题 → 公告 → 主页 → 冒险 → 黎明界。
+                // 4-7. 入口规划器根据识别帧实际点击：标题 → 公告 → 主页 → 冒险 → 黎明界。
                 transitionTo(sessionId, GameSessionResetStage.WAITING_LOGIN, "等待登录完成")
                 awaitStageReached(sessionId, GameSessionResetStage.READY_FOR_NEXT_ROUND)
             }
@@ -369,36 +364,6 @@ class GameSessionResetWorkflow(
         }
         if (activeSessionId != sessionId) error("会话重置已被停止")
         return lastObservedPage
-    }
-
-    /**
-     * Starting a batch necessarily foregrounds this assistant. The session-expiry terminator can
-     * only tap controls found in a game frame, so foregrounding the game is a prerequisite rather
-     * than a best-effort convenience. A successful launch request alone is insufficient: wait for
-     * the accessibility foreground observer before allowing page recognition or invalidation.
-     */
-    private suspend fun ensureGameForeground(sessionId: AutomationSessionId) {
-        if (presence.isGameForeground()) return
-
-        lastObservedPage = LabyrinthEntryPageState.UNKNOWN
-        setMessage("正在启动公主连结")
-        when (backend.relaunchClient()) {
-            GameClientRelaunchResult.LAUNCH_REQUESTED -> Unit
-            GameClientRelaunchResult.LAUNCH_UNAVAILABLE ->
-                error("无法启动公主连结：未找到可启动的游戏客户端")
-        }
-
-        val deadline = clock() + GAME_FOREGROUND_TIMEOUT_MILLIS
-        while (activeSessionId == sessionId && clock() < deadline) {
-            if (presence.isGameForeground()) {
-                // Discard any assistant frame that arrived before the foreground handoff.
-                lastObservedPage = LabyrinthEntryPageState.UNKNOWN
-                return
-            }
-            kotlinx.coroutines.delay(FRAME_POLL_MILLIS)
-        }
-        if (activeSessionId != sessionId) error("会话重置已被停止")
-        error("已请求启动公主连结，但未在限定时间内回到前台")
     }
 
     private suspend fun awaitStageReached(
@@ -671,7 +636,6 @@ class GameSessionResetWorkflow(
         const val LOG_TAG = "LabyrinthReset"
         const val OWNER = "game-session-reset"
         const val FRAME_POLL_MILLIS = 250L
-        const val GAME_FOREGROUND_TIMEOUT_MILLIS = 15_000L
         /** How long the PENDING peek waits for a recognised page before defaulting to termination. */
         const val PAGE_PEEK_TIMEOUT_MILLIS = 6_000L
         const val DEFAULT_TOTAL_TIMEOUT_MILLIS = 180_000L

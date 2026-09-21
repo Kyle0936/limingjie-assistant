@@ -507,22 +507,20 @@ class LabyrinthEntryActionPlannerTest {
     }
 
     @Test
-    fun `unknown startup notification closes at its supplied bottom centre position`() {
+    fun `unknown clicks are allowed only inside bounded pre announcement phase`() {
         val planner = LabyrinthEntryActionPlanner(
             LabyrinthEntryActionPlannerConfig(
                 stableFrames = 1,
                 pageActionIntervalMillis = 1L,
-                startupUnknownCloseIntervalMillis = 1L,
-                maxStartupUnknownCloseAttempts = 2,
+                preAnnouncementClickIntervalMillis = 1L,
+                maxPreAnnouncementClicks = 2,
             ),
         )
         planner.start(0L)
 
         assertTrue(decide(planner, LabyrinthEntryPageState.UNKNOWN, 0L) is LabyrinthEntryActionDecision.Wait)
         assertTrue(decide(planner, LabyrinthEntryPageState.TITLE_WAITING_TAP, 1L) is LabyrinthEntryActionDecision.Execute)
-        val firstClose = decide(planner, LabyrinthEntryPageState.UNKNOWN, 2L) as LabyrinthEntryActionDecision.Execute
-        assertEquals(LabyrinthEntryActionKind.CLOSE_UNKNOWN_STARTUP_PROMPT, firstClose.kind)
-        assertEquals(AutomationAction.Tap(ScreenPoint(960f, 1_000f)), firstClose.action)
+        assertTrue(decide(planner, LabyrinthEntryPageState.UNKNOWN, 2L) is LabyrinthEntryActionDecision.Execute)
         assertTrue(decide(planner, LabyrinthEntryPageState.UNKNOWN, 3L) is LabyrinthEntryActionDecision.Execute)
         assertTrue(decide(planner, LabyrinthEntryPageState.UNKNOWN, 4L) is LabyrinthEntryActionDecision.Stop)
     }
