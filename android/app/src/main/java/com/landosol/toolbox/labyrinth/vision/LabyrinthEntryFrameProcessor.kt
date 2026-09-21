@@ -409,11 +409,6 @@ class LabyrinthEntryFrameProcessor(
         var nodeViewportSignature = ""
         var nodeViewportPixels: com.landosol.toolbox.labyrinth.node.NodeViewportPixels? = null
         val elapsedNanos = measureNanoTime {
-            // A single entry frame can score dozens of fixed UI anchors.  Build luminance and
-            // gradient buffers once, then let every anchor read them.  This avoids repeating the
-            // same neighbouring-pixel work for every template and keeps slow devices responsive.
-            matcher.prepareFrame(frame)
-            try {
             val measurements = DEFINITIONS_BY_ID.mapValues { (id, definitions) ->
                 val template = templates.values[id]
                     ?: return@mapValues null
@@ -562,11 +557,6 @@ class LabyrinthEntryFrameProcessor(
                 .let { features ->
                     if (battleFailure != null) listOf("battle.failure.visual") + features else features
                 }
-            } finally {
-                // The prepared buffer retains the complete frame; never keep it after a failed
-                // recognition pass.
-                matcher.clearPreparedFrame()
-            }
         }
         return LabyrinthEntryFrameResult(
             observation = observation,
