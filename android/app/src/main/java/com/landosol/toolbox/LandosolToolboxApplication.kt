@@ -214,11 +214,7 @@ class LandosolToolboxApplication : Application() {
                 }
             },
             gameLauncher = gameLauncher@{
-                val intent = packageManager.getLaunchIntentForPackage(GAME_PACKAGE_NAME)
-                    ?: return@gameLauncher false
-                runCatching {
-                    startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                }.isSuccess
+                launchGameClient()
             },
         )
     }
@@ -300,11 +296,7 @@ class LandosolToolboxApplication : Application() {
             backend = CompositeSessionResetBackend(
                 terminator = terminator,
                 relauncher = Relauncher {
-                    val intent = packageManager.getLaunchIntentForPackage(GAME_PACKAGE_NAME)
-                        ?: return@Relauncher GameClientRelaunchResult.LAUNCH_UNAVAILABLE
-                    runCatching {
-                        startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                    }.isSuccess.let { launched ->
+                    launchGameClient().let { launched ->
                         if (launched) GameClientRelaunchResult.LAUNCH_REQUESTED
                         else GameClientRelaunchResult.LAUNCH_UNAVAILABLE
                     }
@@ -476,6 +468,15 @@ class LandosolToolboxApplication : Application() {
     ): Boolean {
         val id = accountId ?: return false
         if (goals.isEmpty()) return false
+        // A batch starts with a network reroll. Without this explicit foreground handoff, that
+        // work could begin while the helper is still visible, leaving the user with a seemingly
+        // frozen "正在刷取" card and no game frame for the later reset/entry steps. Launch from
+        // this user-initiated path first; the existing entry session will launch again only if
+        // the game later needs to be recovered during a run.
+        if (!launchGameClient()) {
+            labyrinthController.reportMessage("无法启动公主连结；请确认国服客户端已安装")
+            return false
+        }
         val ui = labyrinthController.uiState.value
         val batchId = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT)
             .format(java.util.Date())
@@ -489,6 +490,14 @@ class LandosolToolboxApplication : Application() {
             )
         }
         return true
+    }
+
+    /** Starts the declared Bilibili Princess Connect package from a direct user workflow. */
+    private fun launchGameClient(): Boolean {
+        val intent = packageManager.getLaunchIntentForPackage(GAME_PACKAGE_NAME) ?: return false
+        return runCatching {
+            startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        }.isSuccess
     }
 
     fun stopLabyrinthAutoRun() {
