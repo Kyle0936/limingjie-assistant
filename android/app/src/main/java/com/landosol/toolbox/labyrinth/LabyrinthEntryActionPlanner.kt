@@ -19,10 +19,10 @@ data class LabyrinthEntryActionPlannerConfig(
     val requireConfiguredOpeningRoster: Boolean = false,
     val pageActionIntervalMillis: Long = 1_200L,
     val dawnRealmActionIntervalMillis: Long = 8_000L,
-    val preAnnouncementClickIntervalMillis: Long = 900L,
+    val startupUnknownCloseIntervalMillis: Long = 900L,
     val maxPageActionAttempts: Int = 3,
-    val maxPreAnnouncementClicks: Int = 30,
-    val preAnnouncementTimeoutMillis: Long = 45_000L,
+    val maxStartupUnknownCloseAttempts: Int = 2,
+    val startupUnknownCloseTimeoutMillis: Long = 45_000L,
     val characterSelectionClickIntervalMillis: Long = 2_000L,
     val openingSelectionFeedbackTimeoutMillis: Long = 3_000L,
     /** Stable roster frames that must agree the tapped card is still unselected before stopping. */
@@ -44,10 +44,10 @@ data class LabyrinthEntryActionPlannerConfig(
         require(stableFrames > 0)
         require(pageActionIntervalMillis > 0)
         require(dawnRealmActionIntervalMillis > 0)
-        require(preAnnouncementClickIntervalMillis > 0)
+        require(startupUnknownCloseIntervalMillis > 0)
         require(maxPageActionAttempts > 0)
-        require(maxPreAnnouncementClicks > 0)
-        require(preAnnouncementTimeoutMillis > 0)
+        require(maxStartupUnknownCloseAttempts > 0)
+        require(startupUnknownCloseTimeoutMillis > 0)
         require(characterSelectionClickIntervalMillis > 0)
         require(openingSelectionFeedbackTimeoutMillis > 0)
         require(openingSelectionFeedbackStableFrames > 0)
@@ -60,14 +60,14 @@ data class LabyrinthEntryActionPlannerConfig(
         require(characterAcquisitionTimeoutMillis > 0)
         require(selectionReadyMinScore in 0.0..1.0)
         require(midRunNodeSelectionStableFrames >= stableFrames)
-        require(totalTimeoutMillis >= preAnnouncementTimeoutMillis)
+        require(totalTimeoutMillis >= startupUnknownCloseTimeoutMillis)
         require(totalTimeoutMillis >= characterAcquisitionTimeoutMillis)
     }
 }
 
 enum class LabyrinthEntryActionKind {
     TITLE_CONTINUE,
-    PRE_ANNOUNCEMENT_CONTINUE,
+    CLOSE_UNKNOWN_STARTUP_PROMPT,
     CLOSE_ANNOUNCEMENT,
     OPEN_ADVENTURE,
     OPEN_DAWN_REALM,
@@ -101,11 +101,11 @@ class LabyrinthEntryActionPlanner(
 ) {
     private val characterSelectionTargets = characterSelectionOrder.distinct().take(REQUIRED_INITIAL_CHARACTERS)
     private var startedAt = Long.MIN_VALUE
-    private var preAnnouncementStartedAt = Long.MIN_VALUE
+    private var startupPromptHandoffStartedAt = Long.MIN_VALUE
     private var lastState: LabyrinthEntryPageState? = null
     private var stableFrameCount = 0
     private var attemptsForState = 0
-    private var preAnnouncementClicks = 0
+    private var unknownStartupCloseAttempts = 0
     private var lastActionAt = Long.MIN_VALUE
     private var selectedCharacterClicks = 0
     private var characterAcquisitionStartedAt = Long.MIN_VALUE
@@ -133,11 +133,11 @@ class LabyrinthEntryActionPlanner(
 
     fun start(nowMillis: Long) {
         startedAt = nowMillis
-        preAnnouncementStartedAt = Long.MIN_VALUE
+        startupPromptHandoffStartedAt = Long.MIN_VALUE
         lastState = null
         stableFrameCount = 0
         attemptsForState = 0
-        preAnnouncementClicks = 0
+        unknownStartupCloseAttempts = 0
         lastActionAt = Long.MIN_VALUE
         selectedCharacterClicks = 0
         characterAcquisitionStartedAt = Long.MIN_VALUE
@@ -219,20 +219,22 @@ class LabyrinthEntryActionPlanner(
                 anchorMatches = anchorMatches,
                 anchorIds = listOf(EntryAnchorId.TITLE_TAP_PROMPT),
             ).also { decision ->
-                if (decision is LabyrinthEntryActionDecision.Execute && preAnnouncementStartedAt == Long.MIN_VALUE) {
-                    preAnnouncementStartedAt = nowMillis
+                if (decision is LabyrinthEntryActionDecision.Execute && startupPromptHandoffStartedAt == Long.MIN_VALUE) {
+                    startupPromptHandoffStartedAt = nowMillis
                 }
             }
 
+            // A loading bar is not an actionable page. The former fallback tapped it repeatedly,
+            // which produced dozens of no-op actions before the title/notice screen appeared.
             LabyrinthEntryPageState.GAME_LOADING_PROGRESS,
             LabyrinthEntryPageState.PRE_HOME_DATA_LOADING,
-            -> planPreAnnouncementClick(nowMillis, frameWidth, frameHeight, allowStartingPhase = true)
+            -> LabyrinthEntryActionDecision.Wait("等待游戏加载完成")
 
             LabyrinthEntryPageState.UNKNOWN ->
-                planPreAnnouncementClick(nowMillis, frameWidth, frameHeight, allowStartingPhase = false)
+                planUnknownStartupPromptClose(nowMillis, frameWidth, frameHeight)
 
             LabyrinthEntryPageState.HOME_ANNOUNCEMENT -> {
-                preAnnouncementStartedAt = Long.MIN_VALUE
+                startupPromptHandoffStartedAt = Long.MIN_VALUE
                 planPageAction(
                     nowMillis,
                     frameWidth,
@@ -770,32 +772,36 @@ class LabyrinthEntryActionPlanner(
             )
         }
 
-    private fun planPreAnnouncementClick(
+    /**
+     * After the recognised title-page tap, the game can open an untemplated notice overlay. The
+     * supplied live frame shows its only safe action as the bottom-centre “关闭” button. Keep this
+     * recovery limited to that startup handoff and two attempts; UNKNOWN outside it remains read
+     * only, so route execution, battles, and reward pages cannot be dismissed by this fallback.
+     */
+    private fun planUnknownStartupPromptClose(
         nowMillis: Long,
         frameWidth: Int,
         frameHeight: Int,
-        allowStartingPhase: Boolean,
     ): LabyrinthEntryActionDecision {
-        if (preAnnouncementStartedAt == Long.MIN_VALUE) {
-            if (!allowStartingPhase) return LabyrinthEntryActionDecision.Wait("未知页面禁止启动点击")
-            preAnnouncementStartedAt = nowMillis
+        if (startupPromptHandoffStartedAt == Long.MIN_VALUE) {
+            return LabyrinthEntryActionDecision.Wait("未知页面未处于启动公告阶段，禁止点击")
         }
-        if (nowMillis - preAnnouncementStartedAt > config.preAnnouncementTimeoutMillis) {
-            return LabyrinthEntryActionDecision.Stop("公告前受限点击超时")
+        if (nowMillis - startupPromptHandoffStartedAt > config.startupUnknownCloseTimeoutMillis) {
+            return LabyrinthEntryActionDecision.Stop("启动公告关闭超时")
         }
-        if (preAnnouncementClicks >= config.maxPreAnnouncementClicks) {
-            return LabyrinthEntryActionDecision.Stop("公告前点击达到次数上限")
+        if (unknownStartupCloseAttempts >= config.maxStartupUnknownCloseAttempts) {
+            return LabyrinthEntryActionDecision.Stop("启动公告关闭达到次数上限")
         }
-        if (!intervalElapsed(nowMillis, config.preAnnouncementClickIntervalMillis)) {
-            return LabyrinthEntryActionDecision.Wait("等待公告前点击间隔")
+        if (!intervalElapsed(nowMillis, config.startupUnknownCloseIntervalMillis)) {
+            return LabyrinthEntryActionDecision.Wait("等待启动公告关闭间隔")
         }
-        val action = mapTap(PRE_ANNOUNCEMENT_CONTINUE, frameWidth, frameHeight)
-            ?: return LabyrinthEntryActionDecision.Stop("公告前点击坐标无法映射")
-        preAnnouncementClicks++
+        val action = mapTap(UNKNOWN_STARTUP_PROMPT_CLOSE, frameWidth, frameHeight)
+            ?: return LabyrinthEntryActionDecision.Stop("启动公告关闭坐标无法映射")
+        unknownStartupCloseAttempts++
         lastActionAt = nowMillis
         return LabyrinthEntryActionDecision.Execute(
-            LabyrinthEntryActionKind.PRE_ANNOUNCEMENT_CONTINUE,
-            "推进公告前画面",
+            LabyrinthEntryActionKind.CLOSE_UNKNOWN_STARTUP_PROMPT,
+            "关闭未识别的启动通知",
             action,
         )
     }
@@ -827,7 +833,8 @@ class LabyrinthEntryActionPlanner(
 
     private companion object {
         val TITLE_CONTINUE = ScreenPoint(950f, 950f)
-        val PRE_ANNOUNCEMENT_CONTINUE = ScreenPoint(950f, 930f)
+        /** Bottom-centre “关闭” button in the startup notification frame supplied by the user. */
+        val UNKNOWN_STARTUP_PROMPT_CLOSE = ScreenPoint(960f, 1_000f)
         val ANNOUNCEMENT_CLOSE = ScreenPoint(955f, 960f)
         val HOME_ADVENTURE = ScreenPoint(1070f, 1030f)
         val ADVENTURE_DAWN_REALM = ScreenPoint(1735f, 805f)
