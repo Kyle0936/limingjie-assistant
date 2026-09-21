@@ -224,6 +224,9 @@ fun LabyrinthScreen(
                         checkpoint = batchCheckpoint,
                         haltReason = batchHaltReason,
                         routeProgress = entryRecognitionState.routeProgress,
+                        rerollProgress = state.progress,
+                        rerollUntilFound = state.rerollUntilFound,
+                        maxRerollAttempts = state.maxAttempts,
                         guildOptions = state.guildOptions.take(5),
                         selectedDifficulty = state.selectedDifficulty,
                         enabled = state.selectedAccount != null && state.settingsReady && !state.isWorking,
@@ -633,6 +636,9 @@ private fun BatchRunCard(
     checkpoint: LabyrinthBatchCheckpoint?,
     haltReason: LabyrinthBatchHaltReason?,
     routeProgress: LabyrinthRouteProgress?,
+    rerollProgress: String?,
+    rerollUntilFound: Boolean,
+    maxRerollAttempts: String,
     guildOptions: List<LabyrinthGuildOption>,
     selectedDifficulty: Int,
     enabled: Boolean,
@@ -683,6 +689,25 @@ private fun BatchRunCard(
                 Text("异常中止 ${cp.abnormalRuns} 局（未计入）", style = MaterialTheme.typography.bodySmall)
             }
             cp.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+            // The batch checkpoint intentionally changes only at irreversible boundaries. During
+            // a server-side reroll, the workflow can perform several enter/verify/retire steps
+            // before the checkpoint advances, so surface its live progress here rather than
+            // making the operator switch to the auxiliary tools page to find out that it is
+            // still working.
+            if (cp.stage == LabyrinthBatchStage.REROLLING) {
+                Text(
+                    rerollProgress ?: "正在连接游戏服务并生成开局…",
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    if (rerollUntilFound) {
+                        "当前开局策略为“刷到出”：会持续尝试直到找到符合条件的路线；可随时停止。"
+                    } else {
+                        "当前开局策略最多尝试 $maxRerollAttempts 次；达到上限会明确报告失败原因。"
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
             haltReason?.let {
                 Text("停止原因：${it.name}", style = MaterialTheme.typography.bodySmall)
             }
