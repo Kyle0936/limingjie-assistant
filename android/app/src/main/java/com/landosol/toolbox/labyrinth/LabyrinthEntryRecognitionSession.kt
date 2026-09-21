@@ -4336,6 +4336,22 @@ class LabyrinthEntryRecognitionSession(
                             ),
                         ),
                     )
+                labyrinthUnknownBattleResultNextButtonRect(
+                    pageState = pageState,
+                    combatContext = combatContext,
+                    nextButtonMatch = result.anchorMatches[EntryAnchorId.BATTLE_RESULT_NEXT_BUTTON],
+                ) != null ->
+                    LabyrinthPostEntryTapPlan(
+                        LabyrinthPostEntryActionKind.BATTLE_RESULT_NEXT,
+                        "战斗结算：下一步（UNKNOWN 页面按钮确认）",
+                        requireNotNull(
+                            labyrinthUnknownBattleResultNextButtonRect(
+                                pageState = pageState,
+                                combatContext = combatContext,
+                                nextButtonMatch = result.anchorMatches[EntryAnchorId.BATTLE_RESULT_NEXT_BUTTON],
+                            ),
+                        ),
+                    )
                 roleRewardPresentationSkipReady ->
                     LabyrinthPostEntryTapPlan(
                         LabyrinthPostEntryActionKind.SKIP_ROLE_REWARD_PRESENTATION,

@@ -336,6 +336,24 @@ internal fun labyrinthBossSettlementNextButtonRect(
     return match.rect.takeIf { match.score >= minimumScore }
 }
 
+/**
+ * A normal or EX battle can linger on the WIN animation long enough that the broad page classifier
+ * remains UNKNOWN. Once the current frame has a reliable ordinary battle-result “下一步” button,
+ * its matched rectangle is safer than a coordinate fallback. Keep the active combat context as a
+ * hard requirement: an identical-looking button on an unrelated UNKNOWN page must never advance.
+ */
+internal fun labyrinthUnknownBattleResultNextButtonRect(
+    pageState: LabyrinthEntryPageState,
+    combatContext: LabyrinthCombatContext?,
+    nextButtonMatch: com.landosol.toolbox.labyrinth.vision.EntryAnchorMatch?,
+    minimumScore: Double = 0.68,
+): com.landosol.toolbox.labyrinth.vision.EntryPixelRect? {
+    if (pageState != LabyrinthEntryPageState.UNKNOWN) return null
+    if (combatContext?.kind !in setOf(LabyrinthCombatKind.NORMAL, LabyrinthCombatKind.EX)) return null
+    val match = nextButtonMatch ?: return null
+    return match.rect.takeIf { match.score >= minimumScore }
+}
+
 internal fun labyrinthIsRoleRewardPage(
     result: LabyrinthEntryFrameResult,
     minimumAnchorScore: Double = ROLE_PAGE_ANCHOR_MIN_SCORE,
