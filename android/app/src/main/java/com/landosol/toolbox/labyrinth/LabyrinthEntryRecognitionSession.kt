@@ -1091,7 +1091,7 @@ class LabyrinthEntryRecognitionSession(
     @Volatile
     private var roleRewardPresentationSkipArmed = false
     @Volatile
-    private var roleRewardPresentationSkipTapped = false
+    private var roleRewardPresentationSkipAttempts = 0
     @Volatile
     private var committedRoleRewardSelectionSignature: String? = null
     @Volatile
@@ -1281,7 +1281,7 @@ class LabyrinthEntryRecognitionSession(
         skipRoleRewardJoinedRecognition = false
         roleRewardBatchActive = false
         roleRewardPresentationSkipArmed = false
-        roleRewardPresentationSkipTapped = false
+        roleRewardPresentationSkipAttempts = 0
         committedRoleRewardSelectionSignature = null
         roleRewardJoinedSequenceStarted = false
         lastObservedRoleRewardSelectionSignature = null
@@ -1433,7 +1433,7 @@ class LabyrinthEntryRecognitionSession(
         skipRoleRewardJoinedRecognition = false
         roleRewardBatchActive = false
         roleRewardPresentationSkipArmed = false
-        roleRewardPresentationSkipTapped = false
+        roleRewardPresentationSkipAttempts = 0
         committedRoleRewardSelectionSignature = null
         roleRewardJoinedSequenceStarted = false
         lastObservedRoleRewardSelectionSignature = null
@@ -3916,7 +3916,7 @@ class LabyrinthEntryRecognitionSession(
             // Every choice can open its own full-screen presentation. Re-arm only when a new
             // candidate set proves that the player is looking at a new role-choice round.
             roleRewardPresentationSkipArmed = false
-            roleRewardPresentationSkipTapped = false
+            roleRewardPresentationSkipAttempts = 0
         }
         postEntryStableFrames++
 
@@ -4186,16 +4186,23 @@ class LabyrinthEntryRecognitionSession(
             pageState == LabyrinthEntryPageState.RUN_CLEAR_CHEST_RESULT
         val finalAnimationActive = postBossStage == LabyrinthPostBossStage.BEFORE_SCORE ||
             postBossStage == LabyrinthPostBossStage.CHEST_SEQUENCE
-        val roleRewardPresentationSkipReady = labyrinthShouldSkipRoleRewardPresentationOnce(
+        val roleRewardPresentationSkipReady = labyrinthShouldAdvanceRoleRewardPresentation(
             roleRewardBatchActive = roleRewardBatchActive,
             roleRewardJoinedSequenceStarted = roleRewardJoinedSequenceStarted,
             presentationSkipArmed = roleRewardPresentationSkipArmed,
-            presentationSkipAlreadyTapped = roleRewardPresentationSkipTapped,
+            presentationSkipAttempts = roleRewardPresentationSkipAttempts,
+            maximumPresentationSkipAttempts = MAX_ROLE_REWARD_PRESENTATION_SKIP_ATTEMPTS,
             pageState = pageState,
             stableFrames = postEntryStableFrames,
             minimumStableFrames = POST_ENTRY_STABLE_FRAMES,
         )
+        val roleRewardPresentationStillBlocking =
+            roleRewardBatchActive &&
+                !roleRewardJoinedSequenceStarted &&
+                roleRewardPresentationSkipArmed &&
+                pageState == LabyrinthEntryPageState.UNKNOWN
         val maxAttempts = when {
+            roleRewardPresentationStillBlocking -> MAX_ROLE_REWARD_PRESENTATION_SKIP_ATTEMPTS
             characterAcquisitionActive -> MAX_CHARACTER_ACQUISITION_CLICKS
             finalAnimationActive && finalAnimationPage -> MAX_POST_BOSS_UNKNOWN_ATTEMPTS
             activeNodeType == LabyrinthNodeTypes.EVENT -> MAX_EVENT_ACTIONS
@@ -4209,7 +4216,9 @@ class LabyrinthEntryRecognitionSession(
             return
         }
         if (postEntryAttempts >= maxAttempts) {
-            val reason = if (characterAcquisitionActive) {
+            val reason = if (roleRewardPresentationStillBlocking) {
+                "角色展示页连续轻触${MAX_ROLE_REWARD_PRESENTATION_SKIP_ATTEMPTS}次仍未退出，已停止并保留诊断状态"
+            } else if (characterAcquisitionActive) {
                 "角色获得动画推进达到上限，已停止并保留诊断状态"
             } else if (finalAnimationActive && finalAnimationPage) {
                 "最终结算动画推进达到上限，未找到下一结算页面"
@@ -4692,9 +4701,9 @@ class LabyrinthEntryRecognitionSession(
                         }
                     LabyrinthEntryPageState.UNKNOWN ->
                         when {
-                            roleRewardBatchActive && roleRewardPresentationSkipTapped &&
+                            roleRewardBatchActive && roleRewardPresentationSkipAttempts > 0 &&
                                 !roleRewardJoinedSequenceStarted ->
-                                "已跳过角色展示页，等待黎明界界面恢复识别"
+                                "角色展示页第${roleRewardPresentationSkipAttempts}次轻触后仍未恢复，等待下一次安全重试"
                             roleRewardBatchActive && !roleRewardJoinedSequenceStarted ->
                                 "角色奖励批次选择过渡中；等待下一次三选一，不执行盲点"
                             finalAnimationActive -> "最终结算动画中，程序会在有限次数内推进"
@@ -5182,9 +5191,10 @@ class LabyrinthEntryRecognitionSession(
     ) {
         if (!actionInFlight.compareAndSet(false, true)) return
         if (kind == LabyrinthPostEntryActionKind.SKIP_ROLE_REWARD_PRESENTATION) {
-            // Mark before the asynchronous tap so a fast follow-up capture cannot schedule a
-            // second tap against the same presentation frame.
-            roleRewardPresentationSkipTapped = true
+            // Count before the asynchronous tap so follow-up captures cannot schedule duplicate
+            // gestures. A still-UNKNOWN frame is deliberately retried after the normal cooldown:
+            // the game can ignore touches while the presentation animation is still settling.
+            roleRewardPresentationSkipAttempts++
         }
         val selectedReward = (_state.value.roleRewardChoiceDecision as? LabyrinthRoleRewardChoiceDecision.Select)
             ?.takeIf { it.characterId == roleRewardSelectedCharacterId && it.actionSafe }
@@ -5396,7 +5406,8 @@ class LabyrinthEntryRecognitionSession(
                         if (kind == LabyrinthPostEntryActionKind.SKIP_ROLE_REWARD_PRESENTATION) {
                             // No game-side tap occurred; retry only after the game is foreground
                             // again and the same contextual safety checks still pass.
-                            roleRewardPresentationSkipTapped = false
+                            roleRewardPresentationSkipAttempts =
+                                (roleRewardPresentationSkipAttempts - 1).coerceAtLeast(0)
                         }
                         if (kind == LabyrinthPostEntryActionKind.ADVANCE_CHARACTER_ACQUISITION) {
                             characterAcquisitionClicks = (characterAcquisitionClicks - 1).coerceAtLeast(0)
@@ -5511,7 +5522,7 @@ class LabyrinthEntryRecognitionSession(
         roleRewardDecisionCacheKey = null
         roleRewardBatchActive = false
         roleRewardPresentationSkipArmed = false
-        roleRewardPresentationSkipTapped = false
+        roleRewardPresentationSkipAttempts = 0
         roleRewardChoiceCommitted = false
         committedRoleRewardSelectionSignature = null
         roleRewardJoinedSequenceStarted = false
@@ -7841,6 +7852,8 @@ class LabyrinthEntryRecognitionSession(
         const val CHARACTER_ACQUISITION_ACTION_INTERVAL_MILLIS = 650L
         const val NODE_MAP_SETTLE_AFTER_POST_ACTION_MILLIS = 2_000L
         const val MAX_POST_ENTRY_ATTEMPTS = 6
+        /** Retry only the post-role-choice full-screen presentation; never applies to generic UNKNOWN. */
+        const val MAX_ROLE_REWARD_PRESENTATION_SKIP_ATTEMPTS = 20
         const val BATTLE_TEAM_ACTION_INTERVAL_MILLIS = 1_200L
         const val BATTLE_TEAM_CHARACTER_FEEDBACK_TIMEOUT_MILLIS = 4_000L
         const val MAX_BATTLE_TEAM_STEP_ATTEMPTS = 3

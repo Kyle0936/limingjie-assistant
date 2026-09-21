@@ -129,46 +129,62 @@ class LabyrinthEntryRecognitionPolicyTest {
     }
 
     @Test
-    fun `role presentation skip is one contextual tap after a role choice`() {
+    fun `role presentation skip retries only inside the contextual attempt budget`() {
         assertTrue(
-            labyrinthShouldSkipRoleRewardPresentationOnce(
+            labyrinthShouldAdvanceRoleRewardPresentation(
                 roleRewardBatchActive = true,
                 roleRewardJoinedSequenceStarted = false,
                 presentationSkipArmed = true,
-                presentationSkipAlreadyTapped = false,
+                presentationSkipAttempts = 0,
+                maximumPresentationSkipAttempts = 3,
                 pageState = LabyrinthEntryPageState.UNKNOWN,
                 stableFrames = 2,
                 minimumStableFrames = 2,
             ),
         )
-        assertFalse(
-            labyrinthShouldSkipRoleRewardPresentationOnce(
+        assertTrue(
+            labyrinthShouldAdvanceRoleRewardPresentation(
                 roleRewardBatchActive = true,
                 roleRewardJoinedSequenceStarted = false,
                 presentationSkipArmed = true,
-                presentationSkipAlreadyTapped = true,
+                presentationSkipAttempts = 2,
+                maximumPresentationSkipAttempts = 3,
                 pageState = LabyrinthEntryPageState.UNKNOWN,
                 stableFrames = 3,
                 minimumStableFrames = 2,
             ),
         )
         assertFalse(
-            labyrinthShouldSkipRoleRewardPresentationOnce(
+            labyrinthShouldAdvanceRoleRewardPresentation(
                 roleRewardBatchActive = true,
                 roleRewardJoinedSequenceStarted = true,
                 presentationSkipArmed = true,
-                presentationSkipAlreadyTapped = false,
+                presentationSkipAttempts = 0,
+                maximumPresentationSkipAttempts = 3,
                 pageState = LabyrinthEntryPageState.UNKNOWN,
                 stableFrames = 3,
                 minimumStableFrames = 2,
             ),
         )
         assertFalse(
-            labyrinthShouldSkipRoleRewardPresentationOnce(
+            labyrinthShouldAdvanceRoleRewardPresentation(
                 roleRewardBatchActive = true,
                 roleRewardJoinedSequenceStarted = false,
                 presentationSkipArmed = false,
-                presentationSkipAlreadyTapped = false,
+                presentationSkipAttempts = 0,
+                maximumPresentationSkipAttempts = 3,
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                stableFrames = 3,
+                minimumStableFrames = 2,
+            ),
+        )
+        assertFalse(
+            labyrinthShouldAdvanceRoleRewardPresentation(
+                roleRewardBatchActive = true,
+                roleRewardJoinedSequenceStarted = false,
+                presentationSkipArmed = true,
+                presentationSkipAttempts = 3,
+                maximumPresentationSkipAttempts = 3,
                 pageState = LabyrinthEntryPageState.UNKNOWN,
                 stableFrames = 3,
                 minimumStableFrames = 2,
