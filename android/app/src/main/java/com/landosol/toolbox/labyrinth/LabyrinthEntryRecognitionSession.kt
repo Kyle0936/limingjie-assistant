@@ -294,6 +294,24 @@ internal fun shouldArmCharacterAcquisitionFallback(
 }
 
 /**
+ * Keeps the UNKNOWN-page safety gate closed between unresolved role-reward choices, but opens
+ * it as soon as the previous choice is known to have been submitted.  A manual submission is
+ * proven by the recognised role-choice page disappearing; an automatic submission is recorded
+ * immediately after its tap is accepted.  Both paths lead into the same full-screen character
+ * presentation, which has no stable Dawn Realm anchors of its own.
+ */
+internal fun roleRewardPresentationSkipIsArmed(
+    roleRewardBatchActive: Boolean,
+    roleRewardJoinedSequenceStarted: Boolean,
+    roleRewardChoiceCommitted: Boolean,
+    waitingForManualRoleSelection: Boolean,
+    currentPageIsRoleReward: Boolean,
+): Boolean = roleRewardBatchActive &&
+    !roleRewardJoinedSequenceStarted &&
+    !currentPageIsRoleReward &&
+    (roleRewardChoiceCommitted || waitingForManualRoleSelection)
+
+/**
  * UNKNOWN frames reached from an event must never tap the center-lower choice-button band.
  * Keep the bounded fallback, but alternate between two edge-safe points so a transient event
  * misclassification can advance generic animation/portrait frames without silently selecting
@@ -3929,8 +3947,19 @@ class LabyrinthEntryRecognitionSession(
         // not. Some event/link/reward paths skip a separately recognizable role-selection page
         // and expose only UNKNOWN frames, so arm the bounded safe-area fallback from the last
         // known reward page instead of waiting forever for a role-selection transition.
+        val roleRewardPresentationSkipArmed = roleRewardPresentationSkipIsArmed(
+            roleRewardBatchActive = roleRewardBatchActive,
+            roleRewardJoinedSequenceStarted = roleRewardJoinedSequenceStarted,
+            roleRewardChoiceCommitted = roleRewardChoiceCommitted,
+            waitingForManualRoleSelection = waitingForManualRoleSelection,
+            currentPageIsRoleReward = roleRewardPage,
+        )
         if (!characterAcquisitionActive &&
-            !(roleRewardBatchActive && !roleRewardJoinedSequenceStarted) &&
+            // Before a role choice is submitted, UNKNOWN may merely be the brief transition to
+            // another three-choice page and must not be tapped. Once the selected page leaves,
+            // it is the documented character-presentation transition and the bounded fallback
+            // below may safely advance it.
+            (!(roleRewardBatchActive && !roleRewardJoinedSequenceStarted) || roleRewardPresentationSkipArmed) &&
             shouldArmCharacterAcquisitionFallback(
                 previousPage = previousPostEntryState,
                 currentPage = pageState,

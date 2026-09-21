@@ -16,11 +16,55 @@ import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageObservation
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageState
 import com.landosol.toolbox.labyrinth.vision.LabyrinthNodeMoveConfirmationObservation
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LabyrinthEntryRecognitionPolicyTest {
+
+    @Test
+    fun `role reward presentation skip starts only after the choice is submitted`() {
+        // An unresolved choice may briefly disappear before another choice round. It remains a
+        // no-click state, whereas an accepted automatic pick or a manual page departure proves
+        // that the following UNKNOWN frame is the full-screen character presentation.
+        assertFalse(
+            roleRewardPresentationSkipIsArmed(
+                roleRewardBatchActive = true,
+                roleRewardJoinedSequenceStarted = false,
+                roleRewardChoiceCommitted = false,
+                waitingForManualRoleSelection = false,
+                currentPageIsRoleReward = false,
+            ),
+        )
+        assertTrue(
+            roleRewardPresentationSkipIsArmed(
+                roleRewardBatchActive = true,
+                roleRewardJoinedSequenceStarted = false,
+                roleRewardChoiceCommitted = true,
+                waitingForManualRoleSelection = false,
+                currentPageIsRoleReward = false,
+            ),
+        )
+        assertTrue(
+            roleRewardPresentationSkipIsArmed(
+                roleRewardBatchActive = true,
+                roleRewardJoinedSequenceStarted = false,
+                roleRewardChoiceCommitted = false,
+                waitingForManualRoleSelection = true,
+                currentPageIsRoleReward = false,
+            ),
+        )
+        assertFalse(
+            roleRewardPresentationSkipIsArmed(
+                roleRewardBatchActive = true,
+                roleRewardJoinedSequenceStarted = false,
+                roleRewardChoiceCommitted = true,
+                waitingForManualRoleSelection = true,
+                currentPageIsRoleReward = true,
+            ),
+        )
+    }
     @Test
     fun `role reward stays manual while battle team and relic pages are automated`() {
         assertEquals(
