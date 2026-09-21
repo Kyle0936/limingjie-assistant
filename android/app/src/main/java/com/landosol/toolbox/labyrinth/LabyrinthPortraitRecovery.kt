@@ -65,7 +65,6 @@ internal fun labyrinthHasBattleControls(result: LabyrinthEntryFrameResult): Bool
 
 private val BATTLE_CONTROL_ANCHORS = listOf(
     EntryAnchorId.BATTLE_IN_PROGRESS_MENU_BUTTON,
-    EntryAnchorId.BATTLE_IN_PROGRESS_AUTO_BUTTON,
 )
 
 private val PORTRAIT_RECOVERY_PROTECTED_ANCHORS = listOf(

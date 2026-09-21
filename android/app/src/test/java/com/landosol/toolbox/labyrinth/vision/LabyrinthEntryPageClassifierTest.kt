@@ -8,6 +8,16 @@ class LabyrinthEntryPageClassifierTest {
     private val classifier = LabyrinthEntryPageClassifier()
 
     @Test
+    fun `battle in progress relies on the stable menu anchor only`() {
+        val result = classifier.classify(
+            scores(EntryAnchorId.BATTLE_IN_PROGRESS_MENU_BUTTON to 0.91),
+        )
+
+        assertEquals(LabyrinthEntryPageState.BATTLE_IN_PROGRESS, result.state)
+        assertEquals(0.91, result.confidence, 0.0001)
+    }
+
+    @Test
     fun `opening roster shell wins over spurious role reward anchors`() {
         val anchors = scores(
             EntryAnchorId.SELECTION_HEADER_STANDARD to 0.92,

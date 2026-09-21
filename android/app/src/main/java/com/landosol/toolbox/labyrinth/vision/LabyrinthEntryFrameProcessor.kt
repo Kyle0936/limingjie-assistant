@@ -103,7 +103,6 @@ object EntryAnchorId {
     const val SESSION_DATE_CHANGE_TITLE = "session.date_change.title"
     const val SESSION_DATE_CHANGE_CONFIRM = "session.date_change.confirm"
     const val BATTLE_IN_PROGRESS_MENU_BUTTON = "battle.in_progress.menu_button"
-    const val BATTLE_IN_PROGRESS_AUTO_BUTTON = "battle.in_progress.auto_button"
     const val BATTLE_RESULT_REWARD_BANNER = "battle.result.reward_banner"
     const val BATTLE_RESULT_NEXT_BUTTON = "battle.result.next_button"
     const val BATTLE_RESULT_BOSS_SUMMARY_NEXT_BUTTON = "battle.result.boss_summary.next_button"
@@ -205,7 +204,6 @@ object EntryAnchorId {
         SESSION_DATE_CHANGE_TITLE,
         SESSION_DATE_CHANGE_CONFIRM,
         BATTLE_IN_PROGRESS_MENU_BUTTON,
-        BATTLE_IN_PROGRESS_AUTO_BUTTON,
         BATTLE_RESULT_REWARD_BANNER,
         BATTLE_RESULT_NEXT_BUTTON,
         RUN_RESULT_LOGO,
@@ -742,7 +740,6 @@ class LabyrinthEntryFrameProcessor(
             // Same current-client drift for the date-change confirmation button.
             standard(EntryAnchorId.SESSION_DATE_CHANGE_CONFIRM, 753, 691, 415, 102),
             standard(EntryAnchorId.BATTLE_IN_PROGRESS_MENU_BUTTON, 1700, 36, 192, 50),
-            standard(EntryAnchorId.BATTLE_IN_PROGRESS_AUTO_BUTTON, 1786, 782, 106, 108),
             standard(EntryAnchorId.BATTLE_RESULT_REWARD_BANNER, 700, 270, 540, 82),
             standard(EntryAnchorId.BATTLE_RESULT_NEXT_BUTTON, 1452, 946, 388, 92),
             // Current 1920x1080 client Boss settlement pages place the same "下一步" button

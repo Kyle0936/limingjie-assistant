@@ -795,7 +795,6 @@ class LabyrinthEntryFrameProcessorTest {
 
             val debugScores = listOf(
                 EntryAnchorId.BATTLE_IN_PROGRESS_MENU_BUTTON,
-                EntryAnchorId.BATTLE_IN_PROGRESS_AUTO_BUTTON,
                 EntryAnchorId.BATTLE_RESULT_REWARD_BANNER,
                 EntryAnchorId.BATTLE_RESULT_NEXT_BUTTON,
                 EntryAnchorId.RUN_RESULT_LOGO,
@@ -1142,8 +1141,6 @@ class LabyrinthEntryFrameProcessorTest {
             EntryAnchorId.SESSION_DATE_CHANGE_CONFIRM to File(assetRoot, "session_date_change_confirm.png"),
             EntryAnchorId.BATTLE_IN_PROGRESS_MENU_BUTTON to
                 File(assetRoot, "battle_in_progress/battle_menu_button.png"),
-            EntryAnchorId.BATTLE_IN_PROGRESS_AUTO_BUTTON to
-                File(assetRoot, "battle_in_progress/battle_auto_button.png"),
             EntryAnchorId.BATTLE_RESULT_REWARD_BANNER to
                 File(assetRoot, "battle_result/battle_result_reward_banner.png"),
             EntryAnchorId.BATTLE_RESULT_NEXT_BUTTON to
