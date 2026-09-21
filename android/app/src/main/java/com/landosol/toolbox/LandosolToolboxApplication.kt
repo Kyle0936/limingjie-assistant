@@ -173,6 +173,8 @@ class LandosolToolboxApplication : Application() {
                     skipJoinedCharacters = { labyrinthEntryRecognitionSession.skipRoleRewardJoinedRecognition },
                     nodeSearchHint = { labyrinthEntryRecognitionSession.currentNodeSearchHint() },
                     nodeScanRequested = { labyrinthEntryRecognitionSession.nodeScanRequested() },
+                    nodeScanConsumable = { labyrinthEntryRecognitionSession.nodeScanConsumable() },
+                    rosterCharacterIds = { labyrinthEntryRecognitionSession.rosterCharacterIds() },
                 )::process
             },
             captureStop = { MediaProjectionCaptureService.stop(this) },

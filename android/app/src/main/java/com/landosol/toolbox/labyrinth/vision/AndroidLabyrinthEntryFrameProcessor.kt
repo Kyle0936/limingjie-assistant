@@ -264,6 +264,8 @@ class AndroidLabyrinthEntryFrameProcessor private constructor(
             skipJoinedCharacters: () -> Boolean = { false },
             nodeSearchHint: () -> NodeSearchHint? = { null },
             nodeScanRequested: () -> Boolean = { true },
+            nodeScanConsumable: () -> Boolean = { true },
+            rosterCharacterIds: () -> Set<String> = { emptySet() },
         ): AndroidLabyrinthEntryFrameProcessor {
             val relicTemplates = AndroidLabyrinthRelicTemplateLoader(context).load()
             val characterTemplates = AndroidLabyrinthBattleTeamTemplateLoader(context).load(characterAttributes)
@@ -276,6 +278,8 @@ class AndroidLabyrinthEntryFrameProcessor private constructor(
                     finalBossOnly = finalBossOnly,
                     nodeSearchHint = nodeSearchHint,
                     nodeScanRequested = nodeScanRequested,
+                    nodeScanConsumable = nodeScanConsumable,
+                    rosterCharacterIds = rosterCharacterIds,
                     characterRecognizer = characterRecognizer,
                     battleTeamRecognizer = LabyrinthBattleTeamRecognizer(
                         templates = characterTemplates,

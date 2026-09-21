@@ -14,7 +14,10 @@ sealed interface LabyrinthShopDecision {
         val item: LabyrinthShopItemMatch,
         val label: String,
         val reason: String,
-    ) : LabyrinthShopDecision
+    ) : LabyrinthShopDecision {
+        /** 选择印记 opens a full-roster picker after purchase; 随机印记 grants a role outright. */
+        val opensRolePicker: Boolean get() = item.choiceRoleImprint
+    }
 
     data class Refresh(val reason: String) : LabyrinthShopDecision
     data class Close(val reason: String) : LabyrinthShopDecision

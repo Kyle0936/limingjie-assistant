@@ -257,8 +257,14 @@ class LabyrinthNodeActionPlanner {
         return getBaseClickPosition(rect)
     }
 
-    fun getBaseClickPosition(rect: EntryPixelRect): Pair<Int, Int> {
-        val baseOffset = (rect.height * BASE_CLICK_Y_RATIO)
+    /**
+     * Where to tap a node, given its matched crop.
+     *
+     * @param retry 0 for the first attempt. A rejected tap is never repeated at the same pixel.
+     */
+    fun getBaseClickPosition(rect: EntryPixelRect, retry: Int = 0): Pair<Int, Int> {
+        val ratio = BASE_CLICK_Y_RATIO + RETRY_Y_OFFSET_RATIOS.getOrElse(retry) { 0.0 }
+        val baseOffset = (rect.height * ratio.coerceIn(0.05, MAX_CLICK_Y_RATIO))
             .roundToInt()
             .coerceIn(0, rect.height - 1)
         return Pair(
@@ -270,6 +276,23 @@ class LabyrinthNodeActionPlanner {
     private companion object {
         /** Stable platform/icon overlap band, kept clear of the bottom retreat/return controls. */
         const val BASE_CLICK_Y_RATIO = 0.32
+        /**
+         * Where a retry aims, relative to [BASE_CLICK_Y_RATIO].
+         *
+         * A rejected tap means this crop is not where the game thinks the node is, so repeating
+         * the same pixel can only be rejected again. The crop is typically registered one node
+         * too high — the game then attributes the tap to the node above, whose own "cannot move
+         * there" popup costs a full confirmation timeout — so the first retry drops by most of a
+         * crop, and the second tries the other direction in case the registration was low.
+         *
+         * 2026-09-20 bundle 163307: 连结#20602 matched at top=238 and was tapped three times at
+         * y=350, ~7 s apart. A map nudge then re-matched the same node at top=350, where the
+         * unchanged 0.32 landed at y=462 and was accepted at once. +0.30 of a 350 px crop is
+         * 105 px, which would have put attempt two at y=455.
+         */
+        val RETRY_Y_OFFSET_RATIOS = listOf(0.0, 0.30, -0.15)
+        /** Never reach the HUD band that `.bottom` templates include below the node body. */
+        const val MAX_CLICK_Y_RATIO = 0.74
         const val TOPOLOGY_ORDERED_OVERRIDE_MIN_CONFIDENCE = 0.90
         const val TOPOLOGY_PURPLE_EX_OVERRIDE_MIN_CONFIDENCE = 0.80
         const val PURPLE_EX_OVERRIDE_MIN_GLOW_SCORE = 0.08

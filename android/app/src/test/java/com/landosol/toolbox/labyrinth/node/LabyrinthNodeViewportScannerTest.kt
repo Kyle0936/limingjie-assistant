@@ -3,6 +3,7 @@ package com.landosol.toolbox.labyrinth.node
 import com.landosol.toolbox.labyrinth.vision.EntryPixelRect
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -224,6 +225,108 @@ class LabyrinthNodeViewportScannerTest {
         assertFalse(exhausted.geometryInferred)
         assertNull(exhausted.viewportWorldLeft)
     }
+
+    @Test
+    fun `still camera with a jittering signature keeps its prediction through pixel recall`() {
+        val scanner = LabyrinthNodeViewportScanner()
+        val geometry = match(
+            mapping(blockId = 20402, logicalColumn = 4, left = 500),
+            mapping(blockId = 20501, logicalColumn = 5, left = 1040),
+        )
+        val still = NodeViewportPixels.sample(texturedFrame(shift = 0))
+        scanner.observe(2, "fitted", 1920, 1080, geometry, viewportPixels = still)
+        val expected = requireNotNull(scanner.expectedScreenCenterX(6))
+
+        // The glow animation changes the classification-bucketed signature and the topology fit
+        // drops out, but the sampled pixels (with one localized animation patch) are the same.
+        val animated = texturedFrame(shift = 0)
+        for (y in 300..330) for (x in 700..730) animated.pixels[y * 1920 + x] = 0xffffffff.toInt()
+        scanner.observe(
+            2, "glow-jitter", 1920, 1080,
+            match(mapping(blockId = 20402, logicalColumn = 4, left = 500, topologyConfidence = 0.40)),
+            viewportPixels = NodeViewportPixels.sample(animated),
+        )
+        // Four low-confidence frames exhaust the inferred-geometry budget, so without recall the
+        // prediction would be gone here.
+        repeat(3) { index ->
+            scanner.observe(
+                2, "glow-jitter-$index", 1920, 1080,
+                match(mapping(blockId = 20402, logicalColumn = 4, left = 500, topologyConfidence = 0.40)),
+                viewportPixels = NodeViewportPixels.sample(animated),
+            )
+        }
+        assertEquals(expected, requireNotNull(scanner.expectedScreenCenterX(6)), 0.01)
+    }
+
+    @Test
+    fun `a different map segment never inherits a camera fit by pixel recall`() {
+        val scanner = LabyrinthNodeViewportScanner()
+        scanner.observe(
+            2, "segment-a", 1920, 1080,
+            match(
+                mapping(blockId = 20402, logicalColumn = 4, left = 500),
+                mapping(blockId = 20501, logicalColumn = 5, left = 1040),
+            ),
+            viewportPixels = NodeViewportPixels.sample(texturedFrame(shift = 0)),
+        )
+        assertNotNull(scanner.expectedScreenCenterX(6))
+
+        // Same backdrop pattern scrolled by a full gesture: a different segment whose nodes could
+        // not be fitted. Pixel comparison sees a translation, not a still camera.
+        val scrolled = texturedFrame(shift = 768)
+        repeat(4) { index ->
+            scanner.observe(
+                2, "segment-b-$index", 1920, 1080,
+                match(mapping(blockId = 20601, logicalColumn = 6, left = 500, topologyConfidence = 0.40)),
+                viewportPixels = NodeViewportPixels.sample(scrolled),
+            )
+        }
+        assertNull(scanner.expectedScreenCenterX(6))
+
+        // A textureless frame cannot prove anything either way.
+        val blank = NodeViewportPixels.sample(
+            com.landosol.toolbox.clanbattle.recognition.PixelImage(1920, 1080, IntArray(1920 * 1080)),
+        )
+        scanner.observe(
+            2, "blank", 1920, 1080,
+            match(mapping(blockId = 20601, logicalColumn = 6, left = 500, topologyConfidence = 0.40)),
+            viewportPixels = blank,
+        )
+        assertNull(scanner.expectedScreenCenterX(6))
+    }
+
+    @Test
+    fun `pixel recall only looks at the most recent snapshots`() {
+        val scanner = LabyrinthNodeViewportScanner()
+        val still = NodeViewportPixels.sample(texturedFrame(shift = 0))
+        scanner.observe(
+            2, "old-fit", 1920, 1080,
+            match(
+                mapping(blockId = 20402, logicalColumn = 4, left = 500),
+                mapping(blockId = 20501, logicalColumn = 5, left = 1040),
+            ),
+            viewportPixels = still,
+        )
+        val unfitted = match(mapping(blockId = 20402, logicalColumn = 4, left = 500, topologyConfidence = 0.40))
+        val other = NodeViewportPixels.sample(texturedFrame(shift = 300))
+        // Push the fitted snapshot past the recall window (three snapshots) with frames that do
+        // not match it.
+        repeat(4) { index ->
+            scanner.observe(2, "filler-$index", 1920, 1080, unfitted, viewportPixels = other)
+        }
+        scanner.observe(2, "back-to-still", 1920, 1080, unfitted, viewportPixels = still)
+        assertNull(scanner.expectedScreenCenterX(6))
+    }
+
+    private fun texturedFrame(shift: Int) = com.landosol.toolbox.clanbattle.recognition.PixelImage(
+        1920, 1080,
+        IntArray(1920 * 1080) { index ->
+            val cell = (index % 1920 - shift) / 20
+            val row = index / 1920 / 6
+            val value = ((cell * 73 + row * 151) xor (cell * 197 + row * 23)) and 255
+            0xff000000.toInt() or (value * 0x010101)
+        },
+    )
 
     private fun match(vararg mappings: NodeTopologyMapping) = NodeMatchResult(
         currentNodeId = 20402,

@@ -150,6 +150,8 @@ class LabyrinthBattleTeamRecognizer(
         require(requiredStableFrames >= 1)
     }
 
+    /** Set per [recognize] call; read by [observeSlot] rather than threaded through each layer. */
+    private var roster: Set<String>? = null
     private var stableSignature: Long? = null
     private var pendingSignature: Long? = null
     private var pendingStableFrames = 0
@@ -257,7 +259,19 @@ class LabyrinthBattleTeamRecognizer(
     }
 
     @Synchronized
-    fun recognize(frame: PixelImage): LabyrinthBattleTeamObservation {
+    /**
+     * @param rosterCharacterIds roles that joined this run, or empty when the run is not known.
+     *
+     * A labyrinth team page can only show roles the run has already acquired, so the other ~770
+     * icons in the pack are impossible here rather than merely unlikely. Passing the run's own
+     * joined list stops an impossible look-alike from eating the rival margin and leaving a slot
+     * unidentified, which blocks the entire team plan.
+     */
+    fun recognize(
+        frame: PixelImage,
+        rosterCharacterIds: Set<String> = emptySet(),
+    ): LabyrinthBattleTeamObservation {
+        roster = rosterCharacterIds.takeIf(Set<String>::isNotEmpty)
         val bossIndex = detectBossTeamIndex(frame)
         val profile = if (bossIndex != null) BOSS_LAYOUT_PROFILE else BATTLE_LAYOUT_PROFILE
         val layout = measureLayout(frame, profile).copy(bossTeamIndex = bossIndex,
@@ -917,6 +931,7 @@ class LabyrinthBattleTeamRecognizer(
             // by itself; it only removes known candidates of a different attribute. If the badge
             // is unclear this returns null and the matcher falls back to the full icon pack.
             requiredAttribute = requiredAttribute,
+            rosterCharacterIds = roster,
         )
         if (!character.trusted && screenRect != recognitionRect) {
             val detectedIconRect = EntryPixelRect(
@@ -944,6 +959,7 @@ class LabyrinthBattleTeamRecognizer(
                 requiredAttribute = if (!selected && visibleScreenRect == screenRect) {
                     recognizeCardAttribute(frame, screenRect)
                 } else null,
+                rosterCharacterIds = roster,
             )
             // A second attempt still has to pass the same confidence and different-role margin.
             // Never promote a merely "less bad" candidate into an actionable identity.
@@ -966,6 +982,7 @@ class LabyrinthBattleTeamRecognizer(
                 initial = character,
                 mask = characterMask,
                 requiredAttribute = requiredAttribute,
+                rosterCharacterIds = roster,
             )
         }
         return LabyrinthBattleCharacterMatch(

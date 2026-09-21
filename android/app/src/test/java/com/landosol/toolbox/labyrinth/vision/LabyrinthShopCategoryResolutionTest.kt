@@ -62,20 +62,45 @@ class LabyrinthShopCategoryResolutionTest {
         assertTrue(decide(listOf(resolver.resolve(item(recognized = true), "候选遗物", 1, 0))) is LabyrinthShopDecision.BuyRelic)
     }
 
-    @Test fun `three unresolved attempts skip item without assuming exhausted relic stock`() {
-        val imprint = resolver.resolve(item("1"), "攻击型职能的随机印记", 1, 0)
+    @Test fun `variant advances on completed OCR, not on elapsed time`() {
+        // A pending read (completed = false) never advances the variant, however long it waits:
+        // this is the bundle-134750 bug, where a 3 s clock retired titles whose OCR was still
+        // in flight and closed the shop after one or two buys.
         assertEquals(0, resolver.attempt("3", 100, 0))
+        resolver.noteVariantOutcome("3", 100, 0, completed = false, now = 3_000)
+        assertEquals(0, resolver.attempt("3", 100, 3_000))
+        resolver.noteVariantOutcome("3", 100, 0, completed = false, now = 8_000)
+        assertEquals(0, resolver.attempt("3", 100, 8_000))
+        // A completed-but-unresolved read retires the variant.
+        resolver.noteVariantOutcome("3", 100, 0, completed = true, now = 8_500)
+        assertEquals(1, resolver.attempt("3", 100, 8_600))
+        resolver.noteVariantOutcome("3", 100, 1, completed = true, now = 9_000)
+        assertEquals(2, resolver.attempt("3", 100, 9_100))
+        resolver.noteVariantOutcome("3", 100, 2, completed = true, now = 9_500)
+        assertEquals(3, resolver.attempt("3", 100, 9_600))
+        // A stale variant index cannot double-advance, and EXHAUSTED never advances further.
+        resolver.noteVariantOutcome("3", 100, 1, completed = true, now = 9_700)
+        assertEquals(3, resolver.attempt("3", 100, 9_800))
+        // A new fingerprint and clear() both reset the counter.
+        assertEquals(0, resolver.attempt("3", 101, 10_000))
+        resolver.clear()
+        assertEquals(0, resolver.attempt("3", 101, 10_001))
+    }
+
+    @Test fun `a stalled OCR engine still advances after the backstop so the shop cannot hang`() {
+        assertEquals(0, resolver.attempt("s", 7, 0))
+        resolver.noteVariantOutcome("s", 7, 0, completed = false, now = 11_999)
+        assertEquals(0, resolver.attempt("s", 7, 11_999))
+        resolver.noteVariantOutcome("s", 7, 0, completed = false, now = 12_000)
+        assertEquals(1, resolver.attempt("s", 7, 12_000))
+    }
+
+    @Test fun `three completed unresolved reads skip item without assuming exhausted relic stock`() {
+        val imprint = resolver.resolve(item("1"), "攻击型职能的随机印记", 1, 0)
         assertTrue(decide(listOf(imprint, resolver.resolve(item(), "看不清", 2, 0))) is LabyrinthShopDecision.Wait)
-        assertEquals(1, resolver.attempt("3", 100, 3_000))
-        assertEquals(2, resolver.attempt("3", 100, 6_000))
-        assertEquals(3, resolver.attempt("3", 100, 9_000))
         val skipped = resolver.resolve(item(), "看不清", 4, 3)
         assertTrue(decide(listOf(imprint, skipped), area = 5) is LabyrinthShopDecision.BuyRoleImprint)
         assertTrue(decide(listOf(skipped), area = 5) is LabyrinthShopDecision.Close)
-        assertEquals(3, resolver.attempt("3", 100, 100_000))
-        assertEquals(0, resolver.attempt("3", 101, 100_001))
-        resolver.clear()
-        assertEquals(0, resolver.attempt("3", 101, 100_002))
     }
 
     @Test fun `remaining titles finish bounded reading after third relic purchase`() {

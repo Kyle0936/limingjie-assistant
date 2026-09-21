@@ -197,6 +197,43 @@ class LabyrinthEntryRecognitionPolicyTest {
     }
 
     @Test
+    fun `a shop 选择印记 opens the same picker and must not reach the opening roster`() {
+        // 2026-09-20 bundle 155513: the shop sells 选择印记 as well as 随机印记, and buying one
+        // opens the full-roster 角色选择 page. The selector was gated on the node being an EVENT,
+        // so the frame fell through to the opening-roster handler, which went looking for this
+        // guild's three fixed opening characters: "已到初始角色列表底部，复核剩余目标 1/3".
+        assertTrue(
+            labyrinthEventFreeRoleSelectionOwnsFrame(
+                pageState = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                activeNodeType = LabyrinthNodeTypes.SHOP,
+                roleRewardPage = false,
+                hasOpeningViewport = true,
+                shopChoiceImprintPending = true,
+            ),
+        )
+        // A 随机印记 grants its role outright, so nothing in the shop may claim this page.
+        assertTrue(
+            !labyrinthEventFreeRoleSelectionOwnsFrame(
+                pageState = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                activeNodeType = LabyrinthNodeTypes.SHOP,
+                roleRewardPage = false,
+                hasOpeningViewport = true,
+                shopChoiceImprintPending = false,
+            ),
+        )
+        // The opening roster itself still runs before any node is active.
+        assertTrue(
+            !labyrinthEventFreeRoleSelectionOwnsFrame(
+                pageState = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                activeNodeType = null,
+                roleRewardPage = false,
+                hasOpeningViewport = true,
+                shopChoiceImprintPending = true,
+            ),
+        )
+    }
+
+    @Test
     fun `confirmed node transition survives transient unresolved destination frames`() {
         val confirmedAt = 10_000L
         listOf(
@@ -834,6 +871,77 @@ class LabyrinthEntryRecognitionPolicyTest {
             ),
             frameWidth = 1920,
             frameHeight = 1080,
+        )
+    }
+
+    @Test
+    fun `effective sweep survives only the EX to Boss hand-off of one encounter`() {
+        assertTrue(labyrinthKeepsEffectiveScanAcrossNodes(LabyrinthNodeTypes.EX_BATTLE, LabyrinthNodeTypes.BOSS))
+        assertTrue(!labyrinthKeepsEffectiveScanAcrossNodes(LabyrinthNodeTypes.BOSS, LabyrinthNodeTypes.EX_BATTLE))
+        assertTrue(!labyrinthKeepsEffectiveScanAcrossNodes(LabyrinthNodeTypes.EX_BATTLE, LabyrinthNodeTypes.EX_BATTLE))
+        assertTrue(!labyrinthKeepsEffectiveScanAcrossNodes(LabyrinthNodeTypes.NORMAL_BATTLE, LabyrinthNodeTypes.BOSS))
+        assertTrue(!labyrinthKeepsEffectiveScanAcrossNodes(null, LabyrinthNodeTypes.BOSS))
+
+        // Order-independent, and any roster change invalidates the saved sweep.
+        assertEquals(
+            labyrinthEffectiveScanRosterStamp(listOf("1001", "1002", "1003")),
+            labyrinthEffectiveScanRosterStamp(listOf("1003", "1001", "1002")),
+        )
+        assertTrue(
+            labyrinthEffectiveScanRosterStamp(listOf("1001", "1002")) !=
+                labyrinthEffectiveScanRosterStamp(listOf("1001", "1002", "1003")),
+        )
+        assertTrue(labyrinthEffectiveScanRosterStamp(emptyList()) != labyrinthEffectiveScanRosterStamp(listOf("1001")))
+    }
+
+    @Test
+    fun `node scan is deferred while the map settles or a node tap is still pending`() {
+        assertTrue(labyrinthNodeScanConsumable(settleRemainingMillis = 0L, pendingTransitionHeld = false))
+        assertTrue(labyrinthNodeScanConsumable(settleRemainingMillis = -1L, pendingTransitionHeld = false))
+        assertTrue(!labyrinthNodeScanConsumable(settleRemainingMillis = 1L, pendingTransitionHeld = false))
+        assertTrue(!labyrinthNodeScanConsumable(settleRemainingMillis = 0L, pendingTransitionHeld = true))
+    }
+
+    @Test
+    fun `post entry cooldown counts from the moment the tap landed`() {
+        // Bundle 225220 row 249/251: the deciding frame was captured at t=0, the close gesture
+        // landed 750 ms later, and the next popup frame was captured 292 ms after the gesture.
+        assertTrue(
+            labyrinthPostEntryCooldownRemaining(
+                frameTimestampMillis = 1_042L,
+                dispatchedAtMillis = 0L,
+                landedAtMillis = 750L,
+                intervalMillis = 650L,
+            ) > 0L,
+        )
+        // 650 ms after the landing the popup has had its whole cooldown.
+        assertEquals(
+            0L,
+            labyrinthPostEntryCooldownRemaining(
+                frameTimestampMillis = 1_400L,
+                dispatchedAtMillis = 0L,
+                landedAtMillis = 750L,
+                intervalMillis = 650L,
+            ),
+        )
+        // A rejected or still-in-flight tap has no landing time: the old frame-stamp rule holds.
+        assertEquals(
+            150L,
+            labyrinthPostEntryCooldownRemaining(
+                frameTimestampMillis = 500L,
+                dispatchedAtMillis = 0L,
+                landedAtMillis = Long.MIN_VALUE,
+                intervalMillis = 650L,
+            ),
+        )
+        assertEquals(
+            0L,
+            labyrinthPostEntryCooldownRemaining(
+                frameTimestampMillis = 500L,
+                dispatchedAtMillis = Long.MIN_VALUE,
+                landedAtMillis = Long.MIN_VALUE,
+                intervalMillis = 650L,
+            ),
         )
     }
 }

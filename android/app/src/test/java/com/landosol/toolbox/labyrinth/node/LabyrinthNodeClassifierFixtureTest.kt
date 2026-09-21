@@ -25,19 +25,84 @@ class LabyrinthNodeClassifierFixtureTest {
             assertTrue(classifier.classifyMapNodes(frame, templates, hint).isNotEmpty())
             classifier.lastSearchMode
         }
-        assertEquals(listOf("directed", "directed", "typed", "typed", "full", "full"), modes)
+        // One aimed frame, then the restriction is dropped. Measured over two live runs a directed
+        // scan acquired the target on 1 of 53 and 1 of 50 frames while typed acquired 40-79%, so a
+        // second aimed frame only delays the rung that works.
+        assertEquals(listOf("directed", "typed", "typed", "full", "full", "full"), modes)
         classifier.classifyMapNodes(frame, templates, hint.copy(matchedTargetBlockId = 30302))
         assertTrue(classifier.lastSearchMode in setOf("tracked", "directed"))
         classifier.classifyMapNodes(frame, templates, hint.copy(targetBlockId = 30401, matchedTargetBlockId = 30302))
         assertEquals("directed", classifier.lastSearchMode)
         // Without a camera prediction the template set is still restricted to the route
         // neighbourhood; only two misses in that mode fall back to the unrestricted scan.
+        // A changed hint invalidates the stable-frame memo, so these are real scans.
         classifier.classifyMapNodes(frame, templates, hint.copy(targetBlockId = 30401, expectedCenterX = null))
         assertEquals("typed", classifier.lastSearchMode)
         classifier.classifyMapNodes(frame, templates, hint.copy(targetBlockId = 30401, expectedCenterX = null))
         assertEquals("typed", classifier.lastSearchMode)
         classifier.classifyMapNodes(frame, templates, hint.copy(targetBlockId = 30401, expectedCenterX = null))
         assertEquals("full", classifier.lastSearchMode)
+    }
+
+    @Test fun `a stalled ladder stops paying for scans instead of re-climbing forever`() {
+        // Two live failures shaped this. First the ladder was a one-way ratchet into full: 2026-09-18
+        // bundle 133550 spent 68 minutes with every frame a 6.2 s full scan. The fix then reset the
+        // ladder back to directed after two full frames, which replaced the ratchet with a loop:
+        // 2026-09-20 bundle 212345 shows one 普通战斗#10402 hop cycling directed/wide/typed/full
+        // three times for 99.8 s — 39% of that run's entire node budget — before an ordinary scan
+        // acquired it as soon as the frame changed.
+        //
+        // Re-climbing cannot help, because the scan is a pure function of (frame, templates, hint):
+        // a rung that missed on this frame misses again on the next identical frame. The escape is
+        // to stop scanning while nothing changes, which bounds a stall at one real scan per rung
+        // plus one every MAX_SCAN_MEMO_FRAMES, instead of one per frame.
+        val root = locateProjectRoot()
+        val frame = readImage(File(root, "android/app/src/test/resources/labyrinth/node-link-20260914.png"))
+        val templates = NodeTemplateSet(NODE_TEMPLATE_FILES.mapValues { (_, name) ->
+            readImage(File(root, "android/app/src/main/assets/resource-packs/cn-bilibili/vision/$name"))
+        })
+        val classifier = LabyrinthNodeClassifier()
+        // A target this route never acquires: every frame is a miss, as in the stuck bundles.
+        val hint = NodeSearchHint(
+            targetBlockId = 99901,
+            expectedCenterX = 400,
+            expectedTypes = setOf(LabyrinthNodeTypes.LINK, LabyrinthNodeTypes.EVENT),
+            reachableColumns = 2..4,
+        )
+        val windows = (1..14).map {
+            classifier.classifyMapNodes(frame, templates, hint)
+            classifier.lastSearchWindowCount
+        }
+
+        // The ladder still climbs all the way: a real full scan happens.
+        assertTrue("the ladder never reached a full scan: $windows", windows.max() >= 2_000)
+        // But each rung is paid for once, not once per frame. Measured: [695, 1464, 0, 2629, 0...]
+        // — directed, typed and full each scanned once and the remaining frames cost nothing.
+        val scanned = windows.count { it > 0 }
+        assertTrue("a stalled ladder kept scanning ($scanned of ${windows.size}): $windows", scanned <= 4)
+    }
+
+    @Test fun `without a camera fit the ladder still settles on full`() {
+        // The release is conditional on a usable prediction: with none, a directed scan has
+        // nothing to aim at and full remains the only honest option.
+        val root = locateProjectRoot()
+        val frame = readImage(File(root, "android/app/src/test/resources/labyrinth/node-link-20260914.png"))
+        val templates = NodeTemplateSet(NODE_TEMPLATE_FILES.mapValues { (_, name) ->
+            readImage(File(root, "android/app/src/main/assets/resource-packs/cn-bilibili/vision/$name"))
+        })
+        val classifier = LabyrinthNodeClassifier()
+        val hint = NodeSearchHint(
+            targetBlockId = 99902,
+            expectedCenterX = null,
+            expectedTypes = setOf(LabyrinthNodeTypes.LINK),
+            reachableColumns = 2..4,
+        )
+        val modes = (1..8).map {
+            classifier.classifyMapNodes(frame, templates, hint)
+            classifier.lastSearchMode
+        }
+        assertEquals("full", modes.last())
+        assertTrue("no directed scan is possible without a fit: $modes", modes.none { it == "directed" })
     }
 
     @Test fun `directed search keeps target while scoring fewer candidate windows`() {
@@ -120,6 +185,10 @@ class LabyrinthNodeClassifierFixtureTest {
                     node.screenRect?.let { kotlin.math.abs(it.left + it.width / 2 - targetCenterX) <= 30 } == true
             })
             assertTrue("error=$error windows=$windows", windows <= DIRECTED_WINDOW_BUDGET)
+            assertTrue(
+                "error=$error directed=$windows full=${fullClassifier.lastSearchWindowCount}",
+                windows * 2 <= fullClassifier.lastSearchWindowCount,
+            )
         }
     }
 
@@ -506,8 +575,20 @@ class LabyrinthNodeClassifierFixtureTest {
     }
 
     private companion object {
-        /** Phase one target: roughly 2 ms per window on device, so 250 windows is the 500 ms line. */
-        const val DIRECTED_WINDOW_BUDGET = 800
+        /**
+         * Ceiling for an aimed scan, against roughly 2 ms per window on device.
+         *
+         * Raised from 800 on 2026-09-20 when directed moved onto the gap-free offset grid with a
+         * 4+2 proposal budget. That is a deliberate purchase, not drift: the old directed scan
+         * came in under budget by being blind in 80-px bands, so it missed on nearly every hop
+         * and handed the frame to a 5.3 s unrestricted rescan. Paying ~35% more for a scan that
+         * actually finds the node removes both the wasted directed frames and the escalation.
+         * The scan must still stay under half of a full scan, which the test also asserts.
+         * Worst case here is an exactly-centred prediction over a five-type neighbourhood, which
+         * keeps the most rectangles inside the tolerance: 1056 windows against a 2629-window
+         * full scan on node-link-20260914.
+         */
+        const val DIRECTED_WINDOW_BUDGET = 1_100
 
         val NODE_TEMPLATE_FILES = mapOf(
             "node.normal_battle.active" to "node_normal_battle_active.png",

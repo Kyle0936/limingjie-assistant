@@ -59,11 +59,27 @@ class LabyrinthCharacterIconMatcher(
         require(minimumRivalMargin in 0.0..1.0)
     }
 
+    /**
+     * @param rosterCharacterIds the characters that can actually appear here, or null for any.
+     *
+     * A labyrinth run's team pages can only show roles that joined that run: roughly 30 of the
+     * ~800 icons in the pack. The other 770 are not merely unlikely, they are impossible, and
+     * letting them compete costs real identifications — an impossible rival that scores close to
+     * the true role eats the margin gate and the slot comes back unidentified, which blocks the
+     * whole team plan (2026-09-20 bundle 204642: 成员2 unresolved for 162 consecutive frames while
+     * 祈梨（怪盗） was sitting in the run's own joined list).
+     *
+     * The roster narrows which candidates may *win* and may *veto*; it never lowers the absolute
+     * confidence bar, and [ROSTER_OUTSIDER_OVERRIDE_MARGIN] still hands the frame back to the full
+     * pack when the best icon overall is clearly outside the roster — that means the roster itself
+     * is incomplete, and a confident wrong answer would be worse than an unidentified slot.
+     */
     fun match(
         frame: PixelImage,
         iconRect: EntryPixelRect,
         mask: LabyrinthCharacterIconMask = LabyrinthCharacterIconMask(),
         requiredAttribute: LabyrinthCharacterAttribute? = null,
+        rosterCharacterIds: Set<String>? = null,
     ): LabyrinthCharacterIconMatch {
         val candidateTemplates = if (requiredAttribute == null) {
             templates
@@ -78,8 +94,18 @@ class LabyrinthCharacterIconMatcher(
         val coarse = candidateTemplates
             .map { template -> template to coarseIconScore(frame, iconRect, template, mask) }
             .sortedByDescending { (_, score) -> score }
-        val coarseCutoff = (coarse.firstOrNull()?.second ?: 0.0) * COARSE_KEEP_RATIO
-        val ranked = coarse
+        // The coarse pass is cheap and still sees the whole pack, so it can answer whether the
+        // roster is trustworthy before the expensive pass commits to it.
+        val roster = rosterCharacterIds?.takeIf(Set<String>::isNotEmpty)
+        val insideRoster = if (roster == null) coarse else coarse.filter { (template, _) ->
+            template.characterId in roster
+        }
+        val rosterUsable = roster != null && insideRoster.isNotEmpty() &&
+            (coarse.firstOrNull()?.second ?: 0.0) - (insideRoster.firstOrNull()?.second ?: 0.0) <
+            ROSTER_OUTSIDER_OVERRIDE_MARGIN
+        val considered = if (rosterUsable) insideRoster else coarse
+        val coarseCutoff = (considered.firstOrNull()?.second ?: 0.0) * COARSE_KEEP_RATIO
+        val ranked = considered
             .filterIndexed { index, (_, score) -> index < MIN_ICON_CANDIDATES || score >= coarseCutoff }
             .take(MAX_ICON_CANDIDATES)
             .map { (template, _) -> template to iconScore(frame, iconRect, template, mask) }
@@ -143,6 +169,7 @@ class LabyrinthCharacterIconMatcher(
         ),
         requiredAttribute: LabyrinthCharacterAttribute? = null,
         force: Boolean = false,
+        rosterCharacterIds: Set<String>? = null,
     ): LabyrinthCharacterIconMatch {
         if (initial.trusted && !force) return initial
         val radius = (iconRect.width / 90.0).roundToInt().coerceIn(1, 3)
@@ -172,6 +199,7 @@ class LabyrinthCharacterIconMatcher(
                 iconRect = rect,
                 mask = mask,
                 requiredAttribute = requiredAttribute,
+                rosterCharacterIds = rosterCharacterIds,
             )
         }
         return reconcileGeometryMatches(initial, alternatives, force = force)
@@ -363,6 +391,16 @@ class LabyrinthCharacterIconMatcher(
         const val MIN_ICON_CANDIDATES = 64
         const val MAX_EXPOSED_CHARACTER_CANDIDATES = 5
         const val COARSE_KEEP_RATIO = 0.5
+        /**
+         * How far the best icon in the whole pack may beat the best roster icon before the roster
+         * is treated as incomplete and ignored for this slot.
+         *
+         * Coarse scores for the true role sit well above its rivals, so a gap this large means the
+         * face on screen is not in the roster at all — a run whose joined list missed a character,
+         * or a page that is not a labyrinth team page. Trusting the roster there would convert an
+         * honest "unidentified" into a confident wrong role, which the planner would act on.
+         */
+        const val ROSTER_OUTSIDER_OVERRIDE_MARGIN = 0.08
         const val RIGHT_EDGE_MAX_X_RATIO = 0.82
         const val TOP_LEFT_OVERLAY_IGNORE_X_RATIO = 0.46
         const val TOP_LEFT_OVERLAY_IGNORE_Y_RATIO = 0.38

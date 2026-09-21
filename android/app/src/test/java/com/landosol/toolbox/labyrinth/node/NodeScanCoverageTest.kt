@@ -4,6 +4,7 @@ import com.landosol.toolbox.clanbattle.recognition.PixelImage
 import com.landosol.toolbox.labyrinth.vision.EntryPixelRect
 import com.landosol.toolbox.labyrinth.vision.GradientTemplateMatcher
 import java.io.File
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -39,19 +40,19 @@ class NodeScanCoverageTest {
 
     @Test
     fun `horizontal scan offsets leave no gap wider than the template can tolerate`() {
-        fun widestGap(dense: Boolean): Int = NodeAnchorDefinitions
-            .searchOffsets(1920, 1080, dense = dense)
+        val gaps = NodeAnchorDefinitions
+            .searchOffsets(1920, 1080)
             .map { it.first }
             .distinct()
             .sorted()
             .zipWithNext()
-            .maxOf { (left, right) -> right - left }
+            .map { (left, right) -> right - left }
 
         // Local refinement reaches roughly +/-17 px from a proposal, so a gap of 34 is still
-        // covered from one side or the other. The coarse list jumps 80 px between 160 and 320,
-        // which is why an unobstructed node could be unreachable for the whole scan.
-        assertTrue("dense gap=${widestGap(true)}", widestGap(true) <= 34)
-        assertTrue("coarse gap=${widestGap(false)}", widestGap(false) > 34)
+        // covered from one side or the other. There is only one list and every mode uses it:
+        // the old coarse variant jumped 80 px between 160 and 320, and a directed scan aimed at
+        // the right column was still blind inside that band (2026-09-20 bundle 192445).
+        assertTrue("widest gap=${gaps.max()}", gaps.max() <= 34)
     }
 
     @Test
@@ -72,6 +73,43 @@ class NodeScanCoverageTest {
             "active relic missing: $detections",
             detections.any { it.isClickable && it.blockType == LabyrinthNodeTypes.RELIC },
         )
+    }
+
+    @Test
+    fun `an aimed scan finds the nodes on its first frame instead of escalating`() {
+        // 2026-09-20 bundle 192445: nearly every hop ran directed, directed, typed, tracked. The
+        // two directed frames cost 1.0 s each and found nothing, then an unrestricted rescan cost
+        // 5.3 s and found the node — while a perfectly good centre-x prediction (~950 on a 1920
+        // frame) sat unused, because escalating threw the prediction away.
+        //
+        // The directed scan was not underpowered, it was blind: it used an offset list with
+        // 80-px holes. Aiming at a column does not say where inside the column the holes fall.
+        // On this fixture that list found nothing at all; the gap-free list finds both EVENT
+        // nodes on the very first frame, at the same positions the expensive modes report.
+        val frame = readImage(File(locateRoot(), FIXTURE))
+        val classifier = LabyrinthNodeClassifier()
+        val detections = classifier.classifyMapNodes(
+            frame,
+            loadTemplates(),
+            NodeSearchHint(
+                targetBlockId = 99901,
+                expectedCenterX = EVENT_BOTTOM_LEFT + 140,
+                expectedTypes = setOf(
+                    LabyrinthNodeTypes.LINK, LabyrinthNodeTypes.EVENT,
+                    LabyrinthNodeTypes.NORMAL_BATTLE, LabyrinthNodeTypes.RELIC,
+                ),
+                reachableColumns = 2..4,
+            ),
+        )
+
+        assertEquals("directed", classifier.lastSearchMode)
+        fun foundAt(left: Int, top: Int) = detections.any { node ->
+            val rect = node.screenRect ?: return@any false
+            node.blockType == LabyrinthNodeTypes.EVENT &&
+                kotlin.math.abs(rect.left - left) <= 24 && kotlin.math.abs(rect.top - top) <= 24
+        }
+        assertTrue("middle event missing on the first aimed frame: $detections", foundAt(605, 350))
+        assertTrue("bottom event missing on the first aimed frame: $detections", foundAt(EVENT_BOTTOM_LEFT, EVENT_BOTTOM_TOP))
     }
 
     private fun loadTemplates(): NodeTemplateSet {

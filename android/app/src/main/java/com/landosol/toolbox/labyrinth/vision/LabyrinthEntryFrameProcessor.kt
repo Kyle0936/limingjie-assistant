@@ -352,11 +352,19 @@ data class EntryAnchorMatch(
 )
 
 /** Measures every stable entry-flow anchor but never produces an action. */
+/** [LabyrinthEntryFrameResult.nodeSearchMode] of a node-page frame whose map scan was skipped. */
+const val NODE_SEARCH_MODE_DEFERRED = "deferred"
+
 class LabyrinthEntryFrameProcessor(
     private val templates: LabyrinthEntryTemplateSet,
     private val classifier: LabyrinthEntryPageClassifier = LabyrinthEntryPageClassifier(),
     private val matcher: GradientTemplateMatcher = GradientTemplateMatcher(),
-    private val nodeClassifier: LabyrinthNodeClassifier = LabyrinthNodeClassifier(),
+    /**
+     * Borrows the luminance/gradient maps that [matcher] prepares for the page anchors, so the
+     * map-node scan does not build a second full-frame map for an identical answer. Only the
+     * frame features are shared; the classifier keeps its own, more coarsely sampled matcher.
+     */
+    private val nodeClassifier: LabyrinthNodeClassifier = LabyrinthNodeClassifier(sharedFrameFeatures = matcher),
     private val nodeTemplates: NodeTemplateSet = NodeTemplateSet(emptyMap()),
     private val characterRecognizer: LabyrinthCharacterRecognizer = LabyrinthCharacterRecognizer(),
     private val battleTeamRecognizer: LabyrinthBattleTeamRecognizer = LabyrinthBattleTeamRecognizer(),
@@ -371,12 +379,28 @@ class LabyrinthEntryFrameProcessor(
     private val exChallengeDetector: LabyrinthExChallengeDetector = LabyrinthExChallengeDetector(),
     private val finalBossOnly: () -> Boolean = { false },
     private val nodeSearchHint: () -> NodeSearchHint? = { null },
+    /** Roles this run has acquired; the only ones a team page can show. Empty means "unknown". */
+    private val rosterCharacterIds: () -> Set<String> = { emptySet() },
     /**
      * Whether a map-node scan can be consumed right now. Before the route session exists the
      * session cannot bind or act on any classification, so the scan is pure waste; on a slow host
      * that wasted first frame took 49 s in the 2026-09-15 20:58 bundle.
      */
     private val nodeScanRequested: () -> Boolean = { true },
+    /**
+     * Whether the session would act on a map-node scan produced right now. False while the session
+     * is only waiting: for the map to settle after a popup close, or for the game to leave the map
+     * after a confirmed node tap. Those frames are returned unread — the session bails out before
+     * it touches the classifications — yet each one still paid for a scan. In the 2026-09-20
+     * 22:52 bundle that was 42 of 55 node frames and 75 s of the 130 s node budget: a run whose
+     * ten hops each waited ~2 s for the map to settle spent 4-8 s per hop scanning frames it had
+     * already decided to ignore.
+     *
+     * A deferred frame keeps every cheap, page-level result (page state, dialogs, anchors); only
+     * the node classification is skipped and the classifier's viewport tracking is preserved, so
+     * the first consumed frame still benefits from a stable-viewport fast path.
+     */
+    private val nodeScanConsumable: () -> Boolean = { true },
 ) {
     private val finalBossPlatformLocator = FinalBossPlatformLocator(
         nodeTemplates.templates["node.boss.platform"],
@@ -387,6 +411,25 @@ class LabyrinthEntryFrameProcessor(
         skipJoinedCharacters: Boolean = false,
     ): LabyrinthEntryFrameResult {
         if (frame.width <= frame.height) return unsupportedOrientation(frame)
+        // The frame-wide luminance/gradient maps cost one pass over the frame and are then read by
+        // every anchor score below and by the map-node scan. Without them the matcher recomputes
+        // five luminance() calls per sample point, and the page anchors alone sample on the order
+        // of a million points per frame. The maps must not outlive this call: a frame that fails
+        // half-way would otherwise pin ~6 MB of a dead frame, and every later score() guards on
+        // frame identity anyway.
+        matcher.prepareFrame(frame)
+        try {
+            return processPrepared(frame, deferRoleRewardPortraits, skipJoinedCharacters)
+        } finally {
+            matcher.clearPreparedFrame()
+        }
+    }
+
+    private fun processPrepared(
+        frame: PixelImage,
+        deferRoleRewardPortraits: Boolean,
+        skipJoinedCharacters: Boolean,
+    ): LabyrinthEntryFrameResult {
         lateinit var observation: LabyrinthEntryPageObservation
         var matchedFeatures = emptyList<String>()
         var anchorMatches = emptyMap<String, EntryAnchorMatch>()
@@ -406,6 +449,7 @@ class LabyrinthEntryFrameProcessor(
         var exChallenge: LabyrinthExChallengeObservation? = null
         var nodesNanos = 0L
         var bossPlatformNanos = 0L
+        var battleTeamNanos = 0L
         var nodeSearchMode = "none"
         var nodeSearchWindowCount = 0
         var nodeViewportSignature = ""
@@ -472,7 +516,9 @@ class LabyrinthEntryFrameProcessor(
                 characterMatches = if (deferRoleRewardPortraits) characterRecognizer.roleRewardSlots(frame)
                     else characterRecognizer.recognizeRoleRewardChoices(frame)
             } else if (observation.state == LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION) {
-                openingCharacterSelection = battleTeamRecognizer.recognizeOpening(frame)
+                battleTeamNanos = measureNanoTime {
+                    openingCharacterSelection = battleTeamRecognizer.recognizeOpening(frame)
+                }
                 openingCharacterMatches = openingCharacterSelection?.visibleCharacters.orEmpty()
             }
             if (
@@ -502,33 +548,54 @@ class LabyrinthEntryFrameProcessor(
                     nodeTemplates.templates.isNotEmpty() &&
                     nodeScanRequested()
             ) {
-                nodeViewportSignature = nodeClassifier.viewportSignatureKey(frame)
-                nodeViewportPixels = com.landosol.toolbox.labyrinth.node.NodeViewportPixels.sample(frame)
-                if (finalBossOnly()) {
-                    // Route already proves the only destination. Animated scenery must not force
-                    // an expensive ordinary-node scan; do not reuse its old viewport evidence.
-                    nodeClassifier.resetTracking()
-                    nodeSearchMode = "final-boss-platform"
+                if (!nodeScanConsumable()) {
+                    // The session will not read this frame's classifications, so do not compute
+                    // them. Keep the tracker state intact: the map behind a fading popup is the
+                    // same map the next consumed frame will see.
+                    nodeSearchMode = NODE_SEARCH_MODE_DEFERRED
                 } else {
-                    nodesNanos = measureNanoTime {
-                        nodeClassifications = nodeClassifier.classifyMapNodes(
-                            frame = frame,
-                            templates = nodeTemplates,
-                            searchHint = nodeSearchHint(),
-                        )
+                    nodeViewportSignature = nodeClassifier.viewportSignatureKey(frame)
+                    nodeViewportPixels = com.landosol.toolbox.labyrinth.node.NodeViewportPixels.sample(frame)
+                    // The two halves of this branch are the same question: is the route's only
+                    // remaining destination the final Boss? When it is, the ordinary node scan is
+                    // pointless and the platform locator is what produces the click rect. When it is
+                    // not, the reverse holds — and the platform locator's result is read by nobody.
+                    //
+                    // It used to run on every node frame regardless: 2026-09-20 bundle 192445 spent
+                    // 25.1 s of 458 s (189 ms per node frame, 8.3% of all recognition) hunting for a
+                    // Boss while the run was in area 3. The locator keeps no state across frames, so
+                    // skipping it changes nothing but the bill.
+                    if (finalBossOnly()) {
+                        // Animated scenery must not force an expensive ordinary-node scan; do not
+                        // reuse its old viewport evidence either.
+                        nodeClassifier.resetTracking()
+                        nodeSearchMode = "final-boss-platform"
+                        bossPlatformNanos = measureNanoTime {
+                            finalBossPlatforms = finalBossPlatformLocator.locate(frame)
+                            finalBossPlatformCandidates = finalBossPlatformLocator.lastCandidates
+                        }
+                    } else {
+                        nodesNanos = measureNanoTime {
+                            nodeClassifications = nodeClassifier.classifyMapNodes(
+                                frame = frame,
+                                templates = nodeTemplates,
+                                searchHint = nodeSearchHint(),
+                            )
+                        }
+                        nodeSearchMode = nodeClassifier.lastSearchMode
+                        nodeSearchWindowCount = nodeClassifier.lastSearchWindowCount
                     }
-                    nodeSearchMode = nodeClassifier.lastSearchMode
-                    nodeSearchWindowCount = nodeClassifier.lastSearchWindowCount
-                }
-                bossPlatformNanos = measureNanoTime {
-                    finalBossPlatforms = finalBossPlatformLocator.locate(frame)
-                    finalBossPlatformCandidates = finalBossPlatformLocator.lastCandidates
                 }
             } else {
                 nodeClassifier.resetTracking()
             }
             if (observation.state == LabyrinthEntryPageState.BATTLE_TEAM_SELECTION) {
-                battleTeamSelection = battleTeamRecognizer.recognize(frame)
+                battleTeamNanos = measureNanoTime {
+                    battleTeamSelection = battleTeamRecognizer.recognize(
+                        frame = frame,
+                        rosterCharacterIds = rosterCharacterIds(),
+                    )
+                }
             } else if (
                 observation.state != LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION ||
                     openingCharacterSelection == null
@@ -564,9 +631,14 @@ class LabyrinthEntryFrameProcessor(
             observation = observation,
             matchedFeatures = matchedFeatures,
             elapsedMillis = elapsedNanos / 1_000_000,
+            // Keep the buckets disjoint: battle-team recognition is the second largest consumer
+            // after the node scan (18% of run wall-clock across the 2026-09 bundles) and used to
+            // be invisible inside "pageAndOther" together with page classification.
             stageMillis = mapOf("nodes" to nodesNanos / 1_000_000,
                 "bossPlatform" to bossPlatformNanos / 1_000_000,
-                "pageAndOther" to (elapsedNanos - nodesNanos - bossPlatformNanos) / 1_000_000),
+                "battleTeam" to battleTeamNanos / 1_000_000,
+                "pageAndOther" to
+                    (elapsedNanos - nodesNanos - bossPlatformNanos - battleTeamNanos) / 1_000_000),
             nodeSearchMode = nodeSearchMode,
             nodeSearchWindowCount = nodeSearchWindowCount,
             nodeViewportSignature = nodeViewportSignature,
@@ -849,12 +921,26 @@ class GradientTemplateMatcher(
     private val cache = IdentityHashMap<PixelImage, TemplateStats>()
     private data class FrameStats(val frame: PixelImage, val lights: ByteArray, val gradients: ShortArray)
     private var preparedFrame: FrameStats? = null
+    /**
+     * Storage reused across [prepareFrame] calls: ~2 MB of luminance and ~4 MB of gradients for a
+     * 1080p frame, previously allocated fresh every frame. Both arrays are fully rewritten on each
+     * call (the gradient border is cleared explicitly), and [FrameStats.frame] identity still
+     * guards every read in [score], so a stale value can never be served for a different frame.
+     * Matchers that only [sharePreparedFrame] keep no storage of their own.
+     */
+    private var reusableLights: ByteArray? = null
+    private var reusableGradients: ShortArray? = null
 
     /** Shared by the coarse, refinement and full node matchers for one bounded full scan. */
     fun prepareFrame(frame: PixelImage) {
         // Luminance is 0..255, gradient is 0..510. Compact storage is exact, not lossy.
-        val lights = ByteArray(frame.width * frame.height) { luminance(frame.pixels[it]).toByte() }
-        val gradients = ShortArray(lights.size)
+        val size = frame.width * frame.height
+        val lights = reusableLights?.takeIf { it.size == size } ?: ByteArray(size).also { reusableLights = it }
+        val gradients = reusableGradients?.takeIf { it.size == size }
+            ?: ShortArray(size).also { reusableGradients = it }
+        for (index in 0 until size) lights[index] = luminance(frame.pixels[index]).toByte()
+        // The loop below leaves the outer border untouched; a fresh array had it at zero.
+        java.util.Arrays.fill(gradients, 0.toShort())
         for (y in 1 until frame.height - 1) {
             for (x in 1 until frame.width - 1) {
                 val at = y * frame.width + x
@@ -867,6 +953,8 @@ class GradientTemplateMatcher(
 
     fun sharePreparedFrame(other: GradientTemplateMatcher) { preparedFrame = other.preparedFrame }
     fun clearPreparedFrame() { preparedFrame = null }
+    /** Whether [prepareFrame] has been called for exactly this frame and not cleared since. */
+    fun hasPreparedFrame(frame: PixelImage): Boolean = preparedFrame?.frame === frame
 
     fun score(
         frame: PixelImage,

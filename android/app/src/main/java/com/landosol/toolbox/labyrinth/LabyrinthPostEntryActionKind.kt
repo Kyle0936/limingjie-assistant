@@ -16,7 +16,6 @@ internal enum class LabyrinthPostEntryActionKind {
     SELECT_ROLE_REWARD,
     CLOSE_CHARACTER_JOINED,
     ADVANCE_CHARACTER_ACQUISITION,
-    COLLAPSE_PORTRAIT,
 
     // Events
     SELECT_EVENT,

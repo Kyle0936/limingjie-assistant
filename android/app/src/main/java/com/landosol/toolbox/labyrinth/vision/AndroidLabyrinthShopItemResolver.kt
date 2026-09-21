@@ -28,7 +28,8 @@ class AndroidLabyrinthShopItemResolver(
                 return@map categories.resolve(item, read.text, read.id, 0)
             }
             accepted.remove(item.slotId)
-            val attempt = categories.attempt(item.slotId, fingerprint, android.os.SystemClock.elapsedRealtime())
+            val now = android.os.SystemClock.elapsedRealtime()
+            val attempt = categories.attempt(item.slotId, fingerprint, now)
             val variant = minOf(attempt, 2)
             val rect = if (variant == 2) titleRect.copy(
                 top = maxOf(0, titleRect.top - 3),
@@ -39,6 +40,11 @@ class AndroidLabyrinthShopItemResolver(
             val resolved = categories.resolve(item, read?.text, read?.id, attempt)
             if (resolved.categoryState == LabyrinthShopCategoryState.READY && read != null) {
                 accepted[item.slotId] = fingerprint to read
+            } else {
+                // Retire this crop variant only once its OCR actually completed (read != null),
+                // not on a fixed interval: the reads share one serial queue and a time clock was
+                // failing titles that were still being processed.
+                categories.noteVariantOutcome(item.slotId, fingerprint, variant, read != null, now)
             }
             resolved
         }

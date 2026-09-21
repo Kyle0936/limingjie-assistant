@@ -160,6 +160,12 @@ data class LabyrinthBattleTeamSelectionPlan(
     val blockedReason: String?,
     val teamReady: Boolean,
     val minimumCharacterConfidence: Double,
+    /**
+     * Ordinary battles may keep the team the game already has: no member is added or removed, so
+     * the plan collapses straight to "start battle". Defaults to false so every other caller
+     * keeps the full diff behaviour.
+     */
+    val holdCurrentTeam: Boolean = false,
 ) {
     val dryRun: Boolean = false
 
@@ -171,9 +177,15 @@ data class LabyrinthBattleTeamSelectionPlan(
         if (!readyToExecute || currentSessionId != sessionId) return false
         if (observation.recognitionState != LabyrinthBattleTeamRecognitionState.STABLE) return false
         if (observation.viewportRevision != viewportRevision || observation.currentFilter != currentFilter) return false
-        val currentRecommendationIds = recommendation.members
-            .map { canonicalLabyrinthRoleId(it.characterId) }
-        if (currentRecommendationIds != recommendedIds) return false
+        // When the team is deliberately held, [recommendedIds] mirrors the currently selected
+        // members instead of the planner output, so comparing it against the recommendation would
+        // fail every frame. The viewport, filter and selected-team checks still apply, so a team
+        // change or page change invalidates the plan as before.
+        if (!holdCurrentTeam) {
+            val currentRecommendationIds = recommendation.members
+                .map { canonicalLabyrinthRoleId(it.characterId) }
+            if (currentRecommendationIds != recommendedIds) return false
+        }
         val selectedIds = observation.effectiveSelectedCharacters().map { match ->
             match.characterId?.let(::canonicalLabyrinthRoleId) ?: return false
         }
@@ -199,6 +211,7 @@ data class LabyrinthBattleTeamSelectionPlan(
     fun overlayLines(): List<String> = listOf(
         "自动编组：保持${alreadyCorrectIds.size} · 取消${needDeselectIds.size} · 选择${needSelectIds.size}",
         when {
+            teamReady && holdCurrentTeam -> "普通战：保留当前队伍，直接开始战斗"
             teamReady -> "第一队已与推荐一致；下一步开始战斗"
             visibleSelectTargets.isNotEmpty() || visibleDeselectTargets.isNotEmpty() ->
                 "计划点击：" + (visibleDeselectTargets + visibleSelectTargets).joinToString("、") {
@@ -257,6 +270,7 @@ data class LabyrinthBattleTeamSelectionPlan(
         appendLine("viewportRevision：$viewportRevision")
         append(
             when {
+                teamReady && holdCurrentTeam -> "状态：普通战保留当前队伍，可开始战斗"
                 teamReady -> "状态：第一队编组已与推荐一致，可开始战斗"
                 readyToExecute -> "状态：自动编组计划安全条件满足"
                 else -> "状态：BLOCKED，${blockedReason ?: "未知原因"}；不执行点击"
@@ -535,6 +549,19 @@ internal fun labyrinthBossSingleTeamExecutionStep(
     )
 }
 
+/**
+ * Whether an ordinary battle keeps the team the game already shows instead of re-selecting the
+ * recommendation. Requires a full five-slot strip with every slot identified: a short strip needs
+ * filling, and an unidentified slot could be anyone.
+ */
+internal fun labyrinthHoldsCurrentTeam(
+    requested: Boolean,
+    selectedSlotCount: Int,
+    identifiedSelectedCount: Int,
+): Boolean = requested && selectedSlotCount >= LABYRINTH_TEAM_SIZE && identifiedSelectedCount == selectedSlotCount
+
+private const val LABYRINTH_TEAM_SIZE = 5
+
 class LabyrinthBattleTeamSelectionPlanner(
     private val profiles: Map<String, LabyrinthRoleProfile>,
     private val minimumCharacterConfidence: Double = LABYRINTH_BATTLE_CHARACTER_SAFE_CONFIDENCE,
@@ -553,11 +580,8 @@ class LabyrinthBattleTeamSelectionPlanner(
         recommendation: LabyrinthBattleTeamRecommendation,
         observation: LabyrinthBattleTeamObservation,
         exhaustedFilters: Set<LabyrinthBattleElementFilter> = emptySet(),
+        holdCurrentTeamRequested: Boolean = false,
     ): LabyrinthBattleTeamSelectionPlan {
-        val recommendedIds = recommendation.members.map { canonicalLabyrinthRoleId(it.characterId) }
-        val recommendedNames = recommendation.members.associate { member ->
-            canonicalLabyrinthRoleId(member.characterId) to member.displayName
-        }
         // The current-member strip is authoritative. Favourite stars and bright portrait art can
         // resemble the large yellow roster checkmark, so roster-card marker guesses must never
         // create or remove team membership by themselves.
@@ -568,6 +592,28 @@ class LabyrinthBattleTeamSelectionPlanner(
                 id to (match.displayName ?: profiles[id]?.displayName ?: id)
             }
         }.toMap()
+        // Ordinary battle shortcut: treat the current members as the recommendation so the diff
+        // is empty and the plan goes straight to "start battle" — but only when the team is
+        // already full (the game caps a team at 5) and every member of the strip is identified.
+        // A partial or unreadable strip still goes through the normal diff, so a battle can never
+        // start on an unknown or short team.
+        val holdCurrentTeam = labyrinthHoldsCurrentTeam(
+            requested = holdCurrentTeamRequested,
+            selectedSlotCount = selectedMatches.size,
+            identifiedSelectedCount = selectedIds.size,
+        )
+        val recommendedIds = if (holdCurrentTeam) {
+            selectedIds
+        } else {
+            recommendation.members.map { canonicalLabyrinthRoleId(it.characterId) }
+        }
+        val recommendedNames = if (holdCurrentTeam) {
+            selectedNames
+        } else {
+            recommendation.members.associate { member ->
+                canonicalLabyrinthRoleId(member.characterId) to member.displayName
+            }
+        }
         val selectedSet = selectedIds.toSet()
         val recommendedSet = recommendedIds.toSet()
         val alreadyCorrectIds = recommendedIds.filter(selectedSet::contains)
@@ -704,6 +750,7 @@ class LabyrinthBattleTeamSelectionPlanner(
             blockedReason = blockReasons.joinToString("；").ifBlank { null },
             teamReady = teamReady,
             minimumCharacterConfidence = minimumCharacterConfidence,
+            holdCurrentTeam = holdCurrentTeam,
         )
     }
 

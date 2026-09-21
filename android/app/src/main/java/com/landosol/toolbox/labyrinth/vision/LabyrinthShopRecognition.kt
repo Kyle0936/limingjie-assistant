@@ -39,6 +39,8 @@ data class LabyrinthShopItemMatch(
     val kind: LabyrinthShopItemKind = LabyrinthShopItemKind.UNKNOWN,
     val titleText: String? = null,
     val roleImprintLabel: String? = null,
+    /** True for 选择印记, which opens a character picker after purchase. */
+    val choiceRoleImprint: Boolean = false,
     val titleEvidenceId: Long? = null,
     val categoryState: LabyrinthShopCategoryState = LabyrinthShopCategoryState.READY,
     val categoryAttempt: Int = 0,
@@ -80,6 +82,20 @@ object LabyrinthShopItemText {
         // more distinctive "职能...随机/选择" title. That evidence is sufficient to reject the
         // relic hypothesis; ordinary relic titles do not contain "职能".
         return value.contains("印记") || value.contains("随机") || value.contains("选择")
+    }
+
+    /**
+     * Whether this imprint lets the player pick the character (选择印记) rather than rolling one
+     * (随机印记).
+     *
+     * The two are priced and titled alike and both are role imprints, but only the choice variant
+     * opens a full-roster 角色选择 page after purchase, which the run then has to answer.
+     */
+    fun isChoiceRoleImprint(text: String?): Boolean {
+        val value = normalized(text)
+        if (!looksLikeRoleImprint(value)) return false
+        if (value.contains("随机")) return false
+        return value.contains("选择")
     }
 
     fun roleImprintLabel(text: String?): String? {

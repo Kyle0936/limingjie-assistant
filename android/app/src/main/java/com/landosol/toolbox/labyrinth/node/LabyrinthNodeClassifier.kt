@@ -238,6 +238,13 @@ private enum class NodeSearchMode(val label: String) {
  */
 class LabyrinthNodeClassifier(
     private val matcher: GradientTemplateMatcher = GradientTemplateMatcher(maxSamples = 2_400),
+    /**
+     * A matcher whose prepared frame features may be borrowed for the frame being scanned. The
+     * entry frame processor prepares each frame once for its page anchors; when it has done so
+     * for this exact frame, the scan shares that map instead of computing an identical one.
+     * Template sampling density is per matcher and is not shared.
+     */
+    private val sharedFrameFeatures: GradientTemplateMatcher? = null,
 ) {
     private val proposalMatcher = GradientTemplateMatcher(maxSamples = 240)
     private val refinementMatcher = GradientTemplateMatcher(maxSamples = 700)
@@ -246,9 +253,19 @@ class LabyrinthNodeClassifier(
     private var previousTemplates: NodeTemplateSet? = null
     private var previousNodes: List<NodeClassification> = emptyList()
     private var trackedFrames = 0
+    private data class ScanMemo(
+        val signature: ViewportSignature,
+        val mode: NodeSearchMode,
+        val hint: NodeSearchHint?,
+        val templates: NodeTemplateSet,
+        val result: List<NodeClassification>,
+    )
+    private var scanMemo: ScanMemo? = null
+    private var scanMemoFrames = 0
     private var hintedTargetBlockId: Long? = null
     private var directedMissFrames: Int = 0
     private var typedMissFrames: Int = 0
+    private var fullMissFrames: Int = 0
     var lastSearchMode: String = "full"
         private set
     /** Candidate windows scored by [classifyNode] during the most recent [classifyMapNodes]. */
@@ -263,6 +280,7 @@ class LabyrinthNodeClassifier(
         hintedTargetBlockId = null
         directedMissFrames = 0
         typedMissFrames = 0
+        fullMissFrames = 0
         matcher.clearPreparedFrame()
         proposalMatcher.clearPreparedFrame()
         refinementMatcher.clearPreparedFrame()
@@ -563,7 +581,7 @@ class LabyrinthNodeClassifier(
         when (mode) {
             NodeSearchMode.DIRECTED -> directedMissFrames++
             NodeSearchMode.TYPED -> typedMissFrames++
-            NodeSearchMode.FULL -> Unit // Keep full search until a real target is recovered.
+            NodeSearchMode.FULL -> fullMissFrames++
         }
     }
 
@@ -581,12 +599,25 @@ class LabyrinthNodeClassifier(
             hintedTargetBlockId = searchHint?.targetBlockId
             directedMissFrames = 0
             typedMissFrames = 0
+            fullMissFrames = 0
         }
         val targetConfirmed = searchHint != null && searchHint.matchedTargetBlockId == searchHint.targetBlockId
         if (targetConfirmed) {
             directedMissFrames = 0
             typedMissFrames = 0
+            fullMissFrames = 0
         }
+        // The ladder climbs once. It used to reset back to directed after two full scans, which
+        // turned a target it could not acquire into an endless directed/typed/full cycle costing
+        // ~25 s a lap (2026-09-20 bundle 212345: one 普通战斗#10402 hop looped three times for
+        // 99.8 s, 39% of the whole run's node budget, and was finally acquired by an ordinary
+        // scan once the frame changed). Re-climbing buys nothing: the scan is a pure function of
+        // (frame, templates, hint), so a rung that missed on this frame will miss again on the
+        // next identical frame no matter how many times the ladder walks past it.
+        //
+        // The escape from a stuck full scan is therefore not a cheaper rung, it is not scanning
+        // at all — see the stable-frame memo below, which caps a stalled ladder at one real scan
+        // per MAX_SCAN_MEMO_FRAMES instead of one per frame.
         val searchMode = when {
             searchHint == null -> NodeSearchMode.FULL
             // No camera prediction yet (area entry, tracker not fitted): still restrict the
@@ -619,11 +650,35 @@ class LabyrinthNodeClassifier(
                 return refreshed
             }
         }
+        // Nothing about this scan depends on wall-clock time: same frame, same templates, same
+        // hint and same rung means the same detections. During a stall the map is static and the
+        // run pays for an identical answer every frame. Serve it from the last real scan instead,
+        // and let any real change in the viewport — including the activation glow's own pulse,
+        // which is what usually ends such a stall — invalidate it.
+        val memo = scanMemo
+        if (
+            memo != null &&
+            memo.mode == searchMode &&
+            memo.hint == searchHint &&
+            memo.templates === templates &&
+            scanMemoFrames < MAX_SCAN_MEMO_FRAMES &&
+            isStableViewport(memo.signature, frame)
+        ) {
+            scanMemoFrames++
+            lastSearchMode = searchMode.label
+            lastSearchWindowCount = 0
+            updateHintMissState(searchHint, searchMode)
+            return memo.result
+        }
+        scanMemoFrames = 0
         lastSearchMode = searchMode.label
         trackedFrames = 0
         var scoredWindows = 0
+        // Reuse the frame features the entry frame processor already prepared for this frame
+        // instead of paying for a second identical full-frame pass.
+        val borrowed = sharedFrameFeatures?.takeIf { it.hasPreparedFrame(frame) }
         try {
-            matcher.prepareFrame(frame)
+            if (borrowed != null) matcher.sharePreparedFrame(borrowed) else matcher.prepareFrame(frame)
             proposalMatcher.sharePreparedFrame(matcher)
             refinementMatcher.sharePreparedFrame(matcher)
             val expectedTypes = searchHint?.expectedTypes.orEmpty()
@@ -636,12 +691,14 @@ class LabyrinthNodeClassifier(
             // offset sweep, so a prediction that is off by a node width still reaches the target.
             // The saving comes from dropping the windows that land far from the prediction: the
             // remaining budget concentrates on the predicted column and its two neighbours.
-            val directedCenterX = searchHint?.expectedCenterX?.takeIf { searchMode == NodeSearchMode.DIRECTED }
-            val directedToleranceX = labyrinthReferenceColumnPitch(frame.height) * DIRECTED_CENTER_PITCH_TOLERANCE
+            // Only DIRECTED aims at the route prediction; every other mode scans the full width.
+            val restrictedCenterX = searchHint?.expectedCenterX
+                ?.takeIf { searchMode == NodeSearchMode.DIRECTED }
+            val restrictedToleranceX =
+                labyrinthReferenceColumnPitch(frame.height) * DIRECTED_CENTER_PITCH_TOLERANCE
             val offsets = NodeAnchorDefinitions.searchOffsets(
                 frameWidth = frame.width,
                 frameHeight = frame.height,
-                dense = directedCenterX == null,
             )
             // Anchors overlap by design: each one sweeps +/-320 reference pixels, which is more
             // than the distance to its neighbour, so the same rectangle is proposed from several
@@ -664,8 +721,8 @@ class LabyrinthNodeClassifier(
                         if (rect == null || !isInsideRegularNodeRecognitionRegion(rect, frame.width)) {
                             null
                         } else if (
-                            directedCenterX != null &&
-                            kotlin.math.abs(rect.left + rect.width / 2 - directedCenterX) > directedToleranceX
+                            restrictedCenterX != null &&
+                            kotlin.math.abs(rect.left + rect.width / 2 - restrictedCenterX) > restrictedToleranceX
                         ) {
                             null
                         } else {
@@ -680,19 +737,24 @@ class LabyrinthNodeClassifier(
                 // rectangle pool, dominate the window budget. A directed search has already
                 // concentrated the rectangles on the predicted column, so far fewer alternatives
                 // per template are needed to keep the target among the proposals.
-                val platformProposalsPerTemplate =
-                    if (directedCenterX != null) DIRECTED_PLATFORM_PROPOSALS_PER_TEMPLATE else 8
-                val silhouetteProposalsPerTemplate =
-                    if (directedCenterX != null) DIRECTED_SILHOUETTE_PROPOSALS_PER_TEMPLATE else 3
+                val platformProposalsPerTemplate = when (searchMode) {
+                    NodeSearchMode.DIRECTED -> DIRECTED_PLATFORM_PROPOSALS_PER_TEMPLATE
+                    else -> 8
+                }
+                val silhouetteProposalsPerTemplate = when (searchMode) {
+                    NodeSearchMode.DIRECTED -> DIRECTED_SILHOUETTE_PROPOSALS_PER_TEMPLATE
+                    else -> 3
+                }
                 val platformProposals = regularTemplates.platformTemplates.values
                     .flatMap { template ->
-                        rectangles.map { rect ->
-                            rect to proposalMatcher.score(frame, rect, template)
-                        }.sortedByDescending { it.second }.take(platformProposalsPerTemplate).map { it.first }
+                        rectangles.topRectsByScore(platformProposalsPerTemplate) { rect ->
+                            proposalMatcher.score(frame, rect, template)
+                        }
                     }.distinct()
                 val silhouetteProposals = regularTemplates.gradientTemplates.values.flatMap { template ->
-                    rectangles.map { rect -> rect to proposalMatcher.score(frame, rect, template) }
-                        .sortedByDescending { it.second }.take(silhouetteProposalsPerTemplate).map { it.first }
+                    rectangles.topRectsByScore(silhouetteProposalsPerTemplate) { rect ->
+                        proposalMatcher.score(frame, rect, template)
+                    }
                 }
                 val proposals = (platformProposals + silhouetteProposals).distinct()
                 val refined = proposals.flatMap { rect ->
@@ -703,7 +765,7 @@ class LabyrinthNodeClassifier(
                     // The colour-inferred alternative guards against a common silhouette winning
                     // the gradient vote. Directed search already restricts templates to the route
                     // neighbourhood, so the best variant alone is enough there.
-                    val colourAlternative = if (directedCenterX != null) {
+                    val colourAlternative = if (searchMode == NodeSearchMode.DIRECTED) {
                         emptyList()
                     } else {
                         variants.firstOrNull { blockTypeForTemplate(it.key) == possibleType }?.let(::listOf).orEmpty()
@@ -759,9 +821,11 @@ class LabyrinthNodeClassifier(
                 rejectWeakIsolatedFarLeftDetections(spatialDetections, frame.width),
             )
             updateHintMissState(searchHint, searchMode)
-            previousFrame = viewportSignature(frame)
+            val signature = viewportSignature(frame)
+            previousFrame = signature
             previousTemplates = templates
             previousNodes = result
+            scanMemo = ScanMemo(signature, searchMode, searchHint, templates, result)
             lastSearchWindowCount = scoredWindows
             return result
         } finally {
@@ -1023,16 +1087,53 @@ class LabyrinthNodeClassifier(
         // not stable across frames. Route/type/row matching, stable frames and page-transition
         // confirmation provide the action safety gates after this gradient-led detection.
         const val MIN_CONFIDENCE = 0.40
-        private const val DIRECTED_MISS_FRAMES_BEFORE_EXPAND = 2
+        /**
+         * Directed frames allowed before the ladder drops the horizontal restriction.
+         *
+         * Measured over two live runs, a directed scan acquired the route target on 1 of 53 and
+         * 1 of 50 frames — 2% in both — while typed acquired 40-79%. Per acquisition that is ~80 s
+         * of directed against ~12 s of typed. One cheap aimed frame is still worth trying when
+         * the camera fit is available; a second one just delays the rung that works.
+         */
+        private const val DIRECTED_MISS_FRAMES_BEFORE_EXPAND = 1
         private const val TYPED_MISS_FRAMES_BEFORE_FULL = 2
+        /**
+         * Full frames to spend before re-testing the camera-directed scan.
+         *
+         * Two full frames (~12 s) is long enough that a genuinely off-screen target has been
+         * looked for properly, and short enough that a stuck run re-tests the cheap path every
+         * few frames instead of never.
+         */
+        /**
+         * How many frames a stalled ladder may serve from the last real scan before re-scanning.
+         *
+         * The memo is exact while the viewport is unchanged, but [isStableViewport] samples the
+         * frame rather than comparing it whole, so a bounded re-scan keeps a change it sampled
+         * past from stalling the run forever. At roughly 1.3 frames per second this holds for
+         * about nine seconds.
+         */
+        private const val MAX_SCAN_MEMO_FRAMES = 12
         /**
          * Windows whose centre is farther than this many column pitches from the tracker
          * prediction are dropped. Half a pitch keeps the predicted column plus the inner edge of
          * each neighbour, which absorbs a prediction error of about one node width.
          */
         private const val DIRECTED_CENTER_PITCH_TOLERANCE = 0.55
-        private const val DIRECTED_PLATFORM_PROPOSALS_PER_TEMPLATE = 3
-        private const val DIRECTED_SILHOUETTE_PROPOSALS_PER_TEMPLATE = 1
+        /**
+         * Proposal budget for the aiming modes, measured on the two node fixtures.
+         *
+         * 3+1 was tuned against the coarse offset grid. On the gap-free grid it finds the nodes
+         * but localizes them badly: on node-target-missed the lower EVENT came back at y=612
+         * where every richer mode agrees on 650, and on node-link at (664,188) against (689,176).
+         * A crop offset by that much shifts the tap by the same amount, which is exactly the
+         * failure that cost bundle 163307 three rejected taps on 连结#20602.
+         *
+         * 4+2 reproduces the expensive modes' positions exactly on both fixtures (~225 ms vs
+         * ~180 ms). 6+2 and a colour alternative were also measured and changed neither the
+         * detections nor their positions, so the budget stops here.
+         */
+        private const val DIRECTED_PLATFORM_PROPOSALS_PER_TEMPLATE = 4
+        private const val DIRECTED_SILHOUETTE_PROPOSALS_PER_TEMPLATE = 2
         private const val MIN_CHANNEL_SCORE = 0.0
         private const val MAX_DETECTIONS_PER_SEARCH_ANCHOR = 3
         private const val COLOR_GATE_TOP_TEMPLATE_COUNT = 4
@@ -1220,6 +1321,43 @@ internal fun isRegularNodeTemplate(templateId: String): Boolean =
  */
 /** Lets the per-frame classification memo store a real null result instead of recomputing it. */
 private class Optional(val value: NodeClassification?)
+
+/**
+ * The [limit] highest-scoring rectangles, best first.
+ *
+ * Same result as `map { it to score(it) }.sortedByDescending { it.second }.take(limit).map { it.first }`,
+ * including the stable-sort tie rule that keeps the earlier rectangle. That expression ran once per
+ * template per search anchor over the whole rectangle pool, so it boxed a pair per rectangle and
+ * then fully sorted the pool to keep eight of it: about 170k pairs and 380 throwaway lists for a
+ * single 1080p frame with a typed hint (~5 MB), which is why the device logged roughly three
+ * garbage collections a second during node selection while the heap sat at 9% free. Selecting into
+ * a fixed buffer allocates nothing per rectangle and never sorts what it discards.
+ */
+internal inline fun List<EntryPixelRect>.topRectsByScore(
+    limit: Int,
+    score: (EntryPixelRect) -> Double,
+): List<EntryPixelRect> {
+    if (limit <= 0 || isEmpty()) return emptyList()
+    val bestRects = arrayOfNulls<EntryPixelRect>(limit)
+    val bestScores = DoubleArray(limit)
+    var filled = 0
+    for (rect in this) {
+        val value = score(rect)
+        // A score that cannot displace the current worst is discarded outright; on a tie the
+        // rectangle already held keeps the slot, which is what the stable sort did.
+        if (filled == limit && value <= bestScores[limit - 1]) continue
+        var slot = minOf(filled, limit - 1)
+        while (slot > 0 && bestScores[slot - 1] < value) {
+            bestScores[slot] = bestScores[slot - 1]
+            bestRects[slot] = bestRects[slot - 1]
+            slot--
+        }
+        bestScores[slot] = value
+        bestRects[slot] = rect
+        if (filled < limit) filled++
+    }
+    return List(filled) { bestRects[it]!! }
+}
 
 internal fun isInsideRegularNodeRecognitionRegion(rect: EntryPixelRect, frameWidth: Int): Boolean {
     if (frameWidth <= 0) return false
