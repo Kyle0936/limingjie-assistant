@@ -22,6 +22,34 @@ import org.junit.Test
 
 class LabyrinthEntryActionPlannerTest {
     @Test
+    fun `full screen unknown after the opening roster advances the character presentation`() {
+        val planner = LabyrinthEntryActionPlanner(
+            LabyrinthEntryActionPlannerConfig(stableFrames = 1, manualCharacterSelection = true),
+        )
+        // This arms only the narrowly proven source state; generic UNKNOWN pages stay blocked.
+        planner.decide(
+            state = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+            frameWidth = 1920,
+            frameHeight = 1080,
+            nowMillis = 0L,
+        )
+
+        val decision = planner.decide(
+            state = LabyrinthEntryPageState.UNKNOWN,
+            frameWidth = 1920,
+            frameHeight = 1080,
+            nowMillis = 700L,
+            anchorScores = LabyrinthAnchorScores(emptyMap()),
+        )
+
+        assertTrue(decision is LabyrinthEntryActionDecision.Execute)
+        assertEquals(
+            LabyrinthEntryActionKind.ADVANCE_CHARACTER_ACQUISITION,
+            (decision as LabyrinthEntryActionDecision.Execute).kind,
+        )
+    }
+
+    @Test
     fun `node map view is read only and never becomes node selection`() {
         val planner = LabyrinthEntryActionPlanner(
             LabyrinthEntryActionPlannerConfig(stableFrames = 1),

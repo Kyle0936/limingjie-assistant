@@ -68,9 +68,8 @@ import com.landosol.toolbox.ui.account.GeetestCaptchaDialog
 import kotlinx.coroutines.launch
 
 private enum class LabyrinthTab(val label: String) {
-    REROLL("刷开局"),
-    CURRENT("当前开局"),
     AUTOMATION("自动执行"),
+    TOOLS("更多工具"),
 }
 
 @Composable
@@ -110,7 +109,7 @@ fun LabyrinthScreen(
     onCancelCaptcha: () -> Unit,
     onOpenStrategies: () -> Unit = {},
 ) {
-    var selectedTabName by rememberSaveable { mutableStateOf(LabyrinthTab.REROLL.name) }
+    var selectedTabName by rememberSaveable { mutableStateOf(LabyrinthTab.AUTOMATION.name) }
     val selectedTab = LabyrinthTab.valueOf(selectedTabName)
     var confirmRetreat by remember(state.selectedAccount?.id) { mutableStateOf(false) }
     val requestStart: () -> Unit = { if (state.retireExisting) confirmRetreat = true else onStart() }
@@ -144,13 +143,6 @@ fun LabyrinthScreen(
                         onClick = { scope.launch { scrollState.animateScrollTo(0) } },
                     ) {
                         Text("回到顶部")
-                    }
-                }
-                if (selectedTab == LabyrinthTab.REROLL) {
-                    ExtendedFloatingActionButton(
-                        onClick = { if (state.isWorking) onStop() else if (state.settingsReady && state.captcha == null) requestStart() },
-                    ) {
-                        Text(if (state.isWorking) "停止刷取" else "开始刷开局")
                     }
                 }
             }
@@ -213,27 +205,15 @@ fun LabyrinthScreen(
             }
 
             when (selectedTab) {
-                LabyrinthTab.REROLL -> RerollContent(
-                    state = state,
-                    onGuildSelected = onGuildSelected,
-                    onSaveSettings = onSaveSettings,
-                    onDifficultySelected = onDifficultySelected,
-                    onPerfectStartChange = onPerfectStartChange,
-                    onThirdBlockChoiceSelected = onThirdBlockChoiceSelected,
-                    onArea3BossToggle = onArea3BossToggle,
-                    onArea5BossToggle = onArea5BossToggle,
-                    onMaxAttemptsChange = onMaxAttemptsChange,
-                    onRerollUntilFoundChange = onRerollUntilFoundChange,
-                    onRetireExistingChange = onRetireExistingChange,
-                )
-
-                LabyrinthTab.CURRENT -> CurrentRunContent(
-                    state = state,
-                    onCheckStatus = onCheckStatus,
-                    onStop = onStop,
-                )
-
                 LabyrinthTab.AUTOMATION -> {
+                    SelectionCard(
+                        title = "自动执行工作台",
+                        description = "先配置策略，再开始识别或执行。程序会保持游戏前台、识别页面并按已保存路线推进；遇到不确定页面会暂停动作。",
+                    ) {
+                        Text("推荐流程：执行入口流程 → 确认页面与队伍 → 启动批量自动执行", style = MaterialTheme.typography.bodyMedium)
+                        if (state.selectedAccount == null) Text("请先在账号库选择账号。", style = MaterialTheme.typography.bodySmall)
+                        if (!state.settingsReady) Text("刷开局设置尚未就绪；可在“更多工具”中补充。", style = MaterialTheme.typography.bodySmall)
+                    }
                     EntryRecognitionCard(
                         state = entryRecognitionState,
                         onStart = onStartEntryRecognition,
@@ -251,10 +231,41 @@ fun LabyrinthScreen(
                         onStop = onStopAutoRun,
                     )
                 }
+
+                LabyrinthTab.TOOLS -> {
+                    SelectionCard(
+                        title = "开局工具",
+                        description = "刷开局和读取当前开局是辅助能力。它们不会改变自动执行作为主流程的入口。",
+                    ) {
+                        Text("开始刷取前请核对账号、路线和“允许彻底撤退”选项。", style = MaterialTheme.typography.bodySmall)
+                        Button(
+                            onClick = { if (state.isWorking) onStop() else if (state.settingsReady && state.captcha == null) requestStart() },
+                            enabled = state.isWorking || (state.settingsReady && state.captcha == null),
+                        ) { Text(if (state.isWorking) "停止刷开局" else "开始刷开局") }
+                    }
+                    CurrentRunContent(
+                        state = state,
+                        onCheckStatus = onCheckStatus,
+                        onStop = onStop,
+                    )
+                    RerollContent(
+                        state = state,
+                        onGuildSelected = onGuildSelected,
+                        onSaveSettings = onSaveSettings,
+                        onDifficultySelected = onDifficultySelected,
+                        onPerfectStartChange = onPerfectStartChange,
+                        onThirdBlockChoiceSelected = onThirdBlockChoiceSelected,
+                        onArea3BossToggle = onArea3BossToggle,
+                        onArea5BossToggle = onArea5BossToggle,
+                        onMaxAttemptsChange = onMaxAttemptsChange,
+                        onRerollUntilFoundChange = onRerollUntilFoundChange,
+                        onRetireExistingChange = onRetireExistingChange,
+                    )
+                }
             }
 
-            if (selectedTab != LabyrinthTab.REROLL) state.progress?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
-            if (selectedTab != LabyrinthTab.REROLL) state.message?.let { message ->
+            if (selectedTab == LabyrinthTab.TOOLS) state.progress?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
+            if (selectedTab == LabyrinthTab.TOOLS) state.message?.let { message ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
