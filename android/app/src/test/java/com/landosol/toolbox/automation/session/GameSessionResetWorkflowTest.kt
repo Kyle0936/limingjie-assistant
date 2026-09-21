@@ -23,6 +23,7 @@ class GameSessionResetWorkflowTest {
         var relaunchCalls = 0
         var terminateResult = ClientTerminationResult.TERMINATED
         var relaunchResult = GameClientRelaunchResult.LAUNCH_REQUESTED
+        var onRelaunch: suspend () -> Unit = {}
 
         override suspend fun terminateClient(): ClientTerminationResult {
             terminateCalls++
@@ -31,6 +32,7 @@ class GameSessionResetWorkflowTest {
 
         override suspend fun relaunchClient(): GameClientRelaunchResult {
             relaunchCalls++
+            onRelaunch()
             return relaunchResult
         }
 
@@ -42,6 +44,7 @@ class GameSessionResetWorkflowTest {
         backend: FakeBackend = FakeBackend(),
         captureActive: () -> Boolean = { true },
         onNextRoundReady: suspend (AutomationSessionId) -> Unit = {},
+        presence: GameClientPresenceObserver = FixedGameClientPresenceObserver(foreground = true),
     ) = GameSessionResetWorkflow(
         sessionManager = manager,
         backend = backend,
@@ -49,8 +52,14 @@ class GameSessionResetWorkflowTest {
         processorFactory = { { error("test does not dispatch frames") } },
         blockClassifier = { _: LabyrinthEntryFrameResult -> SessionBlockKind.NONE },
         onNextRoundReady = onNextRoundReady,
-        presence = FixedGameClientPresenceObserver(foreground = true),
+        presence = presence,
     )
+
+    private class MutablePresence(
+        @Volatile var foreground: Boolean,
+    ) : GameClientPresenceObserver {
+        override suspend fun isGameForeground(): Boolean = foreground
+    }
 
     @Test
     fun `start owns session mode session-reset and stop releases everything`() = runTest {
@@ -124,6 +133,25 @@ class GameSessionResetWorkflowTest {
             delay(50L)
             assertEquals("保存回调不能重复执行", 1, saves.get())
             assertTrue(session.state.value.running)
+        } finally {
+            session.stop()
+        }
+    }
+
+    @Test
+    fun `batch launch brings game to foreground before it inspects pages`() = runTest {
+        val presence = MutablePresence(foreground = false)
+        val backend = FakeBackend().apply {
+            onRelaunch = { presence.foreground = true }
+        }
+        val session = workflow(backend = backend, presence = presence)
+
+        try {
+            assertTrue(session.start() is GameSessionResetStartResult.Started)
+            withTimeout(2_000L) {
+                while (backend.relaunchCalls == 0) delay(10L)
+            }
+            assertEquals(1, backend.relaunchCalls)
         } finally {
             session.stop()
         }
