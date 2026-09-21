@@ -14,6 +14,8 @@ internal enum class LabyrinthPostEntryActionKind {
 
     // Role reward
     SELECT_ROLE_REWARD,
+    /** One safe dismissal of the full-screen presentation immediately after a role choice. */
+    SKIP_ROLE_REWARD_PRESENTATION,
     CLOSE_CHARACTER_JOINED,
     ADVANCE_CHARACTER_ACQUISITION,
     COLLAPSE_PORTRAIT,

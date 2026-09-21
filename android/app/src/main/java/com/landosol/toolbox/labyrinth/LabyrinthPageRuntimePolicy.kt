@@ -383,6 +383,28 @@ internal fun labyrinthKeepsRoleRewardBatchOnPage(
 }
 
 /**
+ * A role choice can briefly switch to a full-screen character presentation. That page has no
+ * Dawn Realm chrome, so the visual classifier correctly reports UNKNOWN even though the route is
+ * still in a known reward flow. It is safe to dismiss only after a choice has handed off to that
+ * presentation, and only once: UNKNOWN alone must never become a general-purpose tap trigger.
+ */
+internal fun labyrinthShouldSkipRoleRewardPresentationOnce(
+    roleRewardBatchActive: Boolean,
+    roleRewardJoinedSequenceStarted: Boolean,
+    presentationSkipArmed: Boolean,
+    presentationSkipAlreadyTapped: Boolean,
+    pageState: LabyrinthEntryPageState,
+    stableFrames: Int,
+    minimumStableFrames: Int,
+): Boolean =
+    roleRewardBatchActive &&
+        !roleRewardJoinedSequenceStarted &&
+        presentationSkipArmed &&
+        !presentationSkipAlreadyTapped &&
+        pageState == LabyrinthEntryPageState.UNKNOWN &&
+        stableFrames >= minimumStableFrames
+
+/**
  * After resuming an already-active Dawn Realm run, the game may reopen directly on a pending
  * role-reward page instead of the node map. Those pages belong to route execution rather than
  * the opening invitation flow. Keep this deliberately narrow so a fresh run still retains the

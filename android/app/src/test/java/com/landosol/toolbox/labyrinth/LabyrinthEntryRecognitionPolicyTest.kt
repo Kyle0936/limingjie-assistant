@@ -16,6 +16,7 @@ import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageObservation
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageState
 import com.landosol.toolbox.labyrinth.vision.LabyrinthNodeMoveConfirmationObservation
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -123,6 +124,54 @@ class LabyrinthEntryRecognitionPolicyTest {
             !shouldArmCharacterAcquisitionFallback(
                 previousPage = LabyrinthEntryPageState.EVENT_ANIMATION,
                 currentPage = LabyrinthEntryPageState.EVENT_ANIMATION,
+            ),
+        )
+    }
+
+    @Test
+    fun `role presentation skip is one contextual tap after a role choice`() {
+        assertTrue(
+            labyrinthShouldSkipRoleRewardPresentationOnce(
+                roleRewardBatchActive = true,
+                roleRewardJoinedSequenceStarted = false,
+                presentationSkipArmed = true,
+                presentationSkipAlreadyTapped = false,
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                stableFrames = 2,
+                minimumStableFrames = 2,
+            ),
+        )
+        assertFalse(
+            labyrinthShouldSkipRoleRewardPresentationOnce(
+                roleRewardBatchActive = true,
+                roleRewardJoinedSequenceStarted = false,
+                presentationSkipArmed = true,
+                presentationSkipAlreadyTapped = true,
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                stableFrames = 3,
+                minimumStableFrames = 2,
+            ),
+        )
+        assertFalse(
+            labyrinthShouldSkipRoleRewardPresentationOnce(
+                roleRewardBatchActive = true,
+                roleRewardJoinedSequenceStarted = true,
+                presentationSkipArmed = true,
+                presentationSkipAlreadyTapped = false,
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                stableFrames = 3,
+                minimumStableFrames = 2,
+            ),
+        )
+        assertFalse(
+            labyrinthShouldSkipRoleRewardPresentationOnce(
+                roleRewardBatchActive = true,
+                roleRewardJoinedSequenceStarted = false,
+                presentationSkipArmed = false,
+                presentationSkipAlreadyTapped = false,
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                stableFrames = 3,
+                minimumStableFrames = 2,
             ),
         )
     }
