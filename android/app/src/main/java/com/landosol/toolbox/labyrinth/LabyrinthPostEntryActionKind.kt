@@ -17,6 +17,8 @@ internal enum class LabyrinthPostEntryActionKind {
     CLOSE_CHARACTER_JOINED,
     ADVANCE_CHARACTER_ACQUISITION,
     COLLAPSE_PORTRAIT,
+    /** Bounded bottom-right probe after a persistently unrecognised full-screen interstitial. */
+    RECOVER_PERSISTENT_UNKNOWN,
 
     // Events
     SELECT_EVENT,

@@ -24,6 +24,42 @@ import org.junit.Test
 class LabyrinthEntryRecognitionPolicyTest {
 
     @Test
+    fun `persistent unknown recovery waits then uses a bounded safe probe`() {
+        assertFalse(
+            labyrinthPersistentUnknownRecoveryMayTap(
+                unknownSinceMillis = 10_000L,
+                nowMillis = 11_999L,
+                stableFrames = 8,
+                attempts = 0,
+            ),
+        )
+        assertFalse(
+            labyrinthPersistentUnknownRecoveryMayTap(
+                unknownSinceMillis = 10_000L,
+                nowMillis = 12_000L,
+                stableFrames = 1,
+                attempts = 0,
+            ),
+        )
+        assertTrue(
+            labyrinthPersistentUnknownRecoveryMayTap(
+                unknownSinceMillis = 10_000L,
+                nowMillis = 12_000L,
+                stableFrames = 2,
+                attempts = 0,
+            ),
+        )
+        assertFalse(
+            labyrinthPersistentUnknownRecoveryMayTap(
+                unknownSinceMillis = 10_000L,
+                nowMillis = 12_000L,
+                stableFrames = 2,
+                attempts = MAX_UNKNOWN_RECOVERY_TAPS,
+            ),
+        )
+    }
+
+    @Test
     fun `role reward presentation skip starts only after the choice is submitted`() {
         // An unresolved choice may briefly disappear before another choice round. It remains a
         // no-click state, whereas an accepted automatic pick or a manual page departure proves

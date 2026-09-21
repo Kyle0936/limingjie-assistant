@@ -312,6 +312,30 @@ internal fun roleRewardPresentationSkipIsArmed(
     (roleRewardChoiceCommitted || waitingForManualRoleSelection)
 
 /**
+ * Last-resort recovery for full-screen game interstitials that deliberately have no Dawn Realm
+ * UI anchors (for example, the character presentation after a reward choice).  It is deliberately
+ * slower and more bounded than a normal planned action: the same unresolved frame must persist
+ * for [UNKNOWN_RECOVERY_HOLD_MILLIS], normal recognition must already have had its stable-frame
+ * window, and a run receives only [MAX_UNKNOWN_RECOVERY_TAPS] probes before the existing timeout
+ * keeps the diagnostic screen visible.  This prevents a one-frame recognition miss from becoming
+ * an accidental choice tap while still letting a tappable presentation get out of the way.
+ */
+internal fun labyrinthPersistentUnknownRecoveryMayTap(
+    unknownSinceMillis: Long,
+    nowMillis: Long,
+    stableFrames: Int,
+    attempts: Int,
+): Boolean =
+    unknownSinceMillis != Long.MIN_VALUE &&
+        nowMillis - unknownSinceMillis >= UNKNOWN_RECOVERY_HOLD_MILLIS &&
+        stableFrames >= UNKNOWN_RECOVERY_REQUIRED_STABLE_FRAMES &&
+        attempts < MAX_UNKNOWN_RECOVERY_TAPS
+
+internal const val UNKNOWN_RECOVERY_HOLD_MILLIS = 2_000L
+internal const val UNKNOWN_RECOVERY_REQUIRED_STABLE_FRAMES = 2
+internal const val MAX_UNKNOWN_RECOVERY_TAPS = 3
+
+/**
  * UNKNOWN frames reached from an event must never tap the center-lower choice-button band.
  * Keep the bounded fallback, but alternate between two edge-safe points so a transient event
  * misclassification can advance generic animation/portrait frames without silently selecting
@@ -1088,6 +1112,8 @@ class LabyrinthEntryRecognitionSession(
     private var lastPostEntryActionAt = Long.MIN_VALUE
     @Volatile
     private var postEntryUnknownSince = Long.MIN_VALUE
+    @Volatile
+    private var unknownRecoveryAttempts = 0
     private val portraitRecovery = LabyrinthPortraitRecovery()
     private val battleWait = LabyrinthBattleWaitPolicy()
     @Volatile
@@ -2110,6 +2136,7 @@ class LabyrinthEntryRecognitionSession(
         postEntryAttempts = 0
         lastPostEntryActionAt = Long.MIN_VALUE
         postEntryUnknownSince = Long.MIN_VALUE
+        unknownRecoveryAttempts = 0
         clearCharacterAcquisitionContext()
         clearRoleRewardBatchTracking()
         existingRunResumeHandoffArmed = false
@@ -4018,6 +4045,7 @@ class LabyrinthEntryRecognitionSession(
             }
         } else {
             postEntryUnknownSince = Long.MIN_VALUE
+            unknownRecoveryAttempts = 0
         }
         if (pageState == LabyrinthEntryPageState.RUN_CLEAR_RESULT) {
             val next = labyrinthPostBossStageOnFinalResult(postBossStage)
@@ -4653,6 +4681,31 @@ class LabyrinthEntryRecognitionSession(
             else -> null
         }
         if (plan == null) {
+            // A character presentation has no reliably matchable Dawn Realm UI. If all normal
+            // planners declined an UNKNOWN frame for a short, stable period, probe the existing
+            // bottom-right animation/next-button safe point. This is intentionally here (after
+            // every semantic plan) so it can never replace an identified reward, battle or event
+            // action. The bounded counter leaves the old diagnostic timeout as the final guard.
+            if (
+                pageState == LabyrinthEntryPageState.UNKNOWN &&
+                !_state.value.dryRun &&
+                labyrinthPersistentUnknownRecoveryMayTap(
+                    unknownSinceMillis = postEntryUnknownSince,
+                    nowMillis = timestampMillis,
+                    stableFrames = postEntryStableFrames,
+                    attempts = unknownRecoveryAttempts,
+                )
+            ) {
+                unknownRecoveryAttempts++
+                dispatchPostEntryTap(
+                    sessionId = sessionId,
+                    kind = LabyrinthPostEntryActionKind.RECOVER_PERSISTENT_UNKNOWN,
+                    label = "未知全屏画面恢复：轻触安全区域（第${unknownRecoveryAttempts}次）",
+                    rect = LabyrinthFallbackTap.BOTTOM_RIGHT.rect(frameWidth, frameHeight),
+                    timestampMillis = timestampMillis,
+                )
+                return
+            }
             traceReject("no-plan:${pageState.name}")
             if (activeSessionId == sessionId && postEntryStableFrames >= POST_ENTRY_STABLE_FRAMES) {
                 val message = when (pageState) {
@@ -5378,6 +5431,9 @@ class LabyrinthEntryRecognitionSession(
                         if (kind == LabyrinthPostEntryActionKind.ADVANCE_FINAL_SETTLEMENT) {
                             postBossUnknownAttempts = (postBossUnknownAttempts - 1).coerceAtLeast(0)
                         }
+                        if (kind == LabyrinthPostEntryActionKind.RECOVER_PERSISTENT_UNKNOWN) {
+                            unknownRecoveryAttempts = (unknownRecoveryAttempts - 1).coerceAtLeast(0)
+                        }
                         publishWaitingForGameForeground(sessionId)
                     } else {
                         stopFromRunLogic("点击被拒绝：${actionResult.reason}")
@@ -5440,6 +5496,7 @@ class LabyrinthEntryRecognitionSession(
         postEntryAttempts = 0
         lastPostEntryActionAt = Long.MIN_VALUE
         postEntryUnknownSince = Long.MIN_VALUE
+        unknownRecoveryAttempts = 0
         pendingRelicSelection = null
         relicChoiceCommitted = false
         relicFocusMark = null
