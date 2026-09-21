@@ -179,6 +179,7 @@ class LabyrinthEntryActionPlanner(
         openingCharacterSelection: LabyrinthBattleTeamObservation? = null,
     ): LabyrinthEntryActionDecision {
         if (startedAt == Long.MIN_VALUE) start(nowMillis)
+        val previousState = lastState
         // 人工选人不应消耗入口总超时；选满后由程序确认邀请并继续角色获得流程。
         if (config.manualCharacterSelection && state == LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION) {
             startedAt = nowMillis
@@ -206,6 +207,23 @@ class LabyrinthEntryActionPlanner(
             resumedExistingRun = true
         }
         if (characterAcquisitionActive) {
+            return planCharacterAcquisition(state, nowMillis, frameWidth, frameHeight)
+        }
+        // A character showcase replaces the roster immediately after the user confirms a
+        // selection.  It deliberately has no Dawn Realm chrome, so the normal classifier quite
+        // correctly reports UNKNOWN.  That transition is the narrow safety proof needed to
+        // advance the skippable presentation without turning arbitrary UNKNOWN pages into taps.
+        if (
+            state == LabyrinthEntryPageState.UNKNOWN &&
+            previousState == LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION &&
+            openingRosterStarted &&
+            noDawnRealmUi(anchorScores)
+        ) {
+            characterAcquisitionStartedAt = nowMillis
+            characterAcquisitionClicks = 0
+            characterAcquisitionActive = true
+            joinedPageDetected = false
+            joinedCloseRequested = false
             return planCharacterAcquisition(state, nowMillis, frameWidth, frameHeight)
         }
         return when (state) {
@@ -803,6 +821,13 @@ class LabyrinthEntryActionPlanner(
     private fun intervalElapsed(nowMillis: Long, intervalMillis: Long): Boolean =
         lastActionAt == Long.MIN_VALUE || nowMillis - lastActionAt >= intervalMillis
 
+    /**
+     * Presentation frames contain neither a stable maze control nor a recognizable page anchor.
+     * Keep this deliberately strict: a weak page match remains protected by UNKNOWN handling.
+     */
+    private fun noDawnRealmUi(anchorScores: LabyrinthAnchorScores): Boolean =
+        anchorScores.values.values.maxOrNull()?.let { it < PRESENTATION_ANCHOR_MAX_SCORE } ?: true
+
     private fun mapTap(referencePoint: ScreenPoint, frameWidth: Int, frameHeight: Int): AutomationAction.Tap? {
         if (frameWidth <= 0 || frameHeight <= 0) return null
         val mapping = coordinateMapper.createMapping(
@@ -839,6 +864,7 @@ class LabyrinthEntryActionPlanner(
         val CHARACTER_JOINED_CLOSE = ScreenPoint(960f, 870f)
         val ITEM_REWARD_CLOSE = ScreenPoint(960f, 965f)
         const val ACTION_ANCHOR_MIN_SCORE = 0.45
+        const val PRESENTATION_ANCHOR_MAX_SCORE = 0.25
         const val REQUIRED_INITIAL_CHARACTERS = 3
         const val OPENING_SCROLL_DURATION_MILLIS = 360L
         const val OPENING_SCROLL_BOTTOM_POSITION = 0.95

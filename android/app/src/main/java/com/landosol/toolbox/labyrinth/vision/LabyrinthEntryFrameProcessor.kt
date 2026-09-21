@@ -409,7 +409,12 @@ class LabyrinthEntryFrameProcessor(
         var nodeViewportSignature = ""
         var nodeViewportPixels: com.landosol.toolbox.labyrinth.node.NodeViewportPixels? = null
         val elapsedNanos = measureNanoTime {
-            val measurements = DEFINITIONS_BY_ID.mapValues { (id, definitions) ->
+            // The entry classifier scores many independent fixed ROIs in one frame.  Prepare
+            // luminance and gradients once so every anchor reads the same compact cache instead
+            // of recalculating neighbouring pixels for every sampled template point.
+            matcher.prepareFrame(frame)
+            try {
+                val measurements = DEFINITIONS_BY_ID.mapValues { (id, definitions) ->
                 val template = templates.values[id]
                     ?: return@mapValues null
                 definitions.mapNotNull { definition ->
@@ -557,6 +562,10 @@ class LabyrinthEntryFrameProcessor(
                 .let { features ->
                     if (battleFailure != null) listOf("battle.failure.visual") + features else features
                 }
+            } finally {
+                // Do not retain a full frame when a recognizer aborts midway through a pass.
+                matcher.clearPreparedFrame()
+            }
         }
         return LabyrinthEntryFrameResult(
             observation = observation,
