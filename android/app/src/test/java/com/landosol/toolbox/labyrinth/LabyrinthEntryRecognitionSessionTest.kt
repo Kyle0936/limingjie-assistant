@@ -215,7 +215,7 @@ class LabyrinthEntryRecognitionSessionTest {
     }
 
     @Test
-    fun `live mode owns a non dry run session and launches the game`() = runTest {
+    fun `live mode owns a non dry run session without launching the game`() = runTest {
         var launchCalls = 0
         val manager = AutomationSessionManager()
         val session = LabyrinthEntryRecognitionSession(
@@ -232,12 +232,12 @@ class LabyrinthEntryRecognitionSessionTest {
         assertTrue(result is LabyrinthEntryRecognitionStartResult.Started)
         assertFalse(session.state.value.dryRun)
         assertFalse(manager.current()!!.dryRun)
-        assertTrue(launchCalls == 1)
+        assertTrue(launchCalls == 0)
         assertTrue(session.stop())
     }
 
     @Test
-    fun `failed game launch releases capture and shared session`() = runTest {
+    fun `manual-start mode does not depend on game launch success`() = runTest {
         val manager = AutomationSessionManager()
         var captureStopCalls = 0
         val session = LabyrinthEntryRecognitionSession(
@@ -252,9 +252,11 @@ class LabyrinthEntryRecognitionSessionTest {
 
         val result = session.startAutomation()
 
-        assertTrue(result is LabyrinthEntryRecognitionStartResult.Blocked)
-        assertTrue(manager.current() == null)
-        assertTrue(CaptureFrameBus.currentOwner() == null)
+        assertTrue(result is LabyrinthEntryRecognitionStartResult.Started)
+        assertTrue(manager.current() != null)
+        assertTrue(CaptureFrameBus.currentOwner() != null)
+        assertTrue(captureStopCalls == 0)
+        assertTrue(session.stop())
         assertTrue(captureStopCalls == 1)
     }
 

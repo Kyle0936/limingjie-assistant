@@ -1046,6 +1046,9 @@ class LabyrinthEntryRecognitionSession(
     private var finalBossLocalizationStartedAt = Long.MIN_VALUE
     @Volatile
     private var entryPhaseComplete = false
+    /** Live automation is armed only after the operator has opened 黎明界迷宫主页 manually. */
+    @Volatile
+    private var awaitingManualDawnRealmHome = false
     @Volatile
     private var pendingNodeClickBlockId: Long = Long.MIN_VALUE
     @Volatile
@@ -1345,6 +1348,7 @@ class LabyrinthEntryRecognitionSession(
         resetExEncounterTracking()
         resetExEncounterTracking()
         actionPlanner = if (dryRun) null else createActionPlanner()
+        awaitingManualDawnRealmHome = !dryRun
         relicStackLedger.seedAcquisitions(relicChoicePolicy.markStacks(initialRunSnapshot?.observedRelics.orEmpty()))
         _state.value = LabyrinthEntryRecognitionSessionState(
             status = LabyrinthEntryRecognitionStatus.RUNNING,
@@ -1357,7 +1361,7 @@ class LabyrinthEntryRecognitionSession(
             } else {
                 listOfNotNull(
                     executionGateMessage,
-                    "半自动流程已启动，等待游戏切到前台",
+                    "请先手动打开公主连结的“黎明界迷宫”主页；确认该页面后才会开始自动执行",
                 ).joinToString("；")
             },
         )
@@ -1387,25 +1391,6 @@ class LabyrinthEntryRecognitionSession(
             return LabyrinthEntryRecognitionStartResult.Blocked(reason)
         }
         armFirstFrameWatchdog(session.id)
-        if (!dryRun && !gameLauncher()) {
-            firstFrameWatchdog?.cancel()
-            firstFrameWatchdog = null
-            lease?.let(CaptureFrameBus::unregister)
-            lease = null
-            activeSessionId = null
-            validatedRoute = null
-            actionPlanner = null
-            sessionManager.stop(session.id)
-            overlayCoordinator.detach(session.id)
-            requestCaptureStop()
-            val reason = "无法启动公主连结"
-            _state.value = _state.value.copy(
-                status = LabyrinthEntryRecognitionStatus.ERROR,
-                sessionId = null,
-                message = reason,
-            )
-            return LabyrinthEntryRecognitionStartResult.Blocked(reason)
-        }
         LabyrinthEntryRecognitionStartResult.Started(session.id)
     }
 
@@ -1680,6 +1665,24 @@ class LabyrinthEntryRecognitionSession(
             return
         }
         val pageState = result.observation.state
+        if (!current.dryRun && awaitingManualDawnRealmHome) {
+            if (pageState in setOf(
+                    LabyrinthEntryPageState.DAWN_REALM_HOME_IDLE,
+                    LabyrinthEntryPageState.DAWN_REALM_HOME_ACTIVE,
+                )
+            ) {
+                awaitingManualDawnRealmHome = false
+                _state.value = _state.value.copy(message = "已确认黎明界迷宫主页，开始执行已保存路线")
+            } else {
+                // This guard intentionally runs before every planner/route branch. It makes the
+                // start-page requirement enforceable: title/login/home screens are observed for
+                // diagnostics only and can never be clicked by this automation session.
+                _state.value = _state.value.copy(
+                    message = "等待手动打开“黎明界迷宫”主页（当前：${pageState.name}）；未执行任何点击",
+                )
+                return
+            }
+        }
         if (skipRoleRewardJoinedRecognition &&
             !labyrinthKeepsRoleRewardBatchOnPage(pageState, labyrinthIsRoleRewardPage(result))
         ) skipRoleRewardJoinedRecognition = false
@@ -2116,6 +2119,9 @@ class LabyrinthEntryRecognitionSession(
     private fun restartEntryNavigationAfterSessionError() {
         battleWait.reset()
         entryPhaseComplete = false
+        // A returned-title/login error may only be recovered manually. Do not let an already
+        // running session turn that recovery into title-page automation.
+        awaitingManualDawnRealmHome = true
         resetPendingNodeClickStability()
         resetStrongRouteTargetBinding()
         pendingNodeTransition = null
@@ -5477,6 +5483,7 @@ class LabyrinthEntryRecognitionSession(
         nodeInitFailedReason = null
         finalBossLocalizationStartedAt = Long.MIN_VALUE
         entryPhaseComplete = false
+        awaitingManualDawnRealmHome = false
         resetPendingNodeClickStability()
         resetStrongRouteTargetBinding()
         pendingNodeTransition = null

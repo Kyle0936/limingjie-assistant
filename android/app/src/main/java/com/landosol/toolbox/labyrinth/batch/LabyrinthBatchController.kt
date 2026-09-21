@@ -193,7 +193,7 @@ class LabyrinthBatchController(
     // ---------------------------------------------------------------------------------------------
 
     /**
-     * One cycle: reroll → invalidate stale client → start run. Ends in RUNNING_LABYRINTH and then
+     * One cycle: reroll → use the manually opened Dawn Realm home → start run. Ends in RUNNING_LABYRINTH and then
      * waits for [onRunTerminal]; or in PAUSED/FAILED with a halt reason.
      */
     private suspend fun runCycle(start: LabyrinthBatchCheckpoint) {
@@ -222,33 +222,19 @@ class LabyrinthBatchController(
             is LabyrinthBatchRerollResult.Success -> checkpoint.copy(
                 currentEnterId = reroll.enterId,
                 rerollCompletedForNextRun = true,
-                clientSessionNeedsInvalidation = true,
+                clientSessionNeedsInvalidation = false,
                 updatedAt = clock(),
             )
         }
         persist(checkpoint)
 
-        // 2. The client still holds the previous run's local state; force it to reload.
-        checkpoint = checkpoint.copy(
-            stage = LabyrinthBatchStage.INVALIDATING_OLD_CLIENT_SESSION,
-            message = "刷取成功，正在使旧客户端会话失效",
-            updatedAt = clock(),
-        )
-        persist(checkpoint)
-        val invalidationAction = when (val invalidation = ports.invalidateClientSessionAndReturn()) {
-            is LabyrinthBatchInvalidationResult.Failure -> {
-                halt(
-                    checkpoint,
-                    LabyrinthBatchHaltReason.CLIENT_INVALIDATION_FAILED,
-                    "旧客户端会话未能失效并返回：${invalidation.message}",
-                )
-                return
-            }
-            is LabyrinthBatchInvalidationResult.Success -> invalidation.action
-        }
+        // 2. The operator starts from 黎明界迷宫. Do not drive session expiry, title or login:
+        // those flows differ by client build and previously stranded batches on the title page.
+        // The entry session verifies the Dawn Realm home before it can emit any game action.
         checkpoint = checkpoint.copy(
             clientSessionNeedsInvalidation = false,
-            lastSessionInvalidationAction = invalidationAction,
+            lastSessionInvalidationAction = "manual-dawn-home",
+            message = "刷取成功，等待已打开的黎明界迷宫主页开始本局",
             updatedAt = clock(),
         )
         persist(checkpoint)

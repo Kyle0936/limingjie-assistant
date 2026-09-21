@@ -62,9 +62,9 @@ class LabyrinthBatchControllerTest {
     private fun currentRunId(controller: LabyrinthBatchController): String =
         requireNotNull(controller.state.value?.currentRunId)
 
-    // 1. Cleared -> reroll -> invalidate -> title -> next run
+    // 1. Cleared -> reroll -> manually-opened Dawn Realm home -> next run
     @Test
-    fun `cleared run rerolls invalidates and starts the next run`() = runTest {
+    fun `cleared run rerolls and starts the next run without title reset`() = runTest {
         val ports = FakePorts()
         val batch = controller(ports)
         assertTrue(batch.start("b1", 7L, listOf(goal(guild = 1, count = 2)), difficulty = 1))
@@ -74,17 +74,17 @@ class LabyrinthBatchControllerTest {
         batch.onRunTerminal(LabyrinthRunTerminalEvent.Cleared(firstRun))
 
         assertEquals(
-            listOf("reroll:1", "invalidate", "start:$firstRun", "reroll:1", "invalidate", "start:b1-run002"),
+            listOf("reroll:1", "start:$firstRun", "reroll:1", "start:b1-run002"),
             ports.log,
         )
         assertEquals(LabyrinthBatchStage.RUNNING_LABYRINTH, batch.state.value?.stage)
         assertEquals(1, batch.state.value?.activeGoal?.completedCount)
-        assertEquals("tap-home-tab", batch.state.value?.lastSessionInvalidationAction)
+        assertEquals("manual-dawn-home", batch.state.value?.lastSessionInvalidationAction)
     }
 
-    // 2. FailedMaxRetry -> reroll -> invalidate -> title -> next run
+    // 2. FailedMaxRetry -> reroll -> next run, without title/login navigation
     @Test
-    fun `failed max retry also rerolls invalidates and starts the next run`() = runTest {
+    fun `failed max retry rerolls and starts the next run without title reset`() = runTest {
         val ports = FakePorts()
         val batch = controller(ports)
         batch.start("b1", 7L, listOf(goal(guild = 1, count = 2)), difficulty = 1)
@@ -92,7 +92,7 @@ class LabyrinthBatchControllerTest {
 
         batch.onRunTerminal(LabyrinthRunTerminalEvent.FailedMaxRetry(firstRun))
 
-        assertEquals(6, ports.log.size)
+        assertEquals(4, ports.log.size)
         assertEquals("start:b1-run002", ports.log.last())
         assertEquals(1, batch.state.value?.activeGoal?.failedCount)
         assertEquals(0, batch.state.value?.activeGoal?.completedCount)
@@ -111,31 +111,30 @@ class LabyrinthBatchControllerTest {
         assertTrue(ports.startedRuns.isEmpty())
     }
 
-    // 4. reroll success but invalidation unconfirmed must not start a run
+    // 4. The legacy invalidation port is intentionally not called.
     @Test
-    fun `unconfirmed client invalidation never starts a run`() = runTest {
+    fun `batch starts from manual dawn home without client invalidation`() = runTest {
         val ports = FakePorts().apply { invalidationFails = true }
         val batch = controller(ports)
         batch.start("b1", 7L, listOf(goal(guild = 1, count = 1)), difficulty = 1)
 
-        assertEquals(listOf("reroll:1", "invalidate"), ports.log)
-        assertEquals(LabyrinthBatchStage.FAILED, batch.state.value?.stage)
-        assertEquals(LabyrinthBatchHaltReason.CLIENT_INVALIDATION_FAILED, batch.haltReason.value)
-        assertTrue(batch.state.value?.message?.contains("capture stopped") == true)
-        assertTrue(batch.state.value?.clientSessionNeedsInvalidation == true)
-        assertTrue(ports.startedRuns.isEmpty())
+        assertEquals(listOf("reroll:1", "start:b1-run001"), ports.log)
+        assertEquals(LabyrinthBatchStage.RUNNING_LABYRINTH, batch.state.value?.stage)
+        assertNull(batch.haltReason.value)
+        assertFalse(batch.state.value?.clientSessionNeedsInvalidation == true)
+        assertEquals(1, ports.startedRuns.size)
     }
 
-    // 5. the stale labyrinth home must be handled by the invalidation port, not by an entry tap
+    // 5. no client reset step may be inserted between reroll and run start
     @Test
-    fun `invalidation is the only client step between reroll and run start`() = runTest {
+    fun `manual dawn home has no client reset between reroll and run start`() = runTest {
         val ports = FakePorts()
         val batch = controller(ports)
         batch.start("b1", 7L, listOf(goal(guild = 1, count = 1)), difficulty = 1)
 
         val rerollIndex = ports.log.indexOf("reroll:1")
         val startIndex = ports.log.indexOfFirst { it.startsWith("start:") }
-        assertEquals(listOf("invalidate"), ports.log.subList(rerollIndex + 1, startIndex))
+        assertTrue(ports.log.subList(rerollIndex + 1, startIndex).isEmpty())
     }
 
     // 6. switching from guild A to guild B changes the guild handed to startRun
@@ -209,7 +208,7 @@ class LabyrinthBatchControllerTest {
         assertTrue(resumed.resume(recorded))
         assertEquals(1, resumed.state.value?.activeGoal?.completedCount)
         assertEquals(LabyrinthBatchStage.RUNNING_LABYRINTH, resumed.state.value?.stage)
-        assertEquals(listOf("reroll:1", "invalidate", "start:b1-run002"), resumePorts.log)
+        assertEquals(listOf("reroll:1", "start:b1-run002"), resumePorts.log)
     }
 
     // 10. duplicate terminal events are idempotent

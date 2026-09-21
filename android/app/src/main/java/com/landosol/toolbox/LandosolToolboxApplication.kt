@@ -348,10 +348,7 @@ class LandosolToolboxApplication : Application() {
         com.landosol.toolbox.labyrinth.batch.AndroidLabyrinthBatchCheckpointStore(this)
     }
 
-    /**
-     * Unattended multi-run orchestration (labyrinth-full-automation.md §4). Sequences reroll →
-     * client invalidation → run over the existing components; never touches capture itself.
-     */
+    /** Batch execution requires the operator to open 黎明界迷宫 before starting. */
     val labyrinthBatchController by lazy {
         com.landosol.toolbox.labyrinth.batch.LabyrinthBatchController(
             ports = object : com.landosol.toolbox.labyrinth.batch.LabyrinthBatchPorts {
@@ -468,15 +465,8 @@ class LandosolToolboxApplication : Application() {
     ): Boolean {
         val id = accountId ?: return false
         if (goals.isEmpty()) return false
-        // A batch starts with a network reroll. Without this explicit foreground handoff, that
-        // work could begin while the helper is still visible, leaving the user with a seemingly
-        // frozen "正在刷取" card and no game frame for the later reset/entry steps. Launch from
-        // this user-initiated path first; the existing entry session will launch again only if
-        // the game later needs to be recovered during a run.
-        if (!launchGameClient()) {
-            labyrinthController.reportMessage("无法启动公主连结；请确认国服客户端已安装")
-            return false
-        }
+        // Never launch or navigate the game here. The first entry frame must be the manually
+        // opened Dawn Realm home; otherwise the session waits without clicking anything.
         val ui = labyrinthController.uiState.value
         val batchId = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT)
             .format(java.util.Date())

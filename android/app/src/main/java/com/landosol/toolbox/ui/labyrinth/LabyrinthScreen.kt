@@ -667,8 +667,8 @@ private fun BatchRunCard(
     )
     SelectionCard(
         title = "批量自动执行",
-        description = "一次屏幕授权跑完全部目标，按列表顺序逐个公会执行：刷开局 → 底栏主页触发旧会话失效 → " +
-            "进入并通关 → 记录 → 下一轮。难度沿用上方设置（$selectedDifficulty）；" +
+        description = "开始前请手动将公主连结停在“黎明界迷宫”主页并关闭对话框。批量执行不会打开游戏、" +
+            "不会返回标题页或处理登录；确认主页后按列表顺序刷开局 → 进入并通关 → 记录 → 下一轮。难度沿用上方设置（$selectedDifficulty）；" +
             "战斗连续失败按策略设置放弃本局并重刷。",
     ) {
         // Per-guild target text and mode; the guild list itself is fixed (top five).
