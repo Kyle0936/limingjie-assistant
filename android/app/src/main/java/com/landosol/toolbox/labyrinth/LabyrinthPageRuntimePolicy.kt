@@ -43,6 +43,10 @@ internal fun labyrinthCanRecoverOrphanNodeMoveConfirmation(
     hasUniqueReachableRouteTarget: Boolean,
     shopBackgroundVisible: Boolean = false,
 ): Boolean {
+    // The shop-exit confirmation uses the same blue-title/white-body/two-button chrome as a map
+    // move confirmation. During the first transition frame it can classify as UNKNOWN, so page
+    // state alone is not enough: visible shop chrome must keep ownership with the shop handler.
+    if (shopBackgroundVisible) return false
     if (!hasUniqueReachableRouteTarget || confirmationConfidence < 0.85) return false
     // The shop exit dialog has the same blue-title/white-body/two-button chrome, and while it
     // fades in the page can classify UNKNOWN even though the shop is still on screen.
@@ -189,16 +193,19 @@ internal fun labyrinthSingleExDetailProbeRect(
  * BATTLE_CHALLENGE frame before "极难" has returned from OCR, allowing the generic challenge
  * branch to tap first. Boss nodes are already semantically identified by the route. Every other
  * challenge must either be positively classified as a non-EX title, or have a concrete EX guide
- * resolved before the challenge button may fire.
+ * resolved. An automation-owned EX details probe may also explicitly approve a guide-less
+ * fallback after it has closed the modal; this remains distinct from a generic unknown page.
  */
 internal fun labyrinthBattleChallengeCanAutoStart(
     combatContext: LabyrinthCombatContext?,
     challengeDifficultyResolved: Boolean,
     extremeChallenge: Boolean,
     exEncounterResolved: Boolean,
+    exGuideFallbackApproved: Boolean = false,
 ): Boolean = when {
     combatContext?.kind == LabyrinthCombatKind.BOSS -> true
-    combatContext?.kind == LabyrinthCombatKind.EX || extremeChallenge -> exEncounterResolved
+    combatContext?.kind == LabyrinthCombatKind.EX || extremeChallenge ->
+        exEncounterResolved || exGuideFallbackApproved
     !challengeDifficultyResolved -> false
     else -> true
 }

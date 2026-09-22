@@ -13,15 +13,13 @@ import org.junit.Test
 
 class LabyrinthHasBattleControlsTest {
     @Test
-    fun `either battle control alone blocks animation taps without classifying a battle`() {
-        listOf(EntryAnchorId.BATTLE_IN_PROGRESS_MENU_BUTTON, EntryAnchorId.BATTLE_IN_PROGRESS_AUTO_BUTTON)
-            .forEach { id ->
-                assertTrue(labyrinthHasBattleControls(frame(mapOf(id to 0.45))))
-                assertTrue(labyrinthHasBattleControls(frame().copy(
-                    anchorMatches = mapOf(id to EntryAnchorMatch(0.45, EntryPixelRect(0, 0, 10, 10))),
-                )))
-                assertFalse(labyrinthHasBattleControls(frame(mapOf(id to 0.44))))
-            }
+    fun `battle menu alone blocks animation taps without classifying a battle`() {
+        val id = EntryAnchorId.BATTLE_IN_PROGRESS_MENU_BUTTON
+        assertTrue(labyrinthHasBattleControls(frame(mapOf(id to 0.45))))
+        assertTrue(labyrinthHasBattleControls(frame().copy(
+            anchorMatches = mapOf(id to EntryAnchorMatch(0.45, EntryPixelRect(0, 0, 10, 10))),
+        )))
+        assertFalse(labyrinthHasBattleControls(frame(mapOf(id to 0.44))))
         assertFalse(labyrinthHasBattleControls(frame(mapOf(EntryAnchorId.SHOP_TITLE to 1.0))))
     }
 

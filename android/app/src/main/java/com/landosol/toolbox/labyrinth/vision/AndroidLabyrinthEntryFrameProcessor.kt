@@ -128,8 +128,6 @@ class AndroidLabyrinthEntryTemplateLoader(
             EntryAnchorId.SESSION_DATE_CHANGE_CONFIRM to "$ROOT/session_date_change_confirm.png",
             EntryAnchorId.BATTLE_IN_PROGRESS_MENU_BUTTON to
                 "$ROOT/battle_in_progress/battle_menu_button.png",
-            EntryAnchorId.BATTLE_IN_PROGRESS_AUTO_BUTTON to
-                "$ROOT/battle_in_progress/battle_auto_button.png",
             EntryAnchorId.BATTLE_RESULT_REWARD_BANNER to
                 "$ROOT/battle_result/battle_result_reward_banner.png",
             EntryAnchorId.BATTLE_RESULT_NEXT_BUTTON to

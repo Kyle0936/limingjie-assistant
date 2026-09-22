@@ -42,9 +42,30 @@ class LabyrinthBattleWaitPolicyTest {
     }
 
     @Test
-    fun `result map rewards and explicit other pages exit even at deadline`() {
+    fun `result without next remains in battle wait through following unknown frames`() {
+        val policy = started()
+        assertEquals(
+            LabyrinthBattleWaitDecision.WAIT,
+            policy.observe(Page.BATTLE_RESULT, 1_000, battleResultNextReady = false),
+        )
+        assertEquals(LabyrinthBattleWaitDecision.WAIT, policy.observe(Page.UNKNOWN, 299_999))
+        assertEquals(LabyrinthBattleWaitDecision.TIMED_OUT, policy.observe(Page.UNKNOWN, 300_000))
+    }
+
+    @Test
+    fun `reliable battle result next releases wait for normal result handling`() {
+        val policy = started()
+        assertEquals(
+            LabyrinthBattleWaitDecision.NONE,
+            policy.observe(Page.BATTLE_RESULT, 1_000, battleResultNextReady = true),
+        )
+        assertEquals(LabyrinthBattleWaitDecision.NONE, policy.observe(Page.UNKNOWN, 2_000))
+    }
+
+    @Test
+    fun `map rewards and explicit other pages exit even at deadline`() {
         listOf(
-            Page.BATTLE_RESULT, Page.NODE_SELECTION, Page.ITEM_REWARD, Page.CHARACTER_JOINED,
+            Page.NODE_SELECTION, Page.ITEM_REWARD, Page.CHARACTER_JOINED,
             Page.RUN_CLEAR_RESULT, Page.SHOP, Page.RELIC_CHOICE, Page.TITLE_WAITING_TAP,
         ).forEach { page ->
             val policy = started()
