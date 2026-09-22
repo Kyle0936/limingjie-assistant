@@ -5,8 +5,10 @@ import com.landosol.toolbox.automation.AutomationSessionId
 import com.landosol.toolbox.automation.AutomationSessionManager
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryFrameResult
 import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -117,11 +119,18 @@ class GameSessionResetWorkflowTest {
             val started = session.runOnceAfterRound(saveResult = { saves.incrementAndGet() })
 
             assertTrue(started)
-            withTimeout(2_000L) {
-                while (saves.get() == 0) delay(10L)
+            // The workflow does this work on real dispatchers, but runTest's delay/withTimeout
+            // run on virtual time and complete instantly. Waiting in virtual time therefore
+            // burned the whole 2 s budget before the real callback could land, and the test
+            // failed whenever the machine was busy — which is exactly when a full suite runs.
+            withContext(Dispatchers.Default.limitedParallelism(1)) {
+                withTimeout(2_000L) {
+                    while (saves.get() == 0) delay(10L)
+                }
+                assertEquals(1, saves.get())
+                // A real pause, so a duplicate callback has an actual chance to arrive.
+                delay(50L)
             }
-            assertEquals(1, saves.get())
-            delay(50L)
             assertEquals("保存回调不能重复执行", 1, saves.get())
             assertTrue(session.state.value.running)
         } finally {

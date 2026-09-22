@@ -128,27 +128,51 @@ object NodeAnchorDefinitions {
      * 参考区域的中心附近搜索偏移。偏移按参考系缩放，覆盖地图滚动造成的纵向漂移，
      * 又不会把搜索扩大到整个画面。
      */
-    fun searchOffsets(frameWidth: Int, frameHeight: Int): List<Pair<Int, Int>> {
+    fun searchOffsets(
+        frameWidth: Int,
+        frameHeight: Int,
+    ): List<Pair<Int, Int>> {
         val scale = if (frameWidth.toDouble() / frameHeight > WIDE_ASPECT_THRESHOLD) {
             frameHeight.toDouble() / WIDE_REFERENCE.height
         } else {
             frameHeight.toDouble() / STANDARD_REFERENCE.height
         }
-        // The video shows horizontal map translations of roughly 280-320
-        // reference pixels. Keep fine offsets near the anchor and coarse
-        // offsets for the camera shift; overlap suppression removes duplicate
-        // detections when two search windows cover the same node.
-        val xOffsets = listOf(
+        // The video shows horizontal map translations of roughly 280-320 reference pixels.
+        //
+        // A node template only clears its acceptance bar within a few pixels of the node — the
+        // score is already below 0.60 eight pixels away — and the local refinement afterwards
+        // reaches about +/-17 reference pixels from a proposal. A gap wider than 34 in this list
+        // is therefore a horizontal band in which a perfectly visible node is invisible to the
+        // scan, and which band the map came to rest in is decided by the previous swipe, so the
+        // miss looks intermittent rather than systematic (2026-09-16 live: two unobstructed EVENT
+        // nodes went undetected for minutes while the run reported the target as geometrically
+        // visible but unclassifiable).
+        //
+        // The gap-free list is unconditional. It used to be reserved for searches with no camera
+        // prediction, on the reasoning that a directed search is "already centred on the target"
+        // and could keep the cheaper list with its 80-wide holes. That reasoning does not hold:
+        // aiming at a column says nothing about where inside the column the holes fall, so a
+        // directed scan was blind in the same bands. 2026-09-20 bundle 192445 paid for it on
+        // nearly every hop — two directed misses (1.0 s each) followed by a 5.3 s unrestricted
+        // rescan. On the node-target-missed fixture the coarse grid finds nothing at all while
+        // the gap-free grid finds both EVENT nodes for the same ~180 ms, because the horizontal
+        // restriction around the prediction has already cut the rectangle pool.
+        val coarseXOffsets = listOf(
             -320, -240, -160, -112, -80, -70, -56, -28,
             0,
             28, 56, 80, 112, 160, 240, 320,
         )
+        val xOffsets = (coarseXOffsets + GAP_FILLING_X_OFFSETS + GAP_FILLING_X_OFFSETS.map { -it })
+            .sorted()
         val yOffsets = listOf(
             -168, -140, -112, -100, -84, -56, -28, 0,
             20, 28, 40, 56, 84, 112, 140, 160, 168,
         )
         return yOffsets.flatMap { y -> xOffsets.map { x -> (x * scale).toInt() to (y * scale).toInt() } }
     }
+
+    /** Points that break the 48/80-wide holes in the base offsets down to at most 34. */
+    private val GAP_FILLING_X_OFFSETS = listOf(136, 187, 213, 267, 293)
 
     /** 特殊节点的移动范围比普通节点小，避免每帧扩大成全屏穷举。 */
     fun specialSearchOffsets(

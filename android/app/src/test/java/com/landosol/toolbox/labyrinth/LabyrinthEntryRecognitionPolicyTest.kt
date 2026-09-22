@@ -5,6 +5,7 @@ import com.landosol.toolbox.automation.session.SessionBlockKind
 import com.landosol.toolbox.labyrinth.node.NodeClassification
 import com.landosol.toolbox.labyrinth.node.LabyrinthMapScanDirection
 import com.landosol.toolbox.labyrinth.node.LabyrinthNodeTypes
+import com.landosol.toolbox.labyrinth.node.labyrinthReferenceColumnPitch
 import com.landosol.toolbox.labyrinth.node.NodePositionMapping
 import com.landosol.toolbox.labyrinth.node.NodeTopologyBindingKind
 import com.landosol.toolbox.labyrinth.vision.EntryAnchorId
@@ -16,6 +17,7 @@ import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageObservation
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageState
 import com.landosol.toolbox.labyrinth.vision.LabyrinthNodeMoveConfirmationObservation
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -146,11 +148,17 @@ class LabyrinthEntryRecognitionPolicyTest {
     }
 
     @Test
-    fun `event unknown fallback alternates between left and right edge-safe points`() {
-        assertEquals(160 to 780, labyrinthEventUnknownFallbackPoint(0))
-        assertEquals(1760 to 780, labyrinthEventUnknownFallbackPoint(1))
-        assertEquals(160 to 780, labyrinthEventUnknownFallbackPoint(2))
-        assertEquals(1760 to 780, labyrinthEventUnknownFallbackPoint(3))
+    fun `event free role picks another only while 去邀请 stays disabled after a settled pick`() {
+        // One-pick event: the button lights up right after the first pick → never a second pick.
+        assertTrue(!labyrinthEventFreeRoleNeedsAnotherPick(1, inviteEnabled = true, inviteDisabled = false, millisSinceLastSelect = 5_000L))
+        // Two-pick event (2026-09-17): still disabled after the pick settled → pick again.
+        assertTrue(labyrinthEventFreeRoleNeedsAnotherPick(1, inviteEnabled = false, inviteDisabled = true, millisSinceLastSelect = 2_500L))
+        // Not settled yet, or the disabled button is not even recognised: wait.
+        assertTrue(!labyrinthEventFreeRoleNeedsAnotherPick(1, inviteEnabled = false, inviteDisabled = true, millisSinceLastSelect = 800L))
+        assertTrue(!labyrinthEventFreeRoleNeedsAnotherPick(1, inviteEnabled = false, inviteDisabled = false, millisSinceLastSelect = 5_000L))
+        // The shell has three slots; never pick a fourth, and nothing to settle before the first.
+        assertTrue(!labyrinthEventFreeRoleNeedsAnotherPick(3, inviteEnabled = false, inviteDisabled = true, millisSinceLastSelect = 5_000L))
+        assertTrue(!labyrinthEventFreeRoleNeedsAnotherPick(0, inviteEnabled = false, inviteDisabled = true, millisSinceLastSelect = 5_000L))
     }
 
     @Test
@@ -177,6 +185,43 @@ class LabyrinthEntryRecognitionPolicyTest {
                 activeNodeType = LabyrinthNodeTypes.EVENT,
                 roleRewardPage = true,
                 hasOpeningViewport = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `a shop 选择印记 opens the same picker and must not reach the opening roster`() {
+        // 2026-09-20 bundle 155513: the shop sells 选择印记 as well as 随机印记, and buying one
+        // opens the full-roster 角色选择 page. The selector was gated on the node being an EVENT,
+        // so the frame fell through to the opening-roster handler, which went looking for this
+        // guild's three fixed opening characters: "已到初始角色列表底部，复核剩余目标 1/3".
+        assertTrue(
+            labyrinthEventFreeRoleSelectionOwnsFrame(
+                pageState = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                activeNodeType = LabyrinthNodeTypes.SHOP,
+                roleRewardPage = false,
+                hasOpeningViewport = true,
+                shopChoiceImprintPending = true,
+            ),
+        )
+        // A 随机印记 grants its role outright, so nothing in the shop may claim this page.
+        assertTrue(
+            !labyrinthEventFreeRoleSelectionOwnsFrame(
+                pageState = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                activeNodeType = LabyrinthNodeTypes.SHOP,
+                roleRewardPage = false,
+                hasOpeningViewport = true,
+                shopChoiceImprintPending = false,
+            ),
+        )
+        // The opening roster itself still runs before any node is active.
+        assertTrue(
+            !labyrinthEventFreeRoleSelectionOwnsFrame(
+                pageState = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                activeNodeType = null,
+                roleRewardPage = false,
+                hasOpeningViewport = true,
+                shopChoiceImprintPending = true,
             ),
         )
     }
@@ -380,11 +425,45 @@ class LabyrinthEntryRecognitionPolicyTest {
     fun `forward map swipe stays inside the map and moves toward later columns`() {
         val swipe = labyrinthForwardMapSwipe(1920, 1080) as AutomationAction.Swipe
 
-        assertEquals(1459.2f, swipe.start.x, 0.01f)
+        // 0.8 of one 540 px column: centred on 0.56W, so 1075.2 +/- 216.
+        assertEquals(1291.2f, swipe.start.x, 0.01f)
         assertEquals(626.4f, swipe.start.y, 0.01f)
-        assertEquals(691.2f, swipe.end.x, 0.01f)
+        assertEquals(859.2f, swipe.end.x, 0.01f)
         assertEquals(626.4f, swipe.end.y, 0.01f)
         assertEquals(450L, swipe.durationMillis)
+        assertEquals(220L, swipe.holdMillis)
+    }
+
+    @Test
+    fun `one scan step never travels a whole node column`() {
+        // 2026-09-18 bundle: the old 40%-of-frame drag moved 768 px against a ~513 px
+        // measured pitch, so a column could cross the viewport between two scans and the
+        // scanner reported geometryReliable=false. Every step must stay under one pitch.
+        for ((w, h) in listOf(1920 to 1080, 2340 to 1080, 1280 to 720)) {
+            val pitch = labyrinthReferenceColumnPitch(h)
+            for (direction in LabyrinthMapScanDirection.values()) {
+                val swipe = requireNotNull(labyrinthMapSwipe(w, h, direction)) as AutomationAction.Swipe
+                val travel = kotlin.math.abs(swipe.start.x - swipe.end.x)
+                assertTrue("${'$'}w x ${'$'}h travel=${'$'}travel pitch=${'$'}pitch", travel < pitch)
+                assertTrue("${'$'}w x ${'$'}h start", swipe.start.x in 0f..w.toFloat())
+                assertTrue("${'$'}w x ${'$'}h end", swipe.end.x in 0f..w.toFloat())
+                // A drag that lifts at speed is turned into a fling by the game.
+                assertTrue("${'$'}w x ${'$'}h hold", swipe.holdMillis > 0)
+            }
+        }
+    }
+
+    @Test
+    fun `local nudging gives up after whole cycles instead of oscillating forever`() {
+        // The cycle is BACKWARD, FORWARD, FORWARD, BACKWARD: it returns the camera to the
+        // start, so repeating it cannot reveal anything new. Live bundles reached attempt
+        // 90 and 170 on a single node.
+        assertTrue(!labyrinthNodeRecoveryNudgeExhausted(0))
+        assertTrue(!labyrinthNodeRecoveryNudgeExhausted(MAX_NODE_RECOVERY_NUDGES - 1))
+        assertTrue(labyrinthNodeRecoveryNudgeExhausted(MAX_NODE_RECOVERY_NUDGES))
+        assertTrue(labyrinthNodeRecoveryNudgeExhausted(90))
+        // Whole cycles only, so the camera ends a round where it began.
+        assertEquals(0, MAX_NODE_RECOVERY_NUDGES % 4)
     }
 
     @Test
@@ -399,12 +478,27 @@ class LabyrinthEntryRecognitionPolicyTest {
             avoidRects = listOf(eventRect),
         ) as AutomationAction.Swipe
 
-        assertEquals(691.2f, swipe.start.x, 0.01f)
-        assertEquals(1459.2f, swipe.end.x, 0.01f)
-        assertTrue(swipe.end.y < eventRect.top || swipe.end.y > eventRect.top + eventRect.height)
-        assertTrue(swipe.start.y < eventRect.top || swipe.start.y > eventRect.top + eventRect.height)
+        assertEquals(859.2f, swipe.start.x, 0.01f)
+        assertEquals(1291.2f, swipe.end.x, 0.01f)
+        // The shortened step no longer reaches this node's column at all.
+        assertTrue(!eventRect.containsPoint(swipe.start.x, swipe.start.y))
+        assertTrue(!eventRect.containsPoint(swipe.end.x, swipe.end.y))
         assertEquals(450L, swipe.durationMillis)
+
+        // A node sitting on the new, shorter lane must still push the gesture to another row.
+        val onLane = EntryPixelRect(left = 800, top = 560, width = 560, height = 340)
+        val moved = labyrinthMapSwipe(
+            frameWidth = 1920,
+            frameHeight = 1080,
+            direction = LabyrinthMapScanDirection.BACKWARD,
+            avoidRects = listOf(onLane),
+        ) as AutomationAction.Swipe
+        assertTrue(!onLane.containsPoint(moved.start.x, moved.start.y))
+        assertTrue(!onLane.containsPoint(moved.end.x, moved.end.y))
     }
+
+    private fun EntryPixelRect.containsPoint(x: Float, y: Float): Boolean =
+        x >= left && x <= left + width && y >= top && y <= top + height
 
     @Test
     fun `map recovery nudge is short alternating and stays clear of a visible node lane`() {
@@ -432,6 +526,7 @@ class LabyrinthEntryRecognitionPolicyTest {
         assertTrue(kotlin.math.abs(backward.start.x - backward.end.x) < 1920 * 0.20f)
         assertTrue(forward.start.y < nodeRect.top || forward.start.y > nodeRect.top + nodeRect.height)
         assertEquals(220L, forward.durationMillis)
+        assertEquals(220L, forward.holdMillis)
         assertEquals(
             listOf(
                 LabyrinthMapScanDirection.BACKWARD,
@@ -452,9 +547,9 @@ class LabyrinthEntryRecognitionPolicyTest {
             direction = LabyrinthMapScanDirection.BACKWARD,
         ) as AutomationAction.Swipe
 
-        assertEquals(691.2f, swipe.start.x, 0.01f)
+        assertEquals(859.2f, swipe.start.x, 0.01f)
         assertEquals(626.4f, swipe.start.y, 0.01f)
-        assertEquals(1459.2f, swipe.end.x, 0.01f)
+        assertEquals(1291.2f, swipe.end.x, 0.01f)
         assertEquals(626.4f, swipe.end.y, 0.01f)
         assertEquals(450L, swipe.durationMillis)
     }
@@ -493,6 +588,72 @@ class LabyrinthEntryRecognitionPolicyTest {
         assertEquals(SessionBlockKind.RECONNECT_PROMPTED, block.kind)
         assertTrue(block.blocksNormalActions)
         assertEquals(returnRect, block.returnTitleRect)
+    }
+
+    @Test
+    fun `generic confirm dialog is never a session block even with a scoring title bar`() {
+        // 2026-09-18 live scores: error title 0.64, 确认 button 0.96, no 返回标题, page NODE_SELECTION.
+        val confirmRect = EntryPixelRect(left = 750, top = 690, width = 415, height = 102)
+        val scores = LabyrinthAnchorScores(
+            mapOf(
+                EntryAnchorId.SESSION_ERROR_TITLE to 0.64,
+                EntryAnchorId.SESSION_RETURN_TITLE to 0.0,
+                EntryAnchorId.SESSION_DATE_CHANGE_TITLE to 0.47,
+                EntryAnchorId.SESSION_DATE_CHANGE_CONFIRM to 0.96,
+            ),
+        )
+        val result = LabyrinthEntryFrameResult(
+            observation = LabyrinthEntryPageObservation(
+                state = LabyrinthEntryPageState.NODE_SELECTION,
+                confidence = 0.90,
+                stateScores = mapOf(LabyrinthEntryPageState.NODE_SELECTION to 0.90),
+                anchorScores = scores,
+            ),
+            matchedFeatures = emptyList(),
+            elapsedMillis = 1,
+            anchorMatches = mapOf(EntryAnchorId.SESSION_DATE_CHANGE_CONFIRM to EntryAnchorMatch(0.96, confirmRect)),
+            frameWidth = 1920,
+            frameHeight = 1080,
+        )
+        assertEquals(confirmRect, labyrinthGenericConfirmDialogRect(result))
+        assertEquals(SessionBlockKind.NONE, labyrinthSessionBlockObservation(result).kind)
+
+        // The real expiry popup keeps blocking: blue 返回标题 present, pale 确认 absent.
+        val expiry = frameResult(errorScore = 0.91, returnScore = 0.88, returnRect = EntryPixelRect(756, 692, 410, 94))
+        assertNull(labyrinthGenericConfirmDialogRect(expiry))
+        assertEquals(SessionBlockKind.RECONNECT_PROMPTED, labyrinthSessionBlockObservation(expiry).kind)
+    }
+
+    @Test
+    fun `shop transition frames are never a session block without an actionable return-title`() {
+        // 2026-09-18 live: every purchase produced "检测到账号会话失效" because the shop dialog's
+        // blue title bar scores on the broad reconnect template.
+        fun shopFrame(returnScore: Double) = LabyrinthEntryFrameResult(
+            observation = LabyrinthEntryPageObservation(
+                state = LabyrinthEntryPageState.UNKNOWN,
+                confidence = 0.0,
+                stateScores = emptyMap(),
+                anchorScores = LabyrinthAnchorScores(
+                    mapOf(
+                        EntryAnchorId.SHOP_TITLE to 0.99,
+                        EntryAnchorId.SHOP_CLOSE to 1.0,
+                        EntryAnchorId.SESSION_ERROR_TITLE to 0.55,
+                        EntryAnchorId.SESSION_RETURN_TITLE to returnScore,
+                    ),
+                ),
+            ),
+            matchedFeatures = emptyList(),
+            elapsedMillis = 1,
+            anchorMatches = mapOf(
+                EntryAnchorId.SESSION_RETURN_TITLE to EntryAnchorMatch(returnScore, EntryPixelRect(756, 692, 410, 94)),
+            ),
+            frameWidth = 1920,
+            frameHeight = 1080,
+        )
+
+        assertEquals(SessionBlockKind.NONE, labyrinthSessionBlockObservation(shopFrame(0.10)).kind)
+        // A real expiry over the shop still shows 返回标题 and stays actionable.
+        assertEquals(SessionBlockKind.RECONNECT_PROMPTED, labyrinthSessionBlockObservation(shopFrame(0.88)).kind)
     }
 
     @Test
@@ -703,6 +864,186 @@ class LabyrinthEntryRecognitionPolicyTest {
             ),
             frameWidth = 1920,
             frameHeight = 1080,
+        )
+    }
+
+    @Test
+    fun `effective sweep survives only the EX to Boss hand-off of one encounter`() {
+        assertTrue(labyrinthKeepsEffectiveScanAcrossNodes(LabyrinthNodeTypes.EX_BATTLE, LabyrinthNodeTypes.BOSS))
+        assertTrue(!labyrinthKeepsEffectiveScanAcrossNodes(LabyrinthNodeTypes.BOSS, LabyrinthNodeTypes.EX_BATTLE))
+        assertTrue(!labyrinthKeepsEffectiveScanAcrossNodes(LabyrinthNodeTypes.EX_BATTLE, LabyrinthNodeTypes.EX_BATTLE))
+        assertTrue(!labyrinthKeepsEffectiveScanAcrossNodes(LabyrinthNodeTypes.NORMAL_BATTLE, LabyrinthNodeTypes.BOSS))
+        assertTrue(!labyrinthKeepsEffectiveScanAcrossNodes(null, LabyrinthNodeTypes.BOSS))
+
+        // Order-independent, and any roster change invalidates the saved sweep.
+        assertEquals(
+            labyrinthEffectiveScanRosterStamp(listOf("1001", "1002", "1003")),
+            labyrinthEffectiveScanRosterStamp(listOf("1003", "1001", "1002")),
+        )
+        assertTrue(
+            labyrinthEffectiveScanRosterStamp(listOf("1001", "1002")) !=
+                labyrinthEffectiveScanRosterStamp(listOf("1001", "1002", "1003")),
+        )
+        assertTrue(labyrinthEffectiveScanRosterStamp(emptyList()) != labyrinthEffectiveScanRosterStamp(listOf("1001")))
+    }
+
+    @Test
+    fun `every route page that shows the same status with no action eventually stops`() {
+        // Page-level retry budgets only ever counted *taps*. A page that decides "wait" dispatches
+        // nothing, so it incremented nothing and no deadline applied: before this watchdog only
+        // UNKNOWN had one, and every other wait branch could hold a run open for ever.
+        assertFalse(labyrinthPageStallExpired(POST_ENTRY_STALL_TIMEOUT_MILLIS - 1, battlePage = false))
+        assertTrue(labyrinthPageStallExpired(POST_ENTRY_STALL_TIMEOUT_MILLIS, battlePage = false))
+        // Battle is the one page whose legitimate silence is longer; it runs against the separate
+        // 5-minute battle-wait deadline instead.
+        assertFalse(labyrinthPageStallExpired(POST_ENTRY_STALL_TIMEOUT_MILLIS * 10, battlePage = true))
+        // There must be no second exemption here. A "waiting for manual character selection"
+        // carve-out used to swallow exactly the roster-page hang this watchdog exists for, because
+        // INITIAL_CHARACTER_SELECTION always falls back to that message even though this build
+        // never enables manual selection.
+        assertTrue(
+            "stall budget must exceed the shop OCR backstop by a wide margin",
+            POST_ENTRY_STALL_TIMEOUT_MILLIS >= 90_000L,
+        )
+    }
+
+    @Test
+    fun `an action that never returns releases the latch instead of freezing the session`() {
+        // Every frame handler bails out while the single-action latch is held, so a latch that is
+        // claimed and never released is a silent, total freeze: no clicks, no messages, and no
+        // other timeout can fire because no other timeout is ever evaluated.
+        assertFalse(labyrinthActionLatchStuck(Long.MIN_VALUE, nowMillis = Long.MAX_VALUE / 2))
+        assertFalse(labyrinthActionLatchStuck(heldSinceMillis = 0, nowMillis = ACTION_LATCH_STUCK_TIMEOUT_MILLIS - 1))
+        assertTrue(labyrinthActionLatchStuck(heldSinceMillis = 0, nowMillis = ACTION_LATCH_STUCK_TIMEOUT_MILLIS))
+        // A real gesture returns in well under a second, so the budget is orders of magnitude
+        // above normal and only ever trips on a genuinely dead executor.
+        assertTrue(ACTION_LATCH_STUCK_TIMEOUT_MILLIS >= 30_000L)
+    }
+
+    @Test
+    fun `a mid-route roster picker is answered instead of reclaiming the entry phase`() {
+        // The opening selector, a shop 选择印记 pick and an event free pick are the same page with
+        // the same header. Only the first belongs to the entry planner, and confusing them parked
+        // a run for 408 s: the picker reset the session to the entry phase, and the entry planner
+        // has no rule for a picker, so nothing owned the frame at all.
+        val picker = LabyrinthEntryFrameResult(
+            observation = LabyrinthEntryPageObservation(
+                state = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                confidence = 0.99,
+                stateScores = mapOf(LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION to 0.99),
+                anchorScores = LabyrinthAnchorScores(
+                    mapOf(EntryAnchorId.SELECTION_HEADER_STANDARD to 0.99),
+                ),
+            ),
+            matchedFeatures = emptyList(),
+            elapsedMillis = 1,
+        )
+        assertTrue(labyrinthShouldResumeOpeningSelection(true, picker, routeActive = false))
+        assertFalse(
+            "a picker opened mid-route is never the opening selector",
+            labyrinthShouldResumeOpeningSelection(true, picker, routeActive = true),
+        )
+
+        // Ownership must not depend on remembering which node opened it: that memory is exactly
+        // what the page churn of a purchase destroys.
+        fun owns(nodeType: Int?, imprintPending: Boolean, routeActive: Boolean) =
+            labyrinthEventFreeRoleSelectionOwnsFrame(
+                pageState = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                activeNodeType = nodeType,
+                roleRewardPage = false,
+                hasOpeningViewport = true,
+                shopChoiceImprintPending = imprintPending,
+                routeActive = routeActive,
+            )
+        assertTrue(owns(null, imprintPending = false, routeActive = true))
+        assertTrue(owns(LabyrinthNodeTypes.EVENT, imprintPending = false, routeActive = false))
+        assertTrue(owns(LabyrinthNodeTypes.SHOP, imprintPending = true, routeActive = false))
+        // Before the route starts the page really is the opening selector; leave it alone.
+        assertFalse(owns(null, imprintPending = false, routeActive = false))
+        // A three-card reward page is never this picker.
+        assertFalse(
+            labyrinthEventFreeRoleSelectionOwnsFrame(
+                pageState = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                activeNodeType = null,
+                roleRewardPage = true,
+                hasOpeningViewport = true,
+                routeActive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `a stalled event free-role page stops instead of hanging forever`() {
+        // The page is answered from whatever is on screen, so a stall is only ever "still
+        // settling" or "genuinely stuck"; there is no roster walk to attempt in between.
+        assertEquals(
+            LabyrinthEventFreeRoleBlockedAction.WAIT,
+            labyrinthEventFreeRoleBlockedAction(0),
+        )
+        assertEquals(
+            LabyrinthEventFreeRoleBlockedAction.WAIT,
+            labyrinthEventFreeRoleBlockedAction(EVENT_FREE_ROLE_SETTLE_MILLIS),
+        )
+        assertEquals(
+            LabyrinthEventFreeRoleBlockedAction.WAIT,
+            labyrinthEventFreeRoleBlockedAction(EVENT_FREE_ROLE_GIVE_UP_MILLIS - 1),
+        )
+        // Past the give-up window it stops with a reason: this page has no other timeout, and an
+        // unreadable portrait used to park the run here silently and indefinitely.
+        assertEquals(
+            LabyrinthEventFreeRoleBlockedAction.STOP,
+            labyrinthEventFreeRoleBlockedAction(EVENT_FREE_ROLE_GIVE_UP_MILLIS),
+        )
+    }
+
+    @Test
+    fun `node scan is deferred while the map settles or a node tap is still pending`() {
+        assertTrue(labyrinthNodeScanConsumable(settleRemainingMillis = 0L, pendingTransitionHeld = false))
+        assertTrue(labyrinthNodeScanConsumable(settleRemainingMillis = -1L, pendingTransitionHeld = false))
+        assertTrue(!labyrinthNodeScanConsumable(settleRemainingMillis = 1L, pendingTransitionHeld = false))
+        assertTrue(!labyrinthNodeScanConsumable(settleRemainingMillis = 0L, pendingTransitionHeld = true))
+    }
+
+    @Test
+    fun `post entry cooldown counts from the moment the tap landed`() {
+        // Bundle 225220 row 249/251: the deciding frame was captured at t=0, the close gesture
+        // landed 750 ms later, and the next popup frame was captured 292 ms after the gesture.
+        assertTrue(
+            labyrinthPostEntryCooldownRemaining(
+                frameTimestampMillis = 1_042L,
+                dispatchedAtMillis = 0L,
+                landedAtMillis = 750L,
+                intervalMillis = 650L,
+            ) > 0L,
+        )
+        // 650 ms after the landing the popup has had its whole cooldown.
+        assertEquals(
+            0L,
+            labyrinthPostEntryCooldownRemaining(
+                frameTimestampMillis = 1_400L,
+                dispatchedAtMillis = 0L,
+                landedAtMillis = 750L,
+                intervalMillis = 650L,
+            ),
+        )
+        // A rejected or still-in-flight tap has no landing time: the old frame-stamp rule holds.
+        assertEquals(
+            150L,
+            labyrinthPostEntryCooldownRemaining(
+                frameTimestampMillis = 500L,
+                dispatchedAtMillis = 0L,
+                landedAtMillis = Long.MIN_VALUE,
+                intervalMillis = 650L,
+            ),
+        )
+        assertEquals(
+            0L,
+            labyrinthPostEntryCooldownRemaining(
+                frameTimestampMillis = 500L,
+                dispatchedAtMillis = Long.MIN_VALUE,
+                landedAtMillis = Long.MIN_VALUE,
+                intervalMillis = 650L,
+            ),
         )
     }
 }

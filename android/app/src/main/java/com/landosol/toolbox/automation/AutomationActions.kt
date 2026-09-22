@@ -6,6 +6,16 @@ sealed interface AutomationAction {
         val start: ScreenPoint,
         val end: ScreenPoint,
         val durationMillis: Long,
+        /**
+         * Keep the finger still at [end] for this long before lifting.
+         *
+         * A straight gesture path is dispatched at constant speed, so the pointer lifts at full
+         * travel velocity and the game's own velocity tracker turns the drag into an inertial
+         * fling: the map keeps sliding well past where the gesture ended. Holding still first
+         * makes the measured lift-off velocity ~0, which turns the same gesture into a plain
+         * drag. 0 keeps the legacy single-stroke behaviour.
+         */
+        val holdMillis: Long = 0L,
     ) : AutomationAction
     data object Back : AutomationAction
 }

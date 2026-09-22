@@ -1,6 +1,7 @@
 package com.landosol.toolbox.labyrinth
 
 import com.landosol.toolbox.labyrinth.vision.EntryPixelRect
+import com.landosol.toolbox.labyrinth.vision.LabyrinthBattleCharacterMatch
 import com.landosol.toolbox.labyrinth.vision.LabyrinthCharacterMatch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -698,4 +699,69 @@ class LabyrinthRoleDecisionDataTest {
     )
 
     private fun Double?.orZeroForTest(): Double = this ?: 0.0
+
+    /**
+     * The event free-role page shows a whole roster of roles this run has not got yet, so the
+     * answer is simply the best-scoring card on screen. It must not re-run the team-placement
+     * search the three-card reward page uses: that cost scales with the number of cards, and this
+     * page has an order of magnitude more of them.
+     */
+    @Test
+    fun `event free role picks the highest scoring recognizable card on the page`() {
+        fun card(id: String, left: Int, top: Int, trusted: Boolean = true, selected: Boolean = false) =
+            LabyrinthBattleCharacterMatch(
+                slotId = "card-$id", characterId = id, displayName = "名称$id", iconVariant = "test",
+                confidence = if (trusted) 0.9 else 0.2,
+                screenRect = EntryPixelRect(left, top, 120, 150), selected = selected, trusted = trusted,
+            )
+        val profiles = mapOf(
+            "low" to role("low", "低分", damage = 40.0).copy(userScore = 55.0),
+            "best" to role("best", "最高", damage = 40.0).copy(userScore = 92.0),
+            "mid" to role("mid", "中等", damage = 40.0).copy(userScore = 71.0),
+            "owned" to role("owned", "已有", damage = 40.0).copy(userScore = 99.0),
+            "unreadable" to role("unreadable", "认不出", damage = 40.0).copy(userScore = 98.0),
+        )
+        val planner = LabyrinthRoleRewardChoicePlanner(
+            profiles,
+            LabyrinthRoleChoicePolicy(LabyrinthTeamOptimizer(LabyrinthTeamScorer(scoring()))),
+        )
+        val page = listOf(
+            card("low", 100, 100),
+            card("owned", 300, 100),
+            card("best", 500, 100),
+            // An unrecognizable portrait must be skipped, not block the page.
+            card("unreadable", 700, 100, trusted = false),
+            card("mid", 900, 100),
+        )
+        val context = LabyrinthRoleDecisionContext(0)
+
+        val first = planner.decideFreeVisibleRole(page, setOf("owned"), context)
+                as LabyrinthRoleRewardChoiceDecision.Select
+        assertEquals("best", first.characterId)
+        assertTrue(first.actionSafe)
+        // The tap must land inside that card.
+        assertTrue(first.buttonRect.left >= 500 && first.buttonRect.left < 620)
+
+        // A second pick (multi-select events) walks down the same ranking: the previous choice
+        // comes back marked selected/acquired and the next-best card wins.
+        val second = planner.decideFreeVisibleRole(
+            page.map { if (it.characterId == "best") it.copy(selected = true) else it },
+            setOf("owned", "best"),
+            context,
+        ) as LabyrinthRoleRewardChoiceDecision.Select
+        assertEquals("mid", second.characterId)
+
+        val third = planner.decideFreeVisibleRole(
+            page.map { if (it.characterId in setOf("best", "mid")) it.copy(selected = true) else it },
+            setOf("owned", "best", "mid"),
+            context,
+        ) as LabyrinthRoleRewardChoiceDecision.Select
+        assertEquals("low", third.characterId)
+
+        // Nothing scorable left on the page is a wait, not a crash or a blind tap.
+        val exhausted = planner.decideFreeVisibleRole(
+            page.map { it.copy(selected = true) }, setOf("owned"), context,
+        )
+        assertTrue(exhausted is LabyrinthRoleRewardChoiceDecision.Wait)
+    }
 }

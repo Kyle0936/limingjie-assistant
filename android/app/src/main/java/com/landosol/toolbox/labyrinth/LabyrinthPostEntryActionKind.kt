@@ -16,13 +16,14 @@ internal enum class LabyrinthPostEntryActionKind {
     SELECT_ROLE_REWARD,
     CLOSE_CHARACTER_JOINED,
     ADVANCE_CHARACTER_ACQUISITION,
-    COLLAPSE_PORTRAIT,
 
     // Events
     SELECT_EVENT,
     ADVANCE_EVENT_ANIMATION,
     EVENT_FREE_ROLE_SELECT,
     EVENT_FREE_ROLE_CONFIRM,
+    /** Single-button 确认 dialog with no page of its own (e.g. 无法获得报酬 after an event). */
+    CONFIRM_GENERIC_DIALOG,
 
     // Rewards
     SELECT_RELIC,

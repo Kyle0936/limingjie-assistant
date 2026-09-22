@@ -3,6 +3,7 @@ package com.landosol.toolbox.automation.capture
 import java.nio.ByteBuffer
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Test
@@ -55,6 +56,37 @@ class MediaProjectionCaptureServiceTest {
             ),
             rgba8888ToArgbPixels(width, height, pixelStride, rowStride, buffer),
         )
+    }
+
+    @Test
+    fun `a pooled scratch buffer is reused and still converts every pixel`() {
+        // 2026-09-20 live: capture stopped with "Failed to allocate a 8294416 byte allocation with
+        // 7140992 free bytes ... growth limit 201326592" — a fresh 1920x1080 int[] per frame. The
+        // buffer is written before it is read for every pixel and Bitmap.createBitmap copies it
+        // out before the next frame, so pooling it cannot leak one frame's pixels into the next.
+        val scratch = CaptureFrameScratch()
+        fun convert(first: Int): IntArray {
+            val buffer = ByteBuffer.allocate(16)
+            buffer.put(byteArrayOf(
+                (first ushr 16 and 0xff).toByte(), (first ushr 8 and 0xff).toByte(),
+                (first and 0xff).toByte(), (first ushr 24 and 0xff).toByte(),
+            ))
+            buffer.put(byteArrayOf(0x11, 0x22, 0x33, 0xff.toByte()))
+            buffer.put(byteArrayOf(0x44, 0x55, 0x66, 0xff.toByte()))
+            buffer.put(byteArrayOf(0x77, 0x77.toByte(), 0x77, 0xff.toByte()))
+            return rgba8888ToArgbPixels(2, 2, 4, 8, buffer, scratch)
+        }
+
+        val first = convert(0xffff0000.toInt())
+        val firstCopy = first.copyOf()
+        val second = convert(0xff00ff00.toInt())
+        // Same array instance: the allocation really is pooled, not merely cached.
+        assertSame(first, second)
+        // And the reused array carries this frame's pixels, not the previous frame's.
+        assertEquals(0xffff0000.toInt(), firstCopy[0])
+        assertEquals(0xff00ff00.toInt(), second[0])
+        assertEquals(0xff112233.toInt(), second[1])
+        assertEquals(0xff445566.toInt(), second[2])
     }
 
     @Test

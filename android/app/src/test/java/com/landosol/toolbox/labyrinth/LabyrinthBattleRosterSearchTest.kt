@@ -43,6 +43,61 @@ class LabyrinthBattleRosterSearchTest {
         }
     }
 
+    @Test fun `a stable roster that resolves no portrait ends instead of rewinding forever`() {
+        // 2026-09-19 live: the 有效效果 filter listed a single card the roster recogniser could not
+        // resolve, and its one tall thumb reported canScroll=false. A probe concludes by
+        // comparing portraits before and after a swipe, so with no portrait at all there was
+        // nothing to compare and the scan rewound the list every 17 seconds for the rest of the
+        // session. Zero resolvable cards is an answer, not a reason to keep swiping.
+        val search = LabyrinthBattleRosterSearch()
+        val blank = observation(0.0).copy(
+            currentFilter = LabyrinthBattleElementFilter.EFFECTIVE_EFFECT,
+            visibleCharacters = emptyList(),
+            scrollbar = LabyrinthBattleScrollbarObservation(
+                trackRect = EntryPixelRect(1825, 235, 28, 500),
+                thumbRect = EntryPixelRect(1825, 235, 28, 500),
+                visible = true,
+                canScroll = false,
+                position = 0.0,
+            ),
+        )
+        var swipes = 0
+        repeat(200) {
+            val decision = search.observe(session, blank, listOf("effective-scan"))
+            if (decision == LabyrinthBattleRosterSearchDecision.EXHAUSTED) {
+                // Several real swipes are still spent first, so a merely slow list is not cut off.
+                assertEquals(4, swipes)
+                return
+            }
+            if (decision != LabyrinthBattleRosterSearchDecision.WAIT_FOR_SETTLE) {
+                swipes++
+                search.recordExecutedScroll(
+                    if (decision == LabyrinthBattleRosterSearchDecision.TO_TOP) {
+                        LabyrinthBattleRosterScrollDirection.TO_TOP
+                    } else {
+                        LabyrinthBattleRosterScrollDirection.NEXT_PAGE
+                    },
+                    0.0,
+                )
+            }
+        }
+        throw AssertionError("search never finished; swipes=$swipes")
+    }
+
+    @Test fun `a roster that keeps resolving portraits is never cut short by the blank budget`() {
+        val search = LabyrinthBattleRosterSearch()
+        fun frame(id: String) = observation(0.5).let {
+            it.copy(visibleCharacters = listOf(character().copy(characterId = id)),
+                scrollbar = it.scrollbar.copy(visible = false, thumbRect = null, canScroll = false))
+        }
+        var decision = search.observe(session, frame("a"), listOf("A"))
+        for (id in listOf("b", "c", "d", "e", "f", "g")) {
+            search.recordExecutedScroll(LabyrinthBattleRosterScrollDirection.TO_TOP, 0.5)
+            repeat(12) { decision = search.observe(session, frame(id), listOf("A")) }
+            assertEquals(LabyrinthBattleRosterSearchDecision.TO_TOP, decision)
+        }
+    }
+
     @Test fun `changed portraits after probes do not falsely confirm a boundary`() {
         val search = LabyrinthBattleRosterSearch()
         fun frame(id: String) = observation(0.5).let {

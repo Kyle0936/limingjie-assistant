@@ -64,6 +64,8 @@ class MediaProjectionCaptureService : Service() {
     private var captureStartedAt = 0L
     /** ImageReader buffers must not be closed while a callback is copying a frame. */
     private val captureLock = Any()
+    /** Only ever touched inside [captureLock], one frame conversion at a time. */
+    private val frameScratch = CaptureFrameScratch()
 
     override fun onCreate() {
         super.onCreate()
@@ -291,6 +293,8 @@ class MediaProjectionCaptureService : Service() {
             pixelStride = plane.pixelStride,
             rowStride = plane.rowStride,
             buffer = plane.buffer,
+            // createBitmap below copies these pixels, so the buffer is free again on return.
+            scratch = frameScratch,
         )
         return Bitmap.createBitmap(
             pixels,
@@ -367,7 +371,16 @@ class MediaProjectionCaptureService : Service() {
         private const val EXTRA_DATA = "projection_data"
         private const val CHANNEL_ID = "landosol-capture"
         private const val NOTIFICATION_ID = 4101
-        private const val FRAME_INTERVAL_MILLIS = 100L
+        /**
+         * Minimum interval between two converted screen frames.
+         *
+         * The recognition session consumes at most one frame per 500 ms. Converting every 100 ms
+         * produced an 8.3 MB pixel buffer plus an 8.3 MB bitmap five times per consumed frame,
+         * all recycled immediately: the four 2026-09-20 bundles show ~350 GC events and ~10.6 s of
+         * GC pause per run with the heap pinned at 176/200 MB. 300 ms still stays ahead of the
+         * 500 ms consumer, so frame freshness is unchanged.
+         */
+        private const val FRAME_INTERVAL_MILLIS = 300L
         private const val INITIAL_DISPLAY_SAMPLE_INTERVAL_MILLIS = 100L
         // 公共镜像显示器会进入 Accessibility 的有效显示器集合；否则 MuMu 将游戏输入
         // 克隆到捕获显示器后，无障碍只能把手势发往不可触达游戏的默认显示器。
@@ -440,6 +453,7 @@ internal fun rgba8888ToArgbPixels(
     pixelStride: Int,
     rowStride: Int,
     buffer: ByteBuffer,
+    scratch: CaptureFrameScratch? = null,
 ): IntArray {
     require(width > 0 && height > 0) { "屏幕帧尺寸无效：${width}x$height" }
     require(pixelStride >= 4) { "RGBA 像素步长无效：$pixelStride" }
@@ -454,8 +468,8 @@ internal fun rgba8888ToArgbPixels(
     }
 
     val source = buffer.duplicate().apply { position(0) }
-    val rowBytes = ByteArray(width * pixelStride)
-    val pixels = IntArray(width * height)
+    val rowBytes = scratch?.rowBytes(width * pixelStride) ?: ByteArray(width * pixelStride)
+    val pixels = scratch?.pixels(width * height) ?: IntArray(width * height)
     for (row in 0 until height) {
         source.position(row * rowStride)
         source.get(rowBytes, 0, rowBytes.size)
@@ -473,6 +487,31 @@ internal fun rgba8888ToArgbPixels(
         }
     }
     return pixels
+}
+
+/**
+ * Reusable per-frame conversion buffers.
+ *
+ * A 1920x1080 frame needs an 8.3 MB int[] and a ~7.7 KB row buffer, and a fresh pair per frame is
+ * what exhausted the heap in the 2026-09-20 report ("Failed to allocate a 8294416 byte
+ * allocation"). Both buffers are write-before-read for every pixel of every frame and the int[] is
+ * copied by Bitmap.createBitmap before the next frame is converted, so neither survives the call
+ * as live data and both can be pooled. Reuse is confined to one capture callback at a time by the
+ * caller's lock; a size change simply reallocates.
+ */
+internal class CaptureFrameScratch {
+    private var pixels = IntArray(0)
+    private var rowBytes = ByteArray(0)
+
+    fun pixels(size: Int): IntArray {
+        if (pixels.size != size) pixels = IntArray(size)
+        return pixels
+    }
+
+    fun rowBytes(size: Int): ByteArray {
+        if (rowBytes.size != size) rowBytes = ByteArray(size)
+        return rowBytes
+    }
 }
 
 object CaptureStateRegistry {

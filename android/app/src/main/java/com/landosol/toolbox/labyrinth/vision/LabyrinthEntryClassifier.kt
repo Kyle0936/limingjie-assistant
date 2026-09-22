@@ -316,6 +316,20 @@ class LabyrinthEntryPageClassifier(
         // reward popup read as UNKNOWN and the run never closed it). When every modal anchor is
         // strong, the modal owns the frame regardless of what is underneath.
         val itemRewardModalScore = stateScores.getValue(LabyrinthEntryPageState.ITEM_REWARD)
+        // The RESULT banner is a large, full-colour, one-of-a-kind crop: nothing else in the game
+        // scores near 1.0 against it. The run-result page it announces is a modal over the map, so
+        // the map's header and side controls stay visible underneath and score highly, exactly as
+        // for 获得道具 above.
+        //
+        // The page score cannot express that on its own because it is min(logo, close button), and
+        // the button is not always 关闭 — the 加入的角色 summary carries 下一步 in the same pill, so
+        // the button anchor reads ~0.60 and drags the whole page down with it.
+        //
+        // 2026-09-20 bundle 110329: logo 0.995, close button 0.602, so RUN_CLEAR_RESULT scored
+        // 0.602 against NODE_MAP_VIEW's 0.529 — a margin of 0.073 against the required 0.080. The
+        // frame read as UNKNOWN, actions were disabled, and the run sat on the final screen for
+        // the whole recording without pressing 下一步.
+        val runResultLogoScore = anchorScores[EntryAnchorId.RUN_RESULT_LOGO]
         val state = when {
             eventOverlayScore >= maxOf(minScore, EVENT_OVERLAY_MIN_SCORE) && best.key in setOf(
                 LabyrinthEntryPageState.NODE_SELECTION,
@@ -327,6 +341,11 @@ class LabyrinthEntryPageClassifier(
                 LabyrinthEntryPageState.NODE_MAP_VIEW,
                 LabyrinthEntryPageState.ITEM_REWARD,
             ) -> LabyrinthEntryPageState.ITEM_REWARD
+            runResultLogoScore >= RUN_RESULT_LOGO_DECISIVE_SCORE && best.key in setOf(
+                LabyrinthEntryPageState.NODE_SELECTION,
+                LabyrinthEntryPageState.NODE_MAP_VIEW,
+                LabyrinthEntryPageState.RUN_CLEAR_RESULT,
+            ) -> LabyrinthEntryPageState.RUN_CLEAR_RESULT
             best.value < minScore -> LabyrinthEntryPageState.UNKNOWN
             bestRankingScore - secondRankingScore < minMargin -> LabyrinthEntryPageState.UNKNOWN
             else -> best.key
@@ -372,6 +391,15 @@ class LabyrinthEntryPageClassifier(
         const val EVENT_OVERLAY_MIN_SCORE = 0.65
         /** All three item-reward anchors must be this strong before the modal may override the map. */
         const val MODAL_OVERLAY_MIN_SCORE = 0.80
+
+        /**
+         * How strong the RESULT banner must be to own the frame by itself.
+         *
+         * Deliberately near the top of the range: this bypasses the ambiguity margin, so it must
+         * mean "this exact banner is on screen", not "something reddish is up there". Live frames
+         * of the real page score 0.99.
+         */
+        const val RUN_RESULT_LOGO_DECISIVE_SCORE = 0.92
         const val BATTLE_CHALLENGE_STRONG_BUTTON_SCORE = 0.80
         const val BATTLE_TEAM_STRONG_START_BUTTON_SCORE = 0.80
         const val BATTLE_RESULT_STRONG_NEXT_SCORE = 0.80

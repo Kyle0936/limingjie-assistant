@@ -5,6 +5,9 @@ import com.landosol.toolbox.labyrinth.vision.EntryPixelRect
 import com.landosol.toolbox.labyrinth.vision.EntryReferenceRect
 import com.landosol.toolbox.labyrinth.vision.EntryReferenceSize
 import com.landosol.toolbox.labyrinth.vision.LabyrinthBattleCharacterMatch
+import com.landosol.toolbox.labyrinth.vision.LabyrinthBattleElementFilter
+import com.landosol.toolbox.labyrinth.vision.LabyrinthBattleTeamObservation
+import com.landosol.toolbox.labyrinth.vision.LabyrinthBattleTeamRecognitionState
 import com.landosol.toolbox.labyrinth.vision.LabyrinthCharacterMatch
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryFrameResult
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageState
@@ -45,6 +48,13 @@ internal fun labyrinthCanRecoverOrphanNodeMoveConfirmation(
     // state alone is not enough: visible shop chrome must keep ownership with the shop handler.
     if (shopBackgroundVisible) return false
     if (!hasUniqueReachableRouteTarget || confirmationConfidence < 0.85) return false
+    // The shop exit dialog has the same blue-title/white-body/two-button chrome, and while it
+    // fades in the page can classify UNKNOWN even though the shop is still on screen.
+    // 2026-09-18 live: that frame was adopted as a movement confirmation for the route's only
+    // remaining successor (Boss#30701) although no node had ever been tapped; the run then
+    // waited for a Boss entry page, saw the shop, and stopped. Dismissal already refuses to act
+    // while shop chrome is visible; adoption must refuse too.
+    if (shopBackgroundVisible) return false
     return pageState in setOf(
         LabyrinthEntryPageState.NODE_SELECTION,
         LabyrinthEntryPageState.NODE_MAP_VIEW,
@@ -88,6 +98,26 @@ internal fun labyrinthShouldDismissOrphanNodeMoveConfirmation(
 internal const val ORPHAN_MOVE_CONFIRMATION_DISMISS_STABLE_FRAMES = 2
 internal const val MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS = 3
 internal const val ORPHAN_MOVE_CONFIRMATION_DISMISS_INTERVAL_MILLIS = 2_000L
+
+/**
+ * Whether the dismissal budget may be handed back after the dialog went away.
+ *
+ * [MAX_ORPHAN_MOVE_CONFIRMATION_DISMISS_ATTEMPTS] exists to stop pressing 取消 at a dialog that
+ * refuses to close. It was also, accidentally, a per-run cap: the counter only ever reset when a
+ * session error restarted entry navigation, so after three stray dialogs had been cancelled
+ * successfully the fourth was never tapped at all and the run stopped with
+ * "移动确认弹窗多次取消无效，请手动关闭后继续" without a single cancel tap (2026-09-19 report).
+ *
+ * A cleared screen is proof the previous cancel worked, so the budget is restored. Proof means
+ * several consecutive dialog-free frames: one frame can be a fade-out, and a dialog that flickers
+ * must not refill the budget forever.
+ */
+internal fun labyrinthOrphanMoveConfirmationBudgetRestored(
+    clearFrames: Int,
+    requiredClearFrames: Int = ORPHAN_MOVE_CONFIRMATION_CLEAR_FRAMES,
+): Boolean = clearFrames >= requiredClearFrames
+
+internal const val ORPHAN_MOVE_CONFIRMATION_CLEAR_FRAMES = 3
 
 /**
  * A one-choice event has no strategic ambiguity.  Two independent current-frame anchors are
@@ -424,7 +454,18 @@ internal fun labyrinthResumedRunRewardPageOwnsRoute(
 internal fun labyrinthShouldResumeOpeningSelection(
     entryPhaseComplete: Boolean,
     result: LabyrinthEntryFrameResult,
+    /**
+     * Whether a route is already being executed. The opening selector, a shop 选择印记 pick and an
+     * event free pick are the *same* page with the same header, so the header alone cannot tell
+     * them apart -- and only the first of the three belongs to the entry planner.
+     *
+     * 2026-09-22 bundle 173753: a mid-route imprint picker matched this predicate, the run reset
+     * itself to the entry phase, and the entry planner then stared at a picker it has no rule for
+     * while nothing else could own the frame. 599 frames / 408 s, actionCount frozen at 379.
+     */
+    routeActive: Boolean = false,
 ): Boolean = entryPhaseComplete &&
+    !routeActive &&
     result.observation.state == LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION &&
     !labyrinthIsRoleRewardPage(result) &&
     maxOf(
@@ -485,6 +526,76 @@ internal fun labyrinthGuildGrantedRosterMatches(
     )
 }
 
+/**
+ * A plain one-button 确认 dialog over the map: blue title, white body, one pale 确认 button
+ * bottom-centre and nothing else (2026-09-17: 「无法获得报酬」 after an event). It has no page
+ * state of its own, so it reads as UNKNOWN and used to stall the run. The 确认 button is the
+ * same artwork as the date-change popup's, so its template is reused; every other dialog family
+ * that shares the chrome is excluded explicitly: the date-change popup (its title), the session
+ * expiry popup (错误提示 title / 返回标题 button), movement and battle-end dialogs (two or three
+ * buttons, structurally detected).
+ */
+internal fun labyrinthGenericConfirmDialogRect(
+    result: LabyrinthEntryFrameResult,
+    minimumButtonScore: Double = 0.85,
+): EntryPixelRect? {
+    // The dialog sits over the map; the map behind it can still win the page classifier
+    // (2026-09-18 live: NODE_SELECTION with the dialog open). Pages with their own dialogs
+    // (shop, battle, roster) are excluded; the map family and UNKNOWN are eligible.
+    if (result.observation.state !in GENERIC_CONFIRM_DIALOG_PAGES) return null
+    if (result.nodeMoveConfirmation != null || result.battleEndConfirmation != null) return null
+    val scores = result.observation.anchorScores
+    if (scores[EntryAnchorId.SESSION_DATE_CHANGE_TITLE] >= 0.60) return null
+    // The blue title bar is shared with the 错误提示 popup and scores 0.6+ here, so it cannot
+    // discriminate. The button does: 返回标题 is blue, this 确认 is pale.
+    if (scores[EntryAnchorId.SESSION_RETURN_TITLE] >= 0.45) return null
+    val button = result.anchorMatches[EntryAnchorId.SESSION_DATE_CHANGE_CONFIRM] ?: return null
+    return button.rect.takeIf { button.score >= minimumButtonScore }
+}
+
+private val GENERIC_CONFIRM_DIALOG_PAGES = setOf(
+    LabyrinthEntryPageState.UNKNOWN,
+    LabyrinthEntryPageState.NODE_SELECTION,
+    LabyrinthEntryPageState.NODE_MAP_VIEW,
+    LabyrinthEntryPageState.EVENT_CHOICE,
+    LabyrinthEntryPageState.EVENT_ANIMATION,
+)
+
+/**
+ * Event free-role pick: some events ask for one recruit, others for two (全列表 or 职阶列表,
+ * 2026-09-17). The count is not announced anywhere the recogniser reads, but 去邀请 only lights
+ * up once the required number is selected. So: confirm as soon as it is enabled; while it is
+ * still visibly disabled after a pick has settled, pick another, bounded by the shell's three
+ * slots.
+ */
+internal fun labyrinthEventFreeRoleNeedsAnotherPick(
+    selectedCount: Int,
+    inviteEnabled: Boolean,
+    inviteDisabled: Boolean,
+    millisSinceLastSelect: Long,
+    maxPicks: Int = 3,
+    settleMillis: Long = 2_500L,
+): Boolean = !inviteEnabled && inviteDisabled &&
+    selectedCount in 1 until maxPicks &&
+    millisSinceLastSelect >= settleMillis
+
+/**
+ * The 有效效果 filter can list nobody: the roster area shows 「未搜索到该角色。」 and no cards.
+ * 2026-09-18: the scan waited forever for cards/scroll feedback on that page. An empty filtered
+ * roster is a complete answer (zero effective roles), so the scan must finish, not wait. Both
+ * the notice template and the absence of cards are required so a slow-loading list is not
+ * mistaken for an empty one.
+ */
+internal fun labyrinthEffectiveFilterIsEmpty(
+    observation: LabyrinthBattleTeamObservation,
+    emptyNoticeScore: Double,
+    minimumNoticeScore: Double = 0.80,
+): Boolean =
+    observation.currentFilter == LabyrinthBattleElementFilter.EFFECTIVE_EFFECT &&
+        observation.recognitionState == LabyrinthBattleTeamRecognitionState.STABLE &&
+        observation.visibleCharacters.isEmpty() &&
+        emptyNoticeScore >= minimumNoticeScore
+
 internal fun labyrinthRosterReplacesExisting(
     result: LabyrinthEntryFrameResult,
     matches: List<LabyrinthCharacterMatch>,
@@ -517,3 +628,20 @@ private fun toRosterMatch(match: LabyrinthBattleCharacterMatch) = LabyrinthChara
 
 private const val ROLE_PAGE_ANCHOR_MIN_SCORE = 0.45
 private const val REQUIRED_OPENING_ROSTER_SIZE = 3
+
+/**
+ * Whether a committed event-choice tap has waited long enough to be considered lost.
+ *
+ * A real selection leaves the event page within a second or two, so a page that is still the same
+ * event after this long means the tap never landed. Retrying is safe because the event page only
+ * accepts one selection: if the tap did land and the page simply lagged, the page has changed by
+ * the time the retry is planned.
+ */
+internal fun labyrinthEventChoiceCommitExpired(
+    committedAtMillis: Long,
+    nowMillis: Long,
+    retryAfterMillis: Long = EVENT_CHOICE_COMMIT_RETRY_MILLIS,
+): Boolean = committedAtMillis != Long.MIN_VALUE &&
+    (nowMillis - committedAtMillis).coerceAtLeast(0L) >= retryAfterMillis
+
+internal const val EVENT_CHOICE_COMMIT_RETRY_MILLIS = 6_000L

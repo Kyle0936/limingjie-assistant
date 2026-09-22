@@ -71,6 +71,9 @@ class LandosolToolboxApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        // First line of every process log, so a diagnostic bundle always names the build it came
+        // from even when the interesting part of the run happened much later.
+        Log.i(APP_LOG_TAG, "黎明界助手启动：${AppVersion.display}")
         // The dashboard is loopback-only, so it is safe to start for test/release APKs too.
         // Starting it here also makes http://127.0.0.1:8765/ immediately reachable from a
         // browser running inside the emulator, before the first recognition session starts.
@@ -170,6 +173,8 @@ class LandosolToolboxApplication : Application() {
                     skipJoinedCharacters = { labyrinthEntryRecognitionSession.skipRoleRewardJoinedRecognition },
                     nodeSearchHint = { labyrinthEntryRecognitionSession.currentNodeSearchHint() },
                     nodeScanRequested = { labyrinthEntryRecognitionSession.nodeScanRequested() },
+                    nodeScanConsumable = { labyrinthEntryRecognitionSession.nodeScanConsumable() },
+                    rosterCharacterIds = { labyrinthEntryRecognitionSession.rosterCharacterIds() },
                 )::process
             },
             captureStop = { MediaProjectionCaptureService.stop(this) },
@@ -312,7 +317,10 @@ class LandosolToolboxApplication : Application() {
             ),
             captureActive = CaptureStateRegistry::isActive,
             processorFactory = {
-                val processor = AndroidLabyrinthEntryFrameProcessor.create(this)
+                // The reset only needs page/dialog anchors. 2026-09-18 live: with the default
+                // map-node scan on, one map frame behind the expiry popup took 6.9 s, the frame
+                // tracker saw nothing for 10 s and the terminator timed out on a visible popup.
+                val processor = AndroidLabyrinthEntryFrameProcessor.create(this, nodeScanRequested = { false })
                 val processFrame: (CapturedFrame) -> LabyrinthEntryFrameResult = { frame ->
                     frameTracker.trackFrame(frame.bitmap.width, frame.bitmap.height)
                     processor.process(frame).also(frameTracker::record)
@@ -509,6 +517,7 @@ class LandosolToolboxApplication : Application() {
             com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage.RUNNING_LABYRINTH,
             com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage.RECORDING_RESULT,
         )
+        const val APP_LOG_TAG = "LandosolToolbox"
         const val DATABASE_UPDATE_LOG_TAG = "LabyrinthCnDatabase"
         const val GAME_PACKAGE_NAME = "com.bilibili.priconne"
         /** 旧触发点「冒险→黎明界」。已弃用：刷开局后会进入无识别的公会选择页。 */

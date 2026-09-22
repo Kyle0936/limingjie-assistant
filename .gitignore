@@ -49,3 +49,6 @@ __pycache__/
 /log/
 /artifacts/
 /docs/history-session/
+
+# Third-party reference projects (clean-room boundary: behaviour only, never vendored)
+/参考/

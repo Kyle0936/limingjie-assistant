@@ -150,46 +150,55 @@ class LabyrinthRoleRewardChoicePlanner(
 
         // A stale/partial character catalog must not make the whole page unusable.  Ignore only
         // candidates with no scoring profile and choose among the identities we can audit.
-        val scorable = trusted.filter { match -> match.characterId in profiles }
+        val scorable = trusted.mapNotNull { match ->
+            val profile = profiles[match.characterId] ?: return@mapNotNull null
+            val score = profile.effectiveUserScore ?: return@mapNotNull null
+            RankedVisibleRole(match, profile, score)
+        }
         if (scorable.isEmpty()) {
             return LabyrinthRoleRewardChoiceDecision.Wait("事件自由选角：当前可靠角色均缺少评分资料")
         }
-        val ids = scorable.mapNotNull(LabyrinthBattleCharacterMatch::characterId)
-        return when (
-            val choice = roleChoicePolicy.chooseOneRole(
-                candidateIds = ids,
-                acquiredCharacterIds = acquiredCharacterIds,
-                profiles = profiles,
-                context = context,
-                // Full-roster icons can include old/incomplete profiles.  Existing data still
-                // produces an auditable ranking; only the chosen visual identity must be trusted.
-                requireStrictProfiles = false,
-            )
-        ) {
-            is LabyrinthOneRoleDecision.Ready -> {
-                val match = scorable.firstOrNull { it.characterId == choice.chosen.characterId }
-                    ?: return LabyrinthRoleRewardChoiceDecision.Wait("事件自由选角：推荐角色已离开当前视口")
-                val card = match.screenRect
-                val addRect = EntryPixelRect(
-                    left = card.left + (card.width * 0.05f).toInt(),
-                    top = card.top + (card.height * 0.72f).toInt(),
-                    width = (card.width * 0.22f).toInt().coerceAtLeast(4),
-                    height = (card.height * 0.24f).toInt().coerceAtLeast(4),
-                )
-                LabyrinthRoleRewardChoiceDecision.Select(
-                    characterId = choice.chosen.characterId,
-                    displayName = choice.chosen.displayName,
-                    buttonRect = addRect,
-                    explanation = choice.reasons,
-                    actionSafe = true,
-                    safetyNote = null,
-                )
-            }
-
-            is LabyrinthOneRoleDecision.Unavailable ->
-                LabyrinthRoleRewardChoiceDecision.Wait("事件自由选角：${choice.reason}")
-        }
+        // Rank what is on screen by the role's own score and take the top one.
+        //
+        // This deliberately does not run the placement optimizer the three-card reward page uses.
+        // That search enumerates team combinations per candidate, and this page shows a whole
+        // roster rather than three cards, so the cost scales with the page. The list also only
+        // offers roles this run has not got yet, so the question here is simply "which of these
+        // is best", which the role score already answers. Repeated picks re-enter with the
+        // previous choice marked selected/acquired, so multi-pick events walk down this same
+        // ranking in order.
+        val best = scorable.maxWith(
+            compareBy<RankedVisibleRole> { it.score }
+                .thenByDescending { it.match.screenRect.top }
+                .thenByDescending { it.match.screenRect.left },
+        )
+        val card = best.match.screenRect
+        val addRect = EntryPixelRect(
+            left = card.left + (card.width * 0.05f).toInt(),
+            top = card.top + (card.height * 0.72f).toInt(),
+            width = (card.width * 0.22f).toInt().coerceAtLeast(4),
+            height = (card.height * 0.24f).toInt().coerceAtLeast(4),
+        )
+        val runnerUp = scorable.filter { it !== best }.maxByOrNull(RankedVisibleRole::score)
+        return LabyrinthRoleRewardChoiceDecision.Select(
+            characterId = requireNotNull(best.match.characterId),
+            displayName = best.profile.displayName,
+            buttonRect = addRect,
+            explanation = listOfNotNull(
+                "当前页最高分：${best.profile.displayName} ${"%.1f".format(best.score)}",
+                runnerUp?.let { "次选${it.profile.displayName} ${"%.1f".format(it.score)}" },
+                "本页可识别未获得角色${scorable.size}名",
+            ),
+            actionSafe = true,
+            safetyNote = null,
+        )
     }
+
+    private data class RankedVisibleRole(
+        val match: LabyrinthBattleCharacterMatch,
+        val profile: LabyrinthRoleProfile,
+        val score: Double,
+    )
 
     private fun LabyrinthOneRoleDecision.Ready.toSelection(
         candidates: List<LabyrinthCharacterMatch>,

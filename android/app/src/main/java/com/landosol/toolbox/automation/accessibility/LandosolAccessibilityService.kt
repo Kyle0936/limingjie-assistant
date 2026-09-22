@@ -116,7 +116,10 @@ class LandosolAccessibilityService : AccessibilityService() {
             )
         }
         is AutomationAction.Swipe -> {
-            if (action.durationMillis !in 1..MAX_GESTURE_DURATION_MILLIS) {
+            val hold = action.holdMillis.coerceAtLeast(0L)
+            if (action.durationMillis !in 1..MAX_GESTURE_DURATION_MILLIS ||
+                action.durationMillis + hold > MAX_GESTURE_DURATION_MILLIS
+            ) {
                 AutomationBackendResult.Rejected("滑动时长超出范围")
             } else {
                 dispatchGesture(
@@ -126,6 +129,9 @@ class LandosolAccessibilityService : AccessibilityService() {
                     },
                     durationMillis = action.durationMillis,
                     displayId = gestureDisplayId,
+                    holdMillis = hold,
+                    holdX = action.end.x,
+                    holdY = action.end.y,
                 )
             }
         }
@@ -144,12 +150,29 @@ class LandosolAccessibilityService : AccessibilityService() {
         path: Path,
         durationMillis: Long,
         displayId: Int,
-    ): AutomationBackendResult = withTimeoutOrNull(durationMillis + GESTURE_CALLBACK_GRACE_MILLIS) {
+        holdMillis: Long = 0L,
+        holdX: Float = 0f,
+        holdY: Float = 0f,
+    ): AutomationBackendResult = withTimeoutOrNull(durationMillis + holdMillis + GESTURE_CALLBACK_GRACE_MILLIS) {
         suspendCancellableCoroutine { continuation ->
             mainHandler.post {
                 if (!continuation.isActive) return@post
-                val builder = GestureDescription.Builder()
-                    .addStroke(GestureDescription.StrokeDescription(path, 0, durationMillis))
+                // A drag that lifts at travel speed is read by the game as a fling and the
+                // map keeps sliding well past the gesture. Continue the same stroke with a
+                // 1 px, holdMillis-long tail so the velocity tracker samples ~0 before the
+                // pointer goes up, turning the same travel into a plain drag.
+                val mainStroke =
+                    GestureDescription.StrokeDescription(path, 0, durationMillis, holdMillis > 0)
+                val builder = GestureDescription.Builder().addStroke(mainStroke)
+                if (holdMillis > 0) {
+                    val holdPath = Path().apply {
+                        moveTo(holdX, holdY)
+                        lineTo(holdX + 1f, holdY)
+                    }
+                    builder.addStroke(
+                        mainStroke.continueStroke(holdPath, durationMillis, holdMillis, false),
+                    )
+                }
                 // GestureDescription already targets the default display when no id is set.
                 // MuMu exposes the captured game through an additional cloned display and can
                 // acknowledge an explicitly-set display 0 gesture without delivering it to the

@@ -19,8 +19,23 @@ data class LabyrinthEventTextMatch(
 data class LabyrinthEventChoiceVisual(
     val choice: EventChoiceResource,
     val buttonRect: EntryPixelRect,
-    /** Pixel evidence that the mapped button is currently blue/enabled. */
+    /**
+     * Pixel evidence that a choice button is drawn at this rect at all, enabled or not.
+     *
+     * Used for layout/option-count detection. It must stay permissive: a greyed-out button is
+     * still a button, and the layout would be misread if those stopped counting.
+     */
     val buttonConfidence: Double,
+    /**
+     * Pixel evidence that this button is the bright, *usable* blue rather than the greyed blue the
+     * game paints on an option the player cannot afford.
+     *
+     * The two states are genuinely distinguishable and this is the only signal that separates
+     * them: on the 2026-09-21 screenshot (1,550 coins, two options priced 消耗2000) the usable
+     * button samples at a median RGB of (99,166,247) against (82,101,173) and (74,101,173) for
+     * the two unaffordable ones. See [labyrinthEventEnabledButtonConfidence].
+     */
+    val enabledConfidence: Double = buttonConfidence,
 )
 
 data class LabyrinthEventChoiceObservation(
@@ -213,8 +228,42 @@ private fun List<Double>.averageOrZero(): Double = if (isEmpty()) 0.0 else avera
 internal fun labyrinthEventBlueButtonConfidence(
     rect: EntryPixelRect,
     pixelAt: (Int, Int) -> Int,
+): Double = labyrinthEventButtonPixelFraction(rect, pixelAt) { red, green, blue ->
+    blue >= 105 && blue >= red + 18 && blue >= green - 25
+}
+
+/**
+ * Fraction of the button that is the bright blue of an option the player may actually take.
+ *
+ * The game does not hide an unaffordable option, it dims it, and the dimmed fill is still blue
+ * enough to pass [labyrinthEventBlueButtonConfidence]. That is why a run with 1,550 coins kept
+ * tapping a 消耗2000 option: every button looked equally actionable. Measured on that screenshot
+ * with the production 8x16 sample grid:
+ *
+ * | option | median RGB       | this score |
+ * |--------|------------------|------------|
+ * | free   | (99, 166, 247)   | 0.54       |
+ * | 消耗2000 | (82, 101, 173) | 0.00       |
+ * | 消耗2000 | (74, 101, 173) | 0.00       |
+ *
+ * The blue channel alone does not separate them (173 still clears 105); the pair "bright blue and
+ * clearly bluer than red" does, and it leaves the dimmed fill with no qualifying pixel at all.
+ * The single-choice fishing fixture scores 0.55 here, so a usable button is well clear of
+ * [LabyrinthEventChoicePlanner.MINIMUM_ENABLED_BUTTON_CONFIDENCE].
+ */
+internal fun labyrinthEventEnabledButtonConfidence(
+    rect: EntryPixelRect,
+    pixelAt: (Int, Int) -> Int,
+): Double = labyrinthEventButtonPixelFraction(rect, pixelAt) { red, _, blue ->
+    blue >= 200 && blue - red >= 60
+}
+
+private inline fun labyrinthEventButtonPixelFraction(
+    rect: EntryPixelRect,
+    pixelAt: (Int, Int) -> Int,
+    predicate: (red: Int, green: Int, blue: Int) -> Boolean,
 ): Double {
-    var blue = 0
+    var hits = 0
     val rows = 8
     val columns = 16
     for (row in 1..rows) {
@@ -222,13 +271,10 @@ internal fun labyrinthEventBlueButtonConfidence(
         for (column in 1..columns) {
             val x = rect.left + (column.toDouble() * (rect.width - 1) / (columns + 1)).roundToInt()
             val color = pixelAt(x, y)
-            val red = color ushr 16 and 0xff
-            val green = color ushr 8 and 0xff
-            val channelBlue = color and 0xff
-            if (channelBlue >= 105 && channelBlue >= red + 18 && channelBlue >= green - 25) blue++
+            if (predicate(color ushr 16 and 0xff, color ushr 8 and 0xff, color and 0xff)) hits++
         }
     }
-    return blue.toDouble() / (rows * columns)
+    return hits.toDouble() / (rows * columns)
 }
 
 /**

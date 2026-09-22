@@ -52,7 +52,7 @@ class LabyrinthEventChoicePlannerTest {
     }
 
     @Test
-    fun `recommendation remains visible but unsafe while mapped button is not blue`() {
+    fun `recommendation remains visible but unsafe while mapped button is not usable blue`() {
         val decision = planner.decide(
             observation = observation(trusted = true, buttonConfidence = 0.0),
             acquiredCharacterIds = emptySet(),
@@ -62,7 +62,9 @@ class LabyrinthEventChoicePlannerTest {
 
         assertEquals("11082", decision.choiceId)
         assertFalse(decision.actionSafe)
-        assertTrue(decision.safetyNote.orEmpty().contains("蓝色"))
+        // The button is drawn but dimmed: the note must say so, since that is the observable
+        // difference between "no button" and "an option this run cannot afford".
+        assertTrue(decision.safetyNote.orEmpty().contains("灰蓝"))
     }
 
     @Test
@@ -137,5 +139,72 @@ class LabyrinthEventChoicePlannerTest {
             stableFrames = 2,
             trusted = trusted,
         )
+    }
+
+    /**
+     * 2026-09-21 screenshot: 1,550 alpha coins in hand and two of the three options priced
+     * 消耗2000. The game draws a cost-gated button in the same blue as a free one, so the tap is
+     * dispatched, refused, and the page never moves. Retiring the refused option must hand the
+     * run the next-best choice instead of retrying the same dead button until the run stops.
+     */
+    @Test
+    fun `an option the game refused is retired so the next best one runs`() {
+        val event = EventResource(
+            id = "1107",
+            name = "发现了不可思议的石板！要怎么办？",
+            choices = listOf(
+                EventChoiceResource(id = "11073", slot = 1, name = "摸一下", description = "阿尔法金币"),
+                EventChoiceResource(
+                    id = "11072", slot = 2, name = "全力挥击", description = "选择印记",
+                    conditionType = 1, conditionValue = 2000,
+                ),
+                EventChoiceResource(
+                    id = "11071", slot = 3, name = "小心点", description = "迷宫遗物",
+                    conditionType = 1, conditionValue = 2000,
+                ),
+            ),
+        )
+        val observation = LabyrinthEventChoiceObservation(
+            event = event,
+            choices = event.choices.mapIndexed { index, choice ->
+                LabyrinthEventChoiceVisual(
+                    choice = choice,
+                    buttonRect = EntryPixelRect(100 + index * 500, 880, 260, 80),
+                    buttonConfidence = 0.9,
+                )
+            },
+            rawText = "",
+            confidence = 0.95,
+            rivalMargin = 0.2,
+            stableFrames = 3,
+            trusted = true,
+        )
+        val planner = LabyrinthEventChoicePlanner(emptyMap(), LabyrinthTeamOptimizer(LabyrinthTeamScorer(
+            LabyrinthTeamScoringConfig(attributeDamageBonus = (1..5).associateWith { 0.0 }),
+        )))
+        fun decide(rejected: Set<String>) = planner.decide(
+            observation = observation,
+            acquiredCharacterIds = emptySet(),
+            context = LabyrinthRoleDecisionContext(0),
+            relicStacks = emptyMap(),
+            rejectedChoiceIds = rejected,
+        )
+
+        val first = decide(emptySet()) as LabyrinthEventChoiceDecision.Select
+        assertTrue(first.actionSafe)
+
+        // The winner was refused: it must not be recommended for action again, and the decision
+        // must move to a different option rather than repeating the dead one.
+        val second = decide(setOf(first.choiceId)) as LabyrinthEventChoiceDecision.Select
+        assertTrue(second.choiceId != first.choiceId)
+        assertTrue(second.actionSafe)
+
+        val third = decide(setOf(first.choiceId, second.choiceId)) as LabyrinthEventChoiceDecision.Select
+        assertTrue(third.choiceId !in setOf(first.choiceId, second.choiceId))
+        assertTrue(third.actionSafe)
+
+        // Every option refused: stop recommending taps and say so, instead of looping.
+        val exhausted = decide(event.choices.mapTo(mutableSetOf()) { it.id })
+        assertTrue(exhausted is LabyrinthEventChoiceDecision.Wait)
     }
 }

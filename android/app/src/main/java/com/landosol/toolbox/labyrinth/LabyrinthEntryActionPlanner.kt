@@ -157,8 +157,12 @@ class LabyrinthEntryActionPlanner(
         openingRosterBottomMissFrames = 0
     }
 
-    fun configureOpeningRoster(guildId: Int?) {
-        openingRosterPolicy = LabyrinthOpeningRosterCatalog.policyFor(guildId)
+    fun configureOpeningRoster(
+        guildId: Int?,
+        openingRosters: Map<Int, List<List<String>>> = emptyMap(),
+        displayNameFor: (String) -> String? = { null },
+    ) {
+        openingRosterPolicy = LabyrinthOpeningRosterCatalog.policyFor(guildId, openingRosters, displayNameFor)
         selectedOpeningCharacterIds.clear()
         pendingOpeningCharacterId = null
         pendingOpeningCharacterName = null
