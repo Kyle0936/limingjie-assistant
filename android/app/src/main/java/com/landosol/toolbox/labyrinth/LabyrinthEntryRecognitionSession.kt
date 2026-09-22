@@ -222,12 +222,11 @@ internal fun labyrinthShouldRerollAfterBattleFailure(
 ): Boolean = rerollAfterThreeFailures && battleRetryCount >= 2
 
 /**
- * A batch-owned run that exhausts its retries is a formal FAILED_MAX_RETRY, never a stop on the
- * failure page. 2026-09-17 live (batch 20260917-031313 run001): 「刷开局」 was off in the
- * strategy, so the EX retry limit fell into the interactive "保留在失败页" stop, the batch
- * received FatalUnknown and halted FAILED with the game parked on 战斗失败. The batch owns
- * the reroll and the failure-page invalidation, so the run only has to end with the right
- * outcome; the strategy toggle governs interactive runs alone.
+ * A batch-owned run that exhausts its retries must leave the failure page through the game's
+ * explicit retreat flow. The batch cannot simply stop while the game is still on 战斗失败: that
+ * strands the shared screen capture on a modal and makes the next reroll ambiguous. Before this
+ * limit is reached, batch runs deliberately use the same re-plan / retry behaviour as interactive
+ * runs, so a later-area run is not discarded after one recoverable defeat.
  */
 internal fun labyrinthBatchOwnedRunEndsAtRetryLimit(
     batchOwnsRun: Boolean,
@@ -4559,19 +4558,12 @@ class LabyrinthEntryRecognitionSession(
             return
         }
         if (pageState == LabyrinthEntryPageState.BATTLE_FAILED) {
-            // A batch-owned attempt must retire a failed maze run in the game before the next
-            // reroll begins. Retrying only returns to the challenge page and can loop forever.
-            // The later tap planner consumes the recogniser's exact three-step dialog sequence:
-            // 结束 -> 撤退（无报酬） -> 确认.
-            if (!_state.value.dryRun && currentRunId != null) {
-                if (result.battleFailure == null && result.battleEndConfirmation == null) {
-                    finishFromPlanner(
-                        sessionId,
-                        "战斗失败页缺少结束按钮及撤退确认结构；不执行固定坐标点击",
-                    )
-                    return
-                }
-            } else {
+            // A batch starts with the normal retry path. Every successful retry records the failed
+            // team signature and sends the next team-selection page through retryRecommendation,
+            // so the planner can switch composition rather than abandon a deep run immediately.
+            // Only after the same retry budget is exhausted does the tap planner advance the
+            // verified in-game chain: 结束 -> 撤退（无报酬） -> 确认.
+            val batchOwnedRun = !_state.value.dryRun && currentRunId != null
             val context = combatContext
             if (context == null) {
                 finishFromPlanner(sessionId, "已识别战斗失败页，但缺少本次战斗上下文；未自动点击结束或重新挑战")
@@ -4591,7 +4583,7 @@ class LabyrinthEntryRecognitionSession(
                     bossTeamMode == LabyrinthBossTeamMode.SINGLE_TEAM &&
                     singleBossFallbackToMultiAfterThreeFailures
             if (
-                !_state.value.dryRun &&
+                !batchOwnedRun &&
                 !pendingSingleBossFallbackToMulti &&
                 !singleBossFallbackOwnsFailurePolicy &&
                 labyrinthShouldRerollAfterBattleFailure(
@@ -4610,28 +4602,15 @@ class LabyrinthEntryRecognitionSession(
                 rerollAfterThreeFailures = rerollAfterThreeBattleFailures,
                 singleBossFallbackRetryCount = singleBossRetryCountBeforeMulti.takeIf {
                     singleBossFallbackToMultiAfterThreeFailures &&
-                        bossTeamMode == LabyrinthBossTeamMode.SINGLE_TEAM
+                    bossTeamMode == LabyrinthBossTeamMode.SINGLE_TEAM
                 },
             )
-            if (
-                !_state.value.dryRun &&
-                !pendingSingleBossFallbackToMulti &&
-                labyrinthBatchOwnedRunEndsAtRetryLimit(
-                    batchOwnsRun = currentRunId != null,
-                    battleRetryCount = battleRetryCount,
-                    retryLimit = retryLimit,
-                )
-            ) {
-                // The batch rerolls and invalidates the failure page itself; the run just ends
-                // with FAILED_MAX_RETRY and leaves capture alive for the next run.
-                finishFromPlannerAndRequestReroll(
-                    sessionId,
-                    "${labyrinthBattleKindLabel(context.kind)}已达到自动重试上限：" +
-                        "已重试${battleRetryCount}次；本局按失败计入批次",
-                )
-                return
-            }
-            if (!pendingSingleBossFallbackToMulti && battleRetryCount >= retryLimit) {
+            val batchRetryLimitReached = labyrinthBatchOwnedRunEndsAtRetryLimit(
+                batchOwnsRun = batchOwnedRun && !pendingSingleBossFallbackToMulti,
+                battleRetryCount = battleRetryCount,
+                retryLimit = retryLimit,
+            )
+            if (!batchOwnedRun && !pendingSingleBossFallbackToMulti && battleRetryCount >= retryLimit) {
                 finishFromPlanner(
                     sessionId,
                     "${labyrinthBattleKindLabel(context.kind)}已达到自动重试上限：" +
@@ -4639,10 +4618,16 @@ class LabyrinthEntryRecognitionSession(
                 )
                 return
             }
-            if (result.battleFailure == null) {
+            if (!batchRetryLimitReached && result.battleFailure == null) {
                 finishFromPlanner(sessionId, "战斗失败页按钮结构未达到安全线；不执行固定坐标重试")
                 return
             }
+            if (batchRetryLimitReached && result.battleFailure == null && result.battleEndConfirmation == null) {
+                finishFromPlanner(
+                    sessionId,
+                    "战斗已达到重试上限，但未识别结束或撤退确认按钮；不执行固定坐标点击",
+                )
+                return
             }
         }
         if (pageState == LabyrinthEntryPageState.BATTLE_TEAM_SELECTION) {
@@ -5116,8 +5101,27 @@ class LabyrinthEntryRecognitionSession(
 
             LabyrinthEntryPageState.BATTLE_TEAM_SELECTION -> null
 
-            LabyrinthEntryPageState.BATTLE_FAILED ->
-                if (!_state.value.dryRun && currentRunId != null) {
+            LabyrinthEntryPageState.BATTLE_FAILED -> {
+                val context = combatContext
+                val retryLimit = context?.let { current ->
+                    labyrinthEffectiveBattleRetryLimit(
+                        kind = current.kind,
+                        rerollAfterThreeFailures = rerollAfterThreeBattleFailures,
+                        singleBossFallbackRetryCount = singleBossRetryCountBeforeMulti.takeIf {
+                            singleBossFallbackToMultiAfterThreeFailures &&
+                                bossTeamMode == LabyrinthBossTeamMode.SINGLE_TEAM
+                        },
+                    )
+                }
+                val retreatAfterRetries = retryLimit != null &&
+                    labyrinthBatchOwnedRunEndsAtRetryLimit(
+                        batchOwnsRun = !_state.value.dryRun &&
+                            currentRunId != null &&
+                            !pendingSingleBossFallbackToMulti,
+                        battleRetryCount = battleRetryCount,
+                        retryLimit = retryLimit,
+                    )
+                if (retreatAfterRetries) {
                     when (result.battleEndConfirmation?.stage) {
                         com.landosol.toolbox.labyrinth.vision.LabyrinthBattleEndConfirmationStage.CHOICE ->
                             LabyrinthPostEntryTapPlan(
@@ -5156,6 +5160,7 @@ class LabyrinthEntryRecognitionSession(
                         }
                     }
                 }
+            }
 
             LabyrinthEntryPageState.BATTLE_CHALLENGE ->
                 if (
