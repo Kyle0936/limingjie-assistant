@@ -145,6 +145,16 @@ class LabyrinthPageRuntimePolicyTest {
                 hasUniqueReachableRouteTarget = true,
             ),
         )
+        // A shop exit can transiently classify as UNKNOWN while still satisfying the generic
+        // two-button detector. Visible shop chrome owns it even with one reachable next node.
+        assertFalse(
+            labyrinthCanRecoverOrphanNodeMoveConfirmation(
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                confirmationConfidence = 0.95,
+                hasUniqueReachableRouteTarget = true,
+                shopBackgroundVisible = true,
+            ),
+        )
     }
 
     @Test

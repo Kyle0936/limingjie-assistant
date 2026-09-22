@@ -38,7 +38,12 @@ internal fun labyrinthCanRecoverOrphanNodeMoveConfirmation(
     pageState: LabyrinthEntryPageState,
     confirmationConfidence: Double,
     hasUniqueReachableRouteTarget: Boolean,
+    shopBackgroundVisible: Boolean = false,
 ): Boolean {
+    // The shop-exit confirmation uses the same blue-title/white-body/two-button chrome as a map
+    // move confirmation. During the first transition frame it can classify as UNKNOWN, so page
+    // state alone is not enough: visible shop chrome must keep ownership with the shop handler.
+    if (shopBackgroundVisible) return false
     if (!hasUniqueReachableRouteTarget || confirmationConfidence < 0.85) return false
     return pageState in setOf(
         LabyrinthEntryPageState.NODE_SELECTION,

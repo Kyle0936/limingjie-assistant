@@ -1792,12 +1792,17 @@ class LabyrinthEntryRecognitionSession(
             return
         }
         if (!current.dryRun && result.nodeMoveConfirmation != null && pendingNodeTransition == null) {
+            // Read persistent chrome before considering the generic modal recovery. A shop exit
+            // confirmation can briefly classify as UNKNOWN but still has the shop behind it; it
+            // must never manufacture a pending route transition to the next Boss/node.
+            val shopBackground = labyrinthShopBackgroundVisible(result)
             val recoverableTarget = nodeSession?.uniqueReachableRouteTarget()
             val canRecover = recoverableTarget != null &&
                 labyrinthCanRecoverOrphanNodeMoveConfirmation(
                     pageState = pageState,
                     confirmationConfidence = result.nodeMoveConfirmation.confidence,
                     hasUniqueReachableRouteTarget = true,
+                    shopBackgroundVisible = shopBackground,
                 )
             if (canRecover && recoverableTarget != null) {
                 recoverPendingNodeTransitionFromMoveConfirmation(
@@ -1815,7 +1820,6 @@ class LabyrinthEntryRecognitionSession(
                 // the node search below must not run; press the dialog's cancel button instead.
                 // The shop exit dialog shares this chrome; while shop controls are visible the
                 // dialog is the shop handler's and must be left alone.
-                val shopBackground = labyrinthShopBackgroundVisible(result)
                 if (shopBackground) {
                     orphanMoveConfirmationStableFrames = 0
                 } else {
