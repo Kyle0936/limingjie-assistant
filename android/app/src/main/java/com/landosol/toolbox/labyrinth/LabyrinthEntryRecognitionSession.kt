@@ -145,6 +145,19 @@ internal fun labyrinthEffectiveScanFrameEvidence(
 }
 
 /**
+ * The official \"有效效果\" filter is allowed to have no matches. In that case its empty
+ * viewport is not a scrolling failure. Rewinding cannot reveal a character and used to loop
+ * forever, so finish the evidence pass and restore \"全部\" before normal team planning resumes.
+ */
+internal fun labyrinthHasEmptyEffectiveFilterResult(
+    observation: com.landosol.toolbox.labyrinth.vision.LabyrinthBattleTeamObservation,
+): Boolean =
+    observation.recognitionState == LabyrinthBattleTeamRecognitionState.STABLE &&
+        observation.currentFilter == LabyrinthBattleElementFilter.EFFECTIVE_EFFECT &&
+        observation.visibleCharacters.isEmpty() &&
+        observation.selectedCharacters.size >= 5
+
+/**
  * The node session advances the persisted cursor to the next area's START as soon as an area Boss
  * is entered. After an app restart the game may still be on that Boss challenge/team page, so the
  * immediately preceding selected-route Boss is still the active encounter until a later node is
@@ -2666,6 +2679,20 @@ class LabyrinthEntryRecognitionSession(
                     return
                 }
 
+                // \"未搜索到该角色\" is a valid result for the official effective-effect
+                // filter, not evidence that the roster has scrolled away from its top. Restore
+                // \"全部\" and let the normal recommendation/execution path decide the next
+                // action; never bypass that path by clicking 战斗开始 directly.
+                if (labyrinthHasEmptyEffectiveFilterResult(observation)) {
+                    effectiveCharacterScanStage = LabyrinthEffectiveCharacterScanStage.RETURN_TO_ALL
+                    effectiveRosterSearch.reset()
+                    effectiveCharacterScanScrollActions = 0
+                    _state.value = _state.value.copy(
+                        message = "有效效果筛选无角色：停止扫描并恢复全部筛选，继续常规编组流程",
+                    )
+                    return
+                }
+
                 val frameEvidence = labyrinthEffectiveScanFrameEvidence(observation)
                 val unsafe = frameEvidence.unsafeVisibleCharacters
                 synchronized(effectiveExCharacterIds) {
@@ -3288,23 +3315,32 @@ class LabyrinthEntryRecognitionSession(
         val accountId = activeRunAccountId
         actionScope.launch {
             if (activeSessionId == sessionId) {
-                // The next run reuses this projection; only the run ends here.
-                pendingTerminalOutcome = LabyrinthRunTerminalOutcome.FAILED_MAX_RETRY
-                val stopped = stop("$reason；正在切换到刷开局", releaseCapture = false)
-                if (stopped && accountId != null) {
-                    val started = runCatching { rerollRequester?.invoke(accountId) == true }.getOrDefault(false)
-                    if (!started) {
-                        _state.value = _state.value.copy(
-                            message = "$reason；自动重刷启动失败，请手动进入刷开局页面继续",
-                        )
-                    }
-                } else if (stopped) {
-                    _state.value = _state.value.copy(
-                        message = "$reason；缺少当前账号，未自动启动重刷",
-                    )
-                }
+                stopAndRequestReroll(sessionId, accountId, reason)
             }
             actionInFlight.set(false)
+        }
+    }
+
+    /** Stops only after the game-side retreat has been confirmed, then reuses the same capture. */
+    private suspend fun stopAndRequestReroll(
+        sessionId: AutomationSessionId,
+        accountId: Long?,
+        reason: String,
+    ) {
+        if (activeSessionId != sessionId) return
+        pendingTerminalOutcome = LabyrinthRunTerminalOutcome.FAILED_MAX_RETRY
+        val stopped = stop("$reason；正在切换到刷开局", releaseCapture = false)
+        if (stopped && accountId != null) {
+            val started = runCatching { rerollRequester?.invoke(accountId) == true }.getOrDefault(false)
+            if (!started) {
+                _state.value = _state.value.copy(
+                    message = "$reason；自动重刷启动失败，请手动进入刷开局页面继续",
+                )
+            }
+        } else if (stopped) {
+            _state.value = _state.value.copy(
+                message = "$reason；缺少当前账号，未自动启动重刷",
+            )
         }
     }
 
@@ -4060,6 +4096,19 @@ class LabyrinthEntryRecognitionSession(
             return
         }
         if (pageState == LabyrinthEntryPageState.BATTLE_FAILED) {
+            // A batch-owned attempt must retire a failed maze run in the game before the next
+            // reroll begins. Retrying only returns to the challenge page and can loop forever.
+            // The later tap planner consumes the recogniser's exact three-step dialog sequence:
+            // 结束 -> 撤退（无报酬） -> 确认.
+            if (!_state.value.dryRun && currentRunId != null) {
+                if (result.battleFailure == null && result.battleEndConfirmation == null) {
+                    finishFromPlanner(
+                        sessionId,
+                        "战斗失败页缺少结束按钮及撤退确认结构；不执行固定坐标点击",
+                    )
+                    return
+                }
+            } else {
             val context = combatContext
             if (context == null) {
                 finishFromPlanner(sessionId, "已识别战斗失败页，但缺少本次战斗上下文；未自动点击结束或重新挑战")
@@ -4130,6 +4179,7 @@ class LabyrinthEntryRecognitionSession(
             if (result.battleFailure == null) {
                 finishFromPlanner(sessionId, "战斗失败页按钮结构未达到安全线；不执行固定坐标重试")
                 return
+            }
             }
         }
         if (pageState == LabyrinthEntryPageState.BATTLE_TEAM_SELECTION) {
@@ -4574,19 +4624,43 @@ class LabyrinthEntryRecognitionSession(
             LabyrinthEntryPageState.BATTLE_TEAM_SELECTION -> null
 
             LabyrinthEntryPageState.BATTLE_FAILED ->
-                result.battleFailure?.let { failure ->
-                    if (pendingSingleBossFallbackToMulti) {
-                        LabyrinthPostEntryTapPlan(
-                            LabyrinthPostEntryActionKind.BATTLE_RETRY_SWITCH_MULTI,
-                            "Boss单队达到设定重试次数：切换多队重新挑战",
-                            failure.retryButtonRect,
-                        )
-                    } else {
-                        LabyrinthPostEntryTapPlan(
-                            LabyrinthPostEntryActionKind.BATTLE_RETRY,
-                            "战斗失败：重新挑战",
-                            failure.retryButtonRect,
-                        )
+                if (!_state.value.dryRun && currentRunId != null) {
+                    when (result.battleEndConfirmation?.stage) {
+                        com.landosol.toolbox.labyrinth.vision.LabyrinthBattleEndConfirmationStage.CHOICE ->
+                            LabyrinthPostEntryTapPlan(
+                                LabyrinthPostEntryActionKind.BATTLE_RETREAT_NO_REWARD,
+                                "战斗失败：撤退（无报酬）",
+                                requireNotNull(result.battleEndConfirmation).advanceButtonRect,
+                            )
+                        com.landosol.toolbox.labyrinth.vision.LabyrinthBattleEndConfirmationStage.RETREAT_CONFIRM ->
+                            LabyrinthPostEntryTapPlan(
+                                LabyrinthPostEntryActionKind.BATTLE_CONFIRM_RETREAT,
+                                "战斗失败：确认撤退并开始下一轮",
+                                requireNotNull(result.battleEndConfirmation).advanceButtonRect,
+                            )
+                        null -> result.battleFailure?.let { failure ->
+                            LabyrinthPostEntryTapPlan(
+                                LabyrinthPostEntryActionKind.BATTLE_END_AFTER_FAILURE,
+                                "战斗失败：结束本局",
+                                failure.endButtonRect,
+                            )
+                        }
+                    }
+                } else {
+                    result.battleFailure?.let { failure ->
+                        if (pendingSingleBossFallbackToMulti) {
+                            LabyrinthPostEntryTapPlan(
+                                LabyrinthPostEntryActionKind.BATTLE_RETRY_SWITCH_MULTI,
+                                "Boss单队达到设定重试次数：切换多队重新挑战",
+                                failure.retryButtonRect,
+                            )
+                        } else {
+                            LabyrinthPostEntryTapPlan(
+                                LabyrinthPostEntryActionKind.BATTLE_RETRY,
+                                "战斗失败：重新挑战",
+                                failure.retryButtonRect,
+                            )
+                        }
                     }
                 }
 
@@ -5163,6 +5237,8 @@ class LabyrinthEntryRecognitionSession(
             lastCharacterAcquisitionActionAt = timestampMillis
         }
         if (kind == LabyrinthPostEntryActionKind.ADVANCE_FINAL_SETTLEMENT) postBossUnknownAttempts++
+        val completeRetreatAndReroll = kind == LabyrinthPostEntryActionKind.BATTLE_CONFIRM_RETREAT
+        val rerollAccountId = activeRunAccountId
         actionScope.launch {
             val executor = actionExecutor
             val tap = AutomationAction.Tap(
@@ -5331,6 +5407,17 @@ class LabyrinthEntryRecognitionSession(
                             message = "已执行：$label",
                         )
                         overlayCoordinator.update(sessionId, buildOverlayPresentation(sessionId))
+                    }
+                    if (completeRetreatAndReroll && activeSessionId == sessionId) {
+                        // The gesture executor reports completion before the game has necessarily
+                        // committed the server-side retreat. Keep this session alive briefly so
+                        // the confirm click lands, then begin the next batch attempt.
+                        delay(BATTLE_RETREAT_CONFIRM_SETTLE_MILLIS)
+                        stopAndRequestReroll(
+                            sessionId = sessionId,
+                            accountId = rerollAccountId,
+                            reason = "战斗失败已选择撤退（无报酬）并确认，本局按失败计入批次",
+                        )
                     }
                 }
 
@@ -7791,6 +7878,7 @@ class LabyrinthEntryRecognitionSession(
         const val MAX_EFFECTIVE_SCAN_SCROLL_ACTIONS = 48
         const val EFFECTIVE_SCAN_SCROLL_DURATION_MILLIS = 360L
         const val EFFECTIVE_SCAN_UNSAFE_SETTLE_MILLIS = 1_500L
+        const val BATTLE_RETREAT_CONFIRM_SETTLE_MILLIS = 1_000L
         val EFFECTIVE_SCAN_CONTEXT_IDS = listOf("__effective-effect-scan__")
         const val EX_ENCOUNTER_OPEN_DETAIL_TIMEOUT_MILLIS = 5_000L
         const val EX_ENCOUNTER_DETAIL_TIMEOUT_MILLIS = 10_000L

@@ -18,6 +18,38 @@ import org.junit.Test
 class LabyrinthBattleTeamSelectionPlanTest {
 
     @Test
+    fun `empty effective filter ends the scan only after a stable complete team is visible`() {
+        val completeTeam = (1..5).map { index ->
+            match("current_member_$index", "$index", selected = true)
+        }
+
+        assertTrue(
+            labyrinthHasEmptyEffectiveFilterResult(
+                observation(
+                    currentFilter = LabyrinthBattleElementFilter.EFFECTIVE_EFFECT,
+                    selected = completeTeam,
+                ),
+            ),
+        )
+        assertFalse(
+            labyrinthHasEmptyEffectiveFilterResult(
+                observation(
+                    currentFilter = LabyrinthBattleElementFilter.EFFECTIVE_EFFECT,
+                    selected = completeTeam.take(4),
+                ),
+            ),
+        )
+        assertFalse(
+            labyrinthHasEmptyEffectiveFilterResult(
+                observation(
+                    currentFilter = LabyrinthBattleElementFilter.ALL,
+                    selected = completeTeam,
+                ),
+            ),
+        )
+    }
+
+    @Test
     fun `effective scan tolerates selected dimmed cards but keeps ordinary unsafe cards blocking`() {
         val selectedMember = match("current_member_1", "B", selected = true)
         val safeVisible = match("visible-A", "A")
