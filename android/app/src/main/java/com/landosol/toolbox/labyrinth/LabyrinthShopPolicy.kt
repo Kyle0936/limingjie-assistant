@@ -65,11 +65,18 @@ class LabyrinthShopPolicy(
         // Exact role identity is required before spending coins on an imprint. A coarse
         // ROLE_IMPRINT classification is still useful because it proves the slot is not a relic
         // and can recover an exhausted stock cycle after an app restart/reinstall.
-        val purchasableRoleImprint = items.firstOrNull { item ->
-            item.categoryState == LabyrinthShopCategoryState.READY &&
-                item.purchasable && item.kind == LabyrinthShopItemKind.ROLE_IMPRINT &&
-                !item.roleImprintLabel.isNullOrBlank()
-        }
+        // Prefer the random imprint over the choice imprint of the same role class. Both grant a
+        // character of that class, but the choice variant costs well over twice as much (2026-09-22
+        // shop: 随机印记 780 against 选择印记 1,820) and it opens a full-roster picker the run then
+        // has to answer. Cheaper and fewer moving parts for the same reward, so it goes first;
+        // within one variant the leftmost slot still wins, keeping the pick deterministic.
+        val purchasableRoleImprint = items
+            .filter { item ->
+                item.categoryState == LabyrinthShopCategoryState.READY &&
+                    item.purchasable && item.kind == LabyrinthShopItemKind.ROLE_IMPRINT &&
+                    !item.roleImprintLabel.isNullOrBlank()
+            }
+            .minWithOrNull(compareBy({ it.choiceRoleImprint }, { it.slotId }))
 
         // The game exposes exactly three relic goods per stock cycle. In a continuous session the
         // counter below reaches 3 from purchase-complete commits. If the app is restarted while

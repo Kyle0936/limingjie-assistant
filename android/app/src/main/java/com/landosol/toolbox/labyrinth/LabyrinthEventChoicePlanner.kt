@@ -34,9 +34,21 @@ class LabyrinthEventChoicePlanner(
         acquiredCharacterIds: Set<String>,
         context: LabyrinthRoleDecisionContext,
         relicStacks: Map<LabyrinthRelicMark, Int>,
+        /**
+         * Options already tapped on this visit that left the page unchanged. The game renders a
+         * cost-gated option in the same blue as a free one (2026-09-21 screenshot: 1,550 coins in
+         * hand, two options priced 消耗2000, all three buttons blue), so pixels cannot predict the
+         * refusal -- only the refusal itself can. Retiring them turns a hang into the next choice.
+         */
+        rejectedChoiceIds: Set<String> = emptySet(),
     ): LabyrinthEventChoiceDecision {
         val event = observation.event
         if (event.choices.isEmpty()) return LabyrinthEventChoiceDecision.Wait("事件${event.id}没有可选项")
+        if (rejectedChoiceIds.isNotEmpty() && event.choices.all { it.id in rejectedChoiceIds }) {
+            return LabyrinthEventChoiceDecision.Wait(
+                "事件${event.id}的${event.choices.size}个选项都已点击且页面未变化，没有可执行选项",
+            )
+        }
         val canonicalAcquired = acquiredCharacterIds.map(::canonicalLabyrinthRoleId).toSet()
         val cacheKey = buildString {
             append(event.id)
@@ -68,22 +80,29 @@ class LabyrinthEventChoicePlanner(
         // catalog first and only then checking the winning button used to pin the workflow on a
         // grey high-utility option forever.  Prefer the best option that is *currently* blue; if
         // none is actionable, keep the global recommendation visible but unsafe for diagnostics.
-        val best = ranked.firstOrNull { evaluated ->
+        val selectable = ranked.filterNot { it.choice.id in rejectedChoiceIds }.ifEmpty { ranked }
+        // "Currently usable" means the bright blue, not merely blue: the game dims an option the
+        // player cannot afford but keeps it blue, so the dimmed fill used to pass this filter and
+        // the run tapped a 消耗2000 option holding 1,550 coins until it gave up.
+        val best = selectable.firstOrNull { evaluated ->
             visualsByChoiceId[evaluated.choice.id]
-                ?.buttonConfidence
-                ?.let { it >= MINIMUM_BLUE_BUTTON_CONFIDENCE }
+                ?.enabledConfidence
+                ?.let { it >= MINIMUM_ENABLED_BUTTON_CONFIDENCE }
                 ?: false
-        } ?: ranked.first()
+        } ?: selectable.first()
         val visual = observation.choices.firstOrNull { it.choice.id == best.choice.id }
             ?: return LabyrinthEventChoiceDecision.Wait("事件${event.id}推荐项${best.choice.id}没有按钮映射")
         val missingOwnedProfiles = canonicalAcquired.filterNot(profiles::containsKey)
         val rolePoolChoice = best.choice.id.toIntOrNull() in ROLE_CLASS_BY_CHOICE
-        val buttonEnabled = visual.buttonConfidence >= MINIMUM_BLUE_BUTTON_CONFIDENCE
-        val actionSafe = observation.trusted && buttonEnabled &&
+        val buttonEnabled = visual.enabledConfidence >= MINIMUM_ENABLED_BUTTON_CONFIDENCE
+        val rejected = best.choice.id in rejectedChoiceIds
+        val actionSafe = observation.trusted && buttonEnabled && !rejected &&
             (!rolePoolChoice || missingOwnedProfiles.isEmpty())
         val safetyNote = when {
             !observation.trusted -> "事件文字尚未连续稳定确认"
-            !buttonEnabled -> "推荐按钮未检测到蓝色可用状态(${"%.2f".format(visual.buttonConfidence)})"
+            rejected -> "选项${best.choice.id}已点击且页面未变化，不再重复点击"
+            !buttonEnabled ->
+                "推荐按钮为灰蓝不可用状态(亮蓝${"%.2f".format(visual.enabledConfidence)})，通常是金币或条件不足"
             rolePoolChoice && missingOwnedProfiles.isNotEmpty() ->
                 "已有角色资料缺失：${missingOwnedProfiles.sorted().joinToString()}"
             else -> null
@@ -366,6 +385,14 @@ class LabyrinthEventChoicePlanner(
         const val CHAIN_FAILURE_COIN = 500
         const val EVENT_OWNED_ROSTER_LIMIT = 12
         const val MINIMUM_BLUE_BUTTON_CONFIDENCE = 0.18
+        /**
+         * Bright-blue fraction a button must reach to count as usable.
+         *
+         * Measured: usable buttons score 0.54-0.55 (2026-09-21 stone-slab screenshot and the
+         * single-choice fishing fixture), unaffordable ones exactly 0.00. 0.35 sits in the middle
+         * of that gap with room for a differently sized button or a compressed screenshot.
+         */
+        const val MINIMUM_ENABLED_BUTTON_CONFIDENCE = 0.35
         const val MAX_CACHE_ENTRIES = 12
     }
 }

@@ -122,6 +122,37 @@ class LabyrinthEventFlowRegressionTest {
     }
 
     @Test
+    fun `an unaffordable option is greyed blue and only the usable one scores as enabled`() {
+        // The stone-slab event with 1,550 coins in hand: option 1 is free, options 2 and 3 cost
+        // 2000. The game paints all three blue, so the permissive blue score cannot separate
+        // them and the run kept tapping an option the game refuses. Colours below are the medians
+        // measured on that screenshot with the production 8x16 sample grid.
+        val usable = 0xFF63A6F7.toInt()
+        val greyed = 0xFF5265AD.toInt()
+        val rect = EntryPixelRect(0, 0, 200, 80)
+        fun scores(color: Int) = labyrinthEventBlueButtonConfidence(rect) { _, _ -> color } to
+            labyrinthEventEnabledButtonConfidence(rect) { _, _ -> color }
+
+        val (usableBlue, usableEnabled) = scores(usable)
+        val (greyedBlue, greyedEnabled) = scores(greyed)
+        // Both read as "a blue button is drawn here", which is what layout detection needs.
+        assertTrue("usable=$usableBlue greyed=$greyedBlue", usableBlue >= 0.18 && greyedBlue >= 0.18)
+        // Only the usable one reads as actionable.
+        assertTrue("usable=$usableEnabled", usableEnabled >= 0.35)
+        assertTrue("greyed=$greyedEnabled", greyedEnabled < 0.35)
+    }
+
+    @Test
+    fun `usable event buttons stay well above the enabled threshold on real screenshots`() {
+        val frame = fixture("event-single-choice-fishing-20260911.png")
+        val document = json.decodeFromString<LabyrinthEventOcrDocument>(File(assets, "labyrinth-event-ocr.json").readText())
+        val mapper = LabyrinthEventLayoutMapper(document.layouts)
+        val rect = mapper.buttonRects(1, frame.width, frame.height).single()
+        val enabled = labyrinthEventEnabledButtonConfidence(rect) { x, y -> frame[x, y] }
+        assertTrue("enabled=$enabled", enabled >= 0.35)
+    }
+
+    @Test
     fun `guild OCR crop contains complete reward line and button centers land on choice buttons`() {
         val frame = fixture("event-guild-tank-healer-20260913.png")
         val document = json.decodeFromString<LabyrinthEventOcrDocument>(File(assets, "labyrinth-event-ocr.json").readText())

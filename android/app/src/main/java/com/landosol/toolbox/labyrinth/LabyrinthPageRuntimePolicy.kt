@@ -447,7 +447,18 @@ internal fun labyrinthResumedRunRewardPageOwnsRoute(
 internal fun labyrinthShouldResumeOpeningSelection(
     entryPhaseComplete: Boolean,
     result: LabyrinthEntryFrameResult,
+    /**
+     * Whether a route is already being executed. The opening selector, a shop 选择印记 pick and an
+     * event free pick are the *same* page with the same header, so the header alone cannot tell
+     * them apart -- and only the first of the three belongs to the entry planner.
+     *
+     * 2026-09-22 bundle 173753: a mid-route imprint picker matched this predicate, the run reset
+     * itself to the entry phase, and the entry planner then stared at a picker it has no rule for
+     * while nothing else could own the frame. 599 frames / 408 s, actionCount frozen at 379.
+     */
+    routeActive: Boolean = false,
 ): Boolean = entryPhaseComplete &&
+    !routeActive &&
     result.observation.state == LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION &&
     !labyrinthIsRoleRewardPage(result) &&
     maxOf(

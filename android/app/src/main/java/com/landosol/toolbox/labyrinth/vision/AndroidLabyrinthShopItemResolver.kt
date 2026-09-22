@@ -43,8 +43,16 @@ class AndroidLabyrinthShopItemResolver(
             } else {
                 // Retire this crop variant only once its OCR actually completed (read != null),
                 // not on a fixed interval: the reads share one serial queue and a time clock was
-                // failing titles that were still being processed.
-                categories.noteVariantOutcome(item.slotId, fingerprint, variant, read != null, now)
+                // failing titles that were still being processed. The engine's own last answer
+                // tells the difference between "queued" and "dead".
+                categories.noteVariantOutcome(
+                    slot = item.slotId,
+                    fingerprint = fingerprint,
+                    variant = variant,
+                    completed = read != null,
+                    engineLastCompletedAt = ocr.lastCompletionAt(),
+                    now = now,
+                )
             }
             resolved
         }

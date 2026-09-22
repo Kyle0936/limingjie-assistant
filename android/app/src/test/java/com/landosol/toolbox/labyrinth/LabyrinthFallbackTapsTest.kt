@@ -61,12 +61,13 @@ class LabyrinthFallbackTapsTest {
         assertTrue(labyrinthAllowedFallbackTaps(LabyrinthEntryPageState.NODE_SELECTION).isEmpty())
         assertTrue(labyrinthAllowedFallbackTaps(LabyrinthEntryPageState.BATTLE_TEAM_SELECTION).isEmpty())
         assertTrue(labyrinthAllowedFallbackTaps(LabyrinthEntryPageState.HOME).isEmpty())
+        // Only the post-Boss settlement advance may still fall back on UNKNOWN; the reward and
+        // portrait blind taps were removed because they mis-clicked map nodes after a battle.
         assertEquals(
             setOf(
                 LabyrinthFallbackTap.CENTER,
                 LabyrinthFallbackTap.BOTTOM_RIGHT,
-                LabyrinthFallbackTap.EVENT_LEFT,
-                LabyrinthFallbackTap.EVENT_RIGHT,
+                LabyrinthFallbackTap.BOTTOM_CENTER,
             ),
             labyrinthAllowedFallbackTaps(LabyrinthEntryPageState.UNKNOWN),
         )
@@ -75,12 +76,5 @@ class LabyrinthFallbackTapsTest {
                 .filter { it.page == LabyrinthEntryPageState.UNKNOWN }
                 .all { it.anchorIds.isEmpty() },
         )
-    }
-
-    @Test
-    fun `event unknown fallback alternates through the shared tap table`() {
-        assertEquals(LabyrinthFallbackTap.EVENT_LEFT, labyrinthEventUnknownFallbackTap(0))
-        assertEquals(LabyrinthFallbackTap.EVENT_RIGHT, labyrinthEventUnknownFallbackTap(1))
-        assertEquals(160 to 780, labyrinthEventUnknownFallbackPoint(2))
     }
 }

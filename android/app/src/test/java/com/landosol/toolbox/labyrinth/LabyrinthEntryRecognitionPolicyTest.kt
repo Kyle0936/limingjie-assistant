@@ -17,6 +17,7 @@ import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageObservation
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageState
 import com.landosol.toolbox.labyrinth.vision.LabyrinthNodeMoveConfirmationObservation
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -144,14 +145,6 @@ class LabyrinthEntryRecognitionPolicyTest {
             LabyrinthEntryPageState.DAWN_REALM_HOME_IDLE,
             LabyrinthEntryPageState.UNKNOWN,
         ).forEach { assertTrue(it.name, !labyrinthCompletionWaitsWithoutRoute(it)) }
-    }
-
-    @Test
-    fun `event unknown fallback alternates between left and right edge-safe points`() {
-        assertEquals(160 to 780, labyrinthEventUnknownFallbackPoint(0))
-        assertEquals(1760 to 780, labyrinthEventUnknownFallbackPoint(1))
-        assertEquals(160 to 780, labyrinthEventUnknownFallbackPoint(2))
-        assertEquals(1760 to 780, labyrinthEventUnknownFallbackPoint(3))
     }
 
     @Test
@@ -892,6 +885,115 @@ class LabyrinthEntryRecognitionPolicyTest {
                 labyrinthEffectiveScanRosterStamp(listOf("1001", "1002", "1003")),
         )
         assertTrue(labyrinthEffectiveScanRosterStamp(emptyList()) != labyrinthEffectiveScanRosterStamp(listOf("1001")))
+    }
+
+    @Test
+    fun `every route page that shows the same status with no action eventually stops`() {
+        // Page-level retry budgets only ever counted *taps*. A page that decides "wait" dispatches
+        // nothing, so it incremented nothing and no deadline applied: before this watchdog only
+        // UNKNOWN had one, and every other wait branch could hold a run open for ever.
+        assertFalse(labyrinthPageStallExpired(POST_ENTRY_STALL_TIMEOUT_MILLIS - 1, battlePage = false))
+        assertTrue(labyrinthPageStallExpired(POST_ENTRY_STALL_TIMEOUT_MILLIS, battlePage = false))
+        // Battle is the one page whose legitimate silence is longer; it runs against the separate
+        // 5-minute battle-wait deadline instead.
+        assertFalse(labyrinthPageStallExpired(POST_ENTRY_STALL_TIMEOUT_MILLIS * 10, battlePage = true))
+        // There must be no second exemption here. A "waiting for manual character selection"
+        // carve-out used to swallow exactly the roster-page hang this watchdog exists for, because
+        // INITIAL_CHARACTER_SELECTION always falls back to that message even though this build
+        // never enables manual selection.
+        assertTrue(
+            "stall budget must exceed the shop OCR backstop by a wide margin",
+            POST_ENTRY_STALL_TIMEOUT_MILLIS >= 90_000L,
+        )
+    }
+
+    @Test
+    fun `an action that never returns releases the latch instead of freezing the session`() {
+        // Every frame handler bails out while the single-action latch is held, so a latch that is
+        // claimed and never released is a silent, total freeze: no clicks, no messages, and no
+        // other timeout can fire because no other timeout is ever evaluated.
+        assertFalse(labyrinthActionLatchStuck(Long.MIN_VALUE, nowMillis = Long.MAX_VALUE / 2))
+        assertFalse(labyrinthActionLatchStuck(heldSinceMillis = 0, nowMillis = ACTION_LATCH_STUCK_TIMEOUT_MILLIS - 1))
+        assertTrue(labyrinthActionLatchStuck(heldSinceMillis = 0, nowMillis = ACTION_LATCH_STUCK_TIMEOUT_MILLIS))
+        // A real gesture returns in well under a second, so the budget is orders of magnitude
+        // above normal and only ever trips on a genuinely dead executor.
+        assertTrue(ACTION_LATCH_STUCK_TIMEOUT_MILLIS >= 30_000L)
+    }
+
+    @Test
+    fun `a mid-route roster picker is answered instead of reclaiming the entry phase`() {
+        // The opening selector, a shop 选择印记 pick and an event free pick are the same page with
+        // the same header. Only the first belongs to the entry planner, and confusing them parked
+        // a run for 408 s: the picker reset the session to the entry phase, and the entry planner
+        // has no rule for a picker, so nothing owned the frame at all.
+        val picker = LabyrinthEntryFrameResult(
+            observation = LabyrinthEntryPageObservation(
+                state = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                confidence = 0.99,
+                stateScores = mapOf(LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION to 0.99),
+                anchorScores = LabyrinthAnchorScores(
+                    mapOf(EntryAnchorId.SELECTION_HEADER_STANDARD to 0.99),
+                ),
+            ),
+            matchedFeatures = emptyList(),
+            elapsedMillis = 1,
+        )
+        assertTrue(labyrinthShouldResumeOpeningSelection(true, picker, routeActive = false))
+        assertFalse(
+            "a picker opened mid-route is never the opening selector",
+            labyrinthShouldResumeOpeningSelection(true, picker, routeActive = true),
+        )
+
+        // Ownership must not depend on remembering which node opened it: that memory is exactly
+        // what the page churn of a purchase destroys.
+        fun owns(nodeType: Int?, imprintPending: Boolean, routeActive: Boolean) =
+            labyrinthEventFreeRoleSelectionOwnsFrame(
+                pageState = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                activeNodeType = nodeType,
+                roleRewardPage = false,
+                hasOpeningViewport = true,
+                shopChoiceImprintPending = imprintPending,
+                routeActive = routeActive,
+            )
+        assertTrue(owns(null, imprintPending = false, routeActive = true))
+        assertTrue(owns(LabyrinthNodeTypes.EVENT, imprintPending = false, routeActive = false))
+        assertTrue(owns(LabyrinthNodeTypes.SHOP, imprintPending = true, routeActive = false))
+        // Before the route starts the page really is the opening selector; leave it alone.
+        assertFalse(owns(null, imprintPending = false, routeActive = false))
+        // A three-card reward page is never this picker.
+        assertFalse(
+            labyrinthEventFreeRoleSelectionOwnsFrame(
+                pageState = LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION,
+                activeNodeType = null,
+                roleRewardPage = true,
+                hasOpeningViewport = true,
+                routeActive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun `a stalled event free-role page stops instead of hanging forever`() {
+        // The page is answered from whatever is on screen, so a stall is only ever "still
+        // settling" or "genuinely stuck"; there is no roster walk to attempt in between.
+        assertEquals(
+            LabyrinthEventFreeRoleBlockedAction.WAIT,
+            labyrinthEventFreeRoleBlockedAction(0),
+        )
+        assertEquals(
+            LabyrinthEventFreeRoleBlockedAction.WAIT,
+            labyrinthEventFreeRoleBlockedAction(EVENT_FREE_ROLE_SETTLE_MILLIS),
+        )
+        assertEquals(
+            LabyrinthEventFreeRoleBlockedAction.WAIT,
+            labyrinthEventFreeRoleBlockedAction(EVENT_FREE_ROLE_GIVE_UP_MILLIS - 1),
+        )
+        // Past the give-up window it stops with a reason: this page has no other timeout, and an
+        // unreadable portrait used to park the run here silently and indefinitely.
+        assertEquals(
+            LabyrinthEventFreeRoleBlockedAction.STOP,
+            labyrinthEventFreeRoleBlockedAction(EVENT_FREE_ROLE_GIVE_UP_MILLIS),
+        )
     }
 
     @Test

@@ -24,14 +24,28 @@ internal class LabyrinthShopCategoryResolution {
 
     /**
      * Retire the current variant and move to the next only when its OCR actually finished
-     * ([completed]) or it has been the active variant far longer than any single read should take.
-     * The backstop exists solely so a dead OCR engine cannot hang the shop; a healthy device
-     * always advances on completion.
+     * ([completed]), or when the OCR engine itself has gone silent for
+     * [ENGINE_SILENT_BACKSTOP_MILLIS].
+     *
+     * [engineLastCompletedAt] is the last time *any* slot got an answer. Timing this slot alone
+     * would be wrong: reads share one serial queue, so a title queued behind the other two waits
+     * for their reads even on a healthy device. Bundle 134750 measured completion-to-completion
+     * gaps with a p90 of 5.4 s, which puts the third slot's turn ~16 s out; a per-variant clock
+     * set below that retires titles whose only read has not run yet, which is the very bug this
+     * class was fixed for. Engine liveness has no such queue component.
      */
-    fun noteVariantOutcome(slot: String, fingerprint: Long, variant: Int, completed: Boolean, now: Long) {
+    fun noteVariantOutcome(
+        slot: String,
+        fingerprint: Long,
+        variant: Int,
+        completed: Boolean,
+        engineLastCompletedAt: Long,
+        now: Long,
+    ) {
         val state = slots[slot]?.takeIf { it.fingerprint == fingerprint } ?: return
         if (variant != state.attempt || state.attempt >= MAX_ATTEMPTS) return
-        if (completed || now - state.variantStartedAt >= VARIANT_STALL_BACKSTOP_MILLIS) {
+        val lastProgress = maxOf(state.variantStartedAt, engineLastCompletedAt)
+        if (completed || now - lastProgress >= ENGINE_SILENT_BACKSTOP_MILLIS) {
             state.attempt++
             state.variantStartedAt = now
         }
@@ -63,7 +77,11 @@ internal class LabyrinthShopCategoryResolution {
 
     private companion object {
         const val MAX_ATTEMPTS = 3
-        /** No single ROI OCR read should take this long; only a stalled engine trips this. */
-        const val VARIANT_STALL_BACKSTOP_MILLIS = 12_000L
+        /**
+         * How long the whole OCR engine may produce nothing before a waiting title gives up its
+         * current crop. Roughly three times the slowest single read observed on the reporting
+         * device (6.4 s), so only a genuinely stalled engine trips it.
+         */
+        const val ENGINE_SILENT_BACKSTOP_MILLIS = 20_000L
     }
 }

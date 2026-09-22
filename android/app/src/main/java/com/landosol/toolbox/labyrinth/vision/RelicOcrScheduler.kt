@@ -26,6 +26,16 @@ internal class RelicOcrScheduler(private val clock: () -> Long, private val spac
     private var sequence = 0L
     private var pending: Ticket? = null
     private var nextStart = Long.MIN_VALUE
+    private var lastCompletionAt = Long.MIN_VALUE
+
+    /**
+     * When the engine last answered anything, for any slot.
+     *
+     * Callers that must distinguish "my read is queued behind other slots" from "the engine has
+     * died" read this instead of timing their own slot: the queue is serial, so a slot can wait
+     * several reads for its turn while the engine is perfectly healthy.
+     */
+    @Synchronized fun lastCompletionAt(): Long = lastCompletionAt
 
     @Synchronized fun clear() { slots.clear(); epoch++ }
 
@@ -64,6 +74,9 @@ internal class RelicOcrScheduler(private val clock: () -> Long, private val spac
     }
 
     @Synchronized fun complete(ticket: Ticket, text: String?) {
+        // Recorded before any early return: the callback firing at all proves the engine is alive,
+        // even when this particular result is stale and gets dropped below.
+        lastCompletionAt = clock()
         if (pending != ticket) return
         pending = null
         if (ticket.epoch != epoch) return
