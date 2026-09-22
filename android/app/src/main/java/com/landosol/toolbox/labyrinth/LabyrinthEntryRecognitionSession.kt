@@ -1089,10 +1089,6 @@ class LabyrinthEntryRecognitionSession(
     @Volatile
     private var roleRewardBatchActive = false
     @Volatile
-    private var roleRewardPresentationSkipArmed = false
-    @Volatile
-    private var roleRewardPresentationSkipTapped = false
-    @Volatile
     private var committedRoleRewardSelectionSignature: String? = null
     @Volatile
     private var roleRewardJoinedSequenceStarted = false
@@ -1289,8 +1285,6 @@ class LabyrinthEntryRecognitionSession(
         synchronized(pendingAcquiredCharacterIds) { pendingAcquiredCharacterIds.clear() }
         skipRoleRewardJoinedRecognition = false
         roleRewardBatchActive = false
-        roleRewardPresentationSkipArmed = false
-        roleRewardPresentationSkipTapped = false
         committedRoleRewardSelectionSignature = null
         roleRewardJoinedSequenceStarted = false
         lastObservedRoleRewardSelectionSignature = null
@@ -1441,8 +1435,6 @@ class LabyrinthEntryRecognitionSession(
         synchronized(pendingAcquiredCharacterIds) { pendingAcquiredCharacterIds.clear() }
         skipRoleRewardJoinedRecognition = false
         roleRewardBatchActive = false
-        roleRewardPresentationSkipArmed = false
-        roleRewardPresentationSkipTapped = false
         committedRoleRewardSelectionSignature = null
         roleRewardJoinedSequenceStarted = false
         lastObservedRoleRewardSelectionSignature = null
@@ -3984,10 +3976,6 @@ class LabyrinthEntryRecognitionSession(
             lastObservedRoleRewardSelectionSignature = roleRewardSelectionSignature
             postEntryStableFrames = 0
             postEntryAttempts = 0
-            // Every choice can open its own full-screen presentation. Re-arm only when a new
-            // candidate set proves that the player is looking at a new role-choice round.
-            roleRewardPresentationSkipArmed = false
-            roleRewardPresentationSkipTapped = false
         }
         postEntryStableFrames++
 
@@ -4029,18 +4017,6 @@ class LabyrinthEntryRecognitionSession(
             if (activeSessionId == sessionId) {
                 _state.value = _state.value.copy(message = "已进入角色/奖励动画兜底，连续点击安全区域推进")
             }
-        }
-
-        // A manually selected role does not have an executor callback to arm the presentation
-        // skip. Capture the handoff before the manual-selection marker is cleared below. This
-        // remains intentionally narrow: it applies only to the UNKNOWN frame immediately after a
-        // known role-reward choice, not to arbitrary UNKNOWN pages during route execution.
-        if (waitingForManualRoleSelection &&
-            roleRewardBatchActive &&
-            !roleRewardJoinedSequenceStarted &&
-            pageState == LabyrinthEntryPageState.UNKNOWN
-        ) {
-            roleRewardPresentationSkipArmed = true
         }
 
         // A multi-role settlement is one batch: several choice pages can be followed by several
@@ -4257,15 +4233,6 @@ class LabyrinthEntryRecognitionSession(
             pageState == LabyrinthEntryPageState.RUN_CLEAR_CHEST_RESULT
         val finalAnimationActive = postBossStage == LabyrinthPostBossStage.BEFORE_SCORE ||
             postBossStage == LabyrinthPostBossStage.CHEST_SEQUENCE
-        val roleRewardPresentationSkipReady = labyrinthShouldSkipRoleRewardPresentationOnce(
-            roleRewardBatchActive = roleRewardBatchActive,
-            roleRewardJoinedSequenceStarted = roleRewardJoinedSequenceStarted,
-            presentationSkipArmed = roleRewardPresentationSkipArmed,
-            presentationSkipAlreadyTapped = roleRewardPresentationSkipTapped,
-            pageState = pageState,
-            stableFrames = postEntryStableFrames,
-            minimumStableFrames = POST_ENTRY_STABLE_FRAMES,
-        )
         val maxAttempts = when {
             characterAcquisitionActive -> MAX_CHARACTER_ACQUISITION_CLICKS
             finalAnimationActive && finalAnimationPage -> MAX_POST_BOSS_UNKNOWN_ATTEMPTS
@@ -4397,12 +4364,6 @@ class LabyrinthEntryRecognitionSession(
                                 bossSummaryNextButtonMatch = result.anchorMatches[EntryAnchorId.BATTLE_RESULT_BOSS_SUMMARY_NEXT_BUTTON],
                             ),
                         ),
-                    )
-                roleRewardPresentationSkipReady ->
-                    LabyrinthPostEntryTapPlan(
-                        LabyrinthPostEntryActionKind.SKIP_ROLE_REWARD_PRESENTATION,
-                        "角色选择后全屏展示：轻触安全区域跳过",
-                        LabyrinthFallbackTap.CENTER.rect(frameWidth, frameHeight),
                     )
                 characterAcquisitionActive -> {
                     val tap = if (activeNodeType == LabyrinthNodeTypes.EVENT) {
@@ -4764,9 +4725,6 @@ class LabyrinthEntryRecognitionSession(
                         }
                     LabyrinthEntryPageState.UNKNOWN ->
                         when {
-                            roleRewardBatchActive && roleRewardPresentationSkipTapped &&
-                                !roleRewardJoinedSequenceStarted ->
-                                "已跳过角色展示页，等待黎明界界面恢复识别"
                             roleRewardBatchActive && !roleRewardJoinedSequenceStarted ->
                                 "角色奖励批次选择过渡中；等待下一次三选一，不执行盲点"
                             finalAnimationActive -> "最终结算动画中，程序会在有限次数内推进"
@@ -5254,11 +5212,6 @@ class LabyrinthEntryRecognitionSession(
         eventFreeRoleConfirm: Boolean = false,
     ) {
         if (!actionInFlight.compareAndSet(false, true)) return
-        if (kind == LabyrinthPostEntryActionKind.SKIP_ROLE_REWARD_PRESENTATION) {
-            // Mark before the asynchronous tap so a fast follow-up capture cannot schedule a
-            // second tap against the same presentation frame.
-            roleRewardPresentationSkipTapped = true
-        }
         val selectedReward = (_state.value.roleRewardChoiceDecision as? LabyrinthRoleRewardChoiceDecision.Select)
             ?.takeIf { it.characterId == roleRewardSelectedCharacterId && it.actionSafe }
         val selectedRewardAccountId = activeRunAccountId
@@ -5319,9 +5272,6 @@ class LabyrinthEntryRecognitionSession(
                         roleRewardChoiceCommitted = true
                         committedRoleRewardSelectionSignature = roleRewardSelectionSignature
                         roleRewardBatchActive = true
-                        // This is an explicit selection handoff, so the next stable UNKNOWN page
-                        // may be the single full-screen presentation that we are allowed to skip.
-                        roleRewardPresentationSkipArmed = true
                         roleRewardSelectedCharacterId?.let { selectedId ->
                                 synchronized(pendingAcquiredCharacterIds) {
                                     pendingAcquiredCharacterIds += selectedId
@@ -5466,11 +5416,6 @@ class LabyrinthEntryRecognitionSession(
                     }
                     if (actionResult.reason == GAME_NOT_FOREGROUND_REASON) {
                         postEntryAttempts = (postEntryAttempts - 1).coerceAtLeast(0)
-                        if (kind == LabyrinthPostEntryActionKind.SKIP_ROLE_REWARD_PRESENTATION) {
-                            // No game-side tap occurred; retry only after the game is foreground
-                            // again and the same contextual safety checks still pass.
-                            roleRewardPresentationSkipTapped = false
-                        }
                         if (kind == LabyrinthPostEntryActionKind.ADVANCE_CHARACTER_ACQUISITION) {
                             characterAcquisitionClicks = (characterAcquisitionClicks - 1).coerceAtLeast(0)
                         }
@@ -5583,8 +5528,6 @@ class LabyrinthEntryRecognitionSession(
         skipRoleRewardJoinedRecognition = false
         roleRewardDecisionCacheKey = null
         roleRewardBatchActive = false
-        roleRewardPresentationSkipArmed = false
-        roleRewardPresentationSkipTapped = false
         roleRewardChoiceCommitted = false
         committedRoleRewardSelectionSignature = null
         roleRewardJoinedSequenceStarted = false
