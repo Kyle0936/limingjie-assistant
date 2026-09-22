@@ -22,6 +22,7 @@ import com.landosol.toolbox.labyrinth.labyrinthRerollStatusText
 import kotlinx.coroutines.delay
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
@@ -30,8 +31,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -45,6 +44,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.landosol.toolbox.labyrinth.LabyrinthAutoRunProgress
@@ -69,9 +69,9 @@ import com.landosol.toolbox.ui.account.GeetestCaptchaDialog
 import kotlinx.coroutines.launch
 
 private enum class LabyrinthTab(val label: String) {
+    AUTOMATION("自动执行"),
     REROLL("刷开局"),
     CURRENT("当前开局"),
-    AUTOMATION("自动执行"),
 }
 
 @Composable
@@ -111,7 +111,9 @@ fun LabyrinthScreen(
     onCancelCaptcha: () -> Unit,
     onOpenStrategies: () -> Unit = {},
 ) {
-    var selectedTabName by rememberSaveable { mutableStateOf(LabyrinthTab.REROLL.name) }
+    // Automation is the normal end-to-end workflow. The other two modes remain
+    // available as focused utilities instead of competing as the default landing page.
+    var selectedTabName by rememberSaveable { mutableStateOf(LabyrinthTab.AUTOMATION.name) }
     val selectedTab = LabyrinthTab.valueOf(selectedTabName)
     var confirmRetreat by remember(state.selectedAccount?.id) { mutableStateOf(false) }
     val requestStart: () -> Unit = { if (state.retireExisting) confirmRetreat = true else onStart() }
@@ -173,53 +175,14 @@ fun LabyrinthScreen(
                 .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 152.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    Text(
-                        text = "黎明界助手 · 作者 wbero",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = "交流群：1065226139",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        text = "测试版本，有较多 bug，可能会卡在某些流程。",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        TextButton(
-                            onClick = { uriHandler.openUri("http://127.0.0.1:8765/") },
-                        ) {
-                            Text("打开实时日志控制台")
-                        }
-                        TextButton(
-                            onClick = { uriHandler.openUri("http://127.0.0.1:8765/logs.zip") },
-                        ) {
-                            Text("下载日志 ZIP")
-                        }
-                    }
-                }
-            }
             AccountCard(state)
-            TabRow(selectedTabIndex = selectedTab.ordinal) {
-                LabyrinthTab.entries.forEach { tab ->
-                    Tab(
-                        selected = selectedTab == tab,
-                        onClick = {
-                            selectedTabName = tab.name
-                            scope.launch { scrollState.scrollTo(0) }
-                        },
-                        text = { Text(tab.label) },
-                    )
-                }
-            }
+            WorkflowNavigation(
+                selectedTab = selectedTab,
+                onSelected = { tab ->
+                    selectedTabName = tab.name
+                    scope.launch { scrollState.scrollTo(0) }
+                },
+            )
 
             when (selectedTab) {
                 LabyrinthTab.REROLL -> RerollContent(
@@ -274,6 +237,8 @@ fun LabyrinthScreen(
                     }
                 }
             }
+
+            SupportCard(uriHandler = uriHandler)
         }
     }
 
@@ -285,6 +250,103 @@ fun LabyrinthScreen(
             onError = onCaptchaError,
             onDismiss = onCancelCaptcha,
         )
+    }
+}
+
+/**
+ * Keeps the primary workflow visually distinct from the two focused tools.
+ * No automation state is changed here: this only controls which existing panel
+ * is visible, so switching tools cannot start or stop a running task.
+ */
+@Composable
+private fun WorkflowNavigation(
+    selectedTab: LabyrinthTab,
+    onSelected: (LabyrinthTab) -> Unit,
+) {
+    if (selectedTab == LabyrinthTab.AUTOMATION) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+            ),
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("自动执行", style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                Text("主流程", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text("按目标批量刷开局、进入黎明界并记录结果。", style = MaterialTheme.typography.bodyMedium)
+                Text("辅助工具", style = MaterialTheme.typography.labelLarge, modifier = Modifier.padding(top = 6.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = false,
+                        onClick = { onSelected(LabyrinthTab.REROLL) },
+                        label = { Text("刷开局") },
+                    )
+                    FilterChip(
+                        selected = false,
+                        onClick = { onSelected(LabyrinthTab.CURRENT) },
+                        label = { Text("当前开局") },
+                    )
+                }
+            }
+        }
+    } else {
+        SelectionCard(
+            title = selectedTab.label,
+            description = if (selectedTab == LabyrinthTab.REROLL) {
+                "独立刷新开局工具；完成后可返回批量自动执行。"
+            } else {
+                "读取并验证当前开局，不会改变批量任务。"
+            },
+        ) {
+            TextButton(onClick = { onSelected(LabyrinthTab.AUTOMATION) }) {
+                Text("返回自动执行")
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                FilterChip(
+                    selected = selectedTab == LabyrinthTab.REROLL,
+                    onClick = { onSelected(LabyrinthTab.REROLL) },
+                    label = { Text("刷开局") },
+                )
+                FilterChip(
+                    selected = selectedTab == LabyrinthTab.CURRENT,
+                    onClick = { onSelected(LabyrinthTab.CURRENT) },
+                    label = { Text("当前开局") },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SupportCard(uriHandler: androidx.compose.ui.platform.UriHandler) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("帮助与诊断", style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold)
+            Text("黎明界助手 · 作者 wbero · 交流群 1065226139", style = MaterialTheme.typography.bodySmall)
+            Text("测试版本，遇到异常可下载日志并附上复现步骤。", style = MaterialTheme.typography.bodySmall)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { uriHandler.openUri("http://127.0.0.1:8765/") }) {
+                    Text("实时日志")
+                }
+                TextButton(onClick = { uriHandler.openUri("http://127.0.0.1:8765/logs.zip") }) {
+                    Text("下载日志 ZIP")
+                }
+            }
+        }
     }
 }
 
@@ -819,10 +881,20 @@ private fun SessionResetCard(
 
 @Composable
 private fun AccountCard(state: LabyrinthUiState) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("当前账号", style = MaterialTheme.typography.titleMedium)
-            Text(state.selectedAccount?.alias ?: "未选择账号")
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+        ),
+    ) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text("当前账号", style = MaterialTheme.typography.labelLarge)
+            Text(
+                state.selectedAccount?.alias ?: "未选择账号",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
             Text(
                 if (state.selectedAccount?.gameUid != null) "已绑定游戏 UID" else "请先完成原生登录",
                 style = MaterialTheme.typography.bodySmall,
@@ -837,12 +909,18 @@ private fun SelectionCard(
     description: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+        ),
+    ) {
         Column(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             description?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             content()
         }
