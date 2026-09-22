@@ -190,9 +190,12 @@ class LabyrinthNodeActionPlanner {
                 // same screen rect must be independently bound by ordered topology, and partial
                 // columns require a second mapped sibling to prove the vertical ordering.
                 if (
-                    strongOrderedTopology != null ||
-                    purpleExConflict ||
-                    (linkRelicSemanticSwap && linkRelicTopology)
+                    !labyrinthBossSemanticConflict(conflict.expectedBlockType, conflict.detectedBlockType) &&
+                    (
+                        strongOrderedTopology != null ||
+                            purpleExConflict ||
+                            (linkRelicSemanticSwap && linkRelicTopology)
+                        )
                 ) return@let
                 return NodeAction.TypeConflict(
                     blockId = conflict.blockId,
@@ -254,8 +257,14 @@ class LabyrinthNodeActionPlanner {
         return getBaseClickPosition(rect)
     }
 
-    fun getBaseClickPosition(rect: EntryPixelRect): Pair<Int, Int> {
-        val baseOffset = (rect.height * BASE_CLICK_Y_RATIO)
+    /**
+     * Where to tap a node, given its matched crop.
+     *
+     * @param retry 0 for the first attempt. A rejected tap is never repeated at the same pixel.
+     */
+    fun getBaseClickPosition(rect: EntryPixelRect, retry: Int = 0): Pair<Int, Int> {
+        val ratio = BASE_CLICK_Y_RATIO + RETRY_Y_OFFSET_RATIOS.getOrElse(retry) { 0.0 }
+        val baseOffset = (rect.height * ratio.coerceIn(0.05, MAX_CLICK_Y_RATIO))
             .roundToInt()
             .coerceIn(0, rect.height - 1)
         return Pair(
@@ -267,6 +276,23 @@ class LabyrinthNodeActionPlanner {
     private companion object {
         /** Stable platform/icon overlap band, kept clear of the bottom retreat/return controls. */
         const val BASE_CLICK_Y_RATIO = 0.32
+        /**
+         * Where a retry aims, relative to [BASE_CLICK_Y_RATIO].
+         *
+         * A rejected tap means this crop is not where the game thinks the node is, so repeating
+         * the same pixel can only be rejected again. The crop is typically registered one node
+         * too high — the game then attributes the tap to the node above, whose own "cannot move
+         * there" popup costs a full confirmation timeout — so the first retry drops by most of a
+         * crop, and the second tries the other direction in case the registration was low.
+         *
+         * 2026-09-20 bundle 163307: 连结#20602 matched at top=238 and was tapped three times at
+         * y=350, ~7 s apart. A map nudge then re-matched the same node at top=350, where the
+         * unchanged 0.32 landed at y=462 and was accepted at once. +0.30 of a 350 px crop is
+         * 105 px, which would have put attempt two at y=455.
+         */
+        val RETRY_Y_OFFSET_RATIOS = listOf(0.0, 0.30, -0.15)
+        /** Never reach the HUD band that `.bottom` templates include below the node body. */
+        const val MAX_CLICK_Y_RATIO = 0.74
         const val TOPOLOGY_ORDERED_OVERRIDE_MIN_CONFIDENCE = 0.90
         const val TOPOLOGY_PURPLE_EX_OVERRIDE_MIN_CONFIDENCE = 0.80
         const val PURPLE_EX_OVERRIDE_MIN_GLOW_SCORE = 0.08
@@ -278,3 +304,21 @@ class LabyrinthNodeActionPlanner {
         const val INACTIVE_ROUTE_SIBLING_MIN_TOPOLOGY_CONFIDENCE = 0.80
     }
 }
+
+/**
+ * Whether a route/vision disagreement involves the Boss platform, which no override may waive.
+ *
+ * The ordered-topology override exists because the semantic template classifier confuses visually
+ * similar *regular* node icons; column cardinality and row order are better evidence than the icon
+ * in those cases. The Boss platform is not one of those cases. It is a separate, much larger map
+ * asset detected through its own special-node anchor, so reading it as a 商店 or a 普通战斗 is not
+ * template noise but a real disagreement about where the camera is.
+ *
+ * 2026-09-19 live: the route wanted 商店#30601 while the only crop on screen was the area's Boss
+ * platform, bound FULL_COLUMN at 0.99 because a one-node logical column trivially matches a single
+ * detection. The override waived the conflict and the run tapped the Boss platform repeatedly,
+ * waiting for a movement dialog that never came; the shop was only reached after a manual swipe.
+ */
+internal fun labyrinthBossSemanticConflict(expected: Int, detected: Int): Boolean =
+    expected != detected &&
+        (expected == LabyrinthNodeTypes.BOSS || detected == LabyrinthNodeTypes.BOSS)

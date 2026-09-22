@@ -62,20 +62,51 @@ class LabyrinthShopCategoryResolutionTest {
         assertTrue(decide(listOf(resolver.resolve(item(recognized = true), "候选遗物", 1, 0))) is LabyrinthShopDecision.BuyRelic)
     }
 
-    @Test fun `three unresolved attempts skip item without assuming exhausted relic stock`() {
-        val imprint = resolver.resolve(item("1"), "攻击型职能的随机印记", 1, 0)
+    @Test fun `variant advances on completed OCR, not on elapsed time`() {
+        // A pending read (completed = false) never advances the variant, however long it waits,
+        // as long as the engine is answering other slots: this is the bundle-134750 bug, where a
+        // 3 s clock retired titles whose OCR was still queued and closed the shop after one buy.
         assertEquals(0, resolver.attempt("3", 100, 0))
+        resolver.noteVariantOutcome("3", 100, 0, false, engineLastCompletedAt = 2_500, now = 3_000)
+        assertEquals(0, resolver.attempt("3", 100, 3_000))
+        // Third slot in a serial queue waits ~16 s for its turn on the reporting device; engine
+        // progress in that window must keep it waiting rather than burn a crop variant.
+        resolver.noteVariantOutcome("3", 100, 0, false, engineLastCompletedAt = 14_000, now = 16_000)
+        assertEquals(0, resolver.attempt("3", 100, 16_000))
+        // A completed-but-unresolved read retires the variant.
+        resolver.noteVariantOutcome("3", 100, 0, true, engineLastCompletedAt = 16_500, now = 16_500)
+        assertEquals(1, resolver.attempt("3", 100, 16_600))
+        resolver.noteVariantOutcome("3", 100, 1, true, engineLastCompletedAt = 17_000, now = 17_000)
+        assertEquals(2, resolver.attempt("3", 100, 17_100))
+        resolver.noteVariantOutcome("3", 100, 2, true, engineLastCompletedAt = 17_500, now = 17_500)
+        assertEquals(3, resolver.attempt("3", 100, 17_600))
+        // A stale variant index cannot double-advance, and EXHAUSTED never advances further.
+        resolver.noteVariantOutcome("3", 100, 1, true, engineLastCompletedAt = 17_700, now = 17_700)
+        assertEquals(3, resolver.attempt("3", 100, 17_800))
+        // A new fingerprint and clear() both reset the counter.
+        assertEquals(0, resolver.attempt("3", 101, 18_000))
+        resolver.clear()
+        assertEquals(0, resolver.attempt("3", 101, 18_001))
+    }
+
+    @Test fun `only a silent OCR engine trips the backstop so the shop can never hang`() {
+        assertEquals(0, resolver.attempt("s", 7, 0))
+        // Engine still answering other slots: no advance, no matter how long this one waits.
+        resolver.noteVariantOutcome("s", 7, 0, false, engineLastCompletedAt = 30_000, now = 45_000)
+        assertEquals(0, resolver.attempt("s", 7, 45_000))
+        // Engine silent since 30_000: one tick short of the backstop still waits.
+        resolver.noteVariantOutcome("s", 7, 0, false, engineLastCompletedAt = 30_000, now = 49_999)
+        assertEquals(0, resolver.attempt("s", 7, 49_999))
+        resolver.noteVariantOutcome("s", 7, 0, false, engineLastCompletedAt = 30_000, now = 50_000)
+        assertEquals(1, resolver.attempt("s", 7, 50_000))
+    }
+
+    @Test fun `three completed unresolved reads skip item without assuming exhausted relic stock`() {
+        val imprint = resolver.resolve(item("1"), "攻击型职能的随机印记", 1, 0)
         assertTrue(decide(listOf(imprint, resolver.resolve(item(), "看不清", 2, 0))) is LabyrinthShopDecision.Wait)
-        assertEquals(1, resolver.attempt("3", 100, 3_000))
-        assertEquals(2, resolver.attempt("3", 100, 6_000))
-        assertEquals(3, resolver.attempt("3", 100, 9_000))
         val skipped = resolver.resolve(item(), "看不清", 4, 3)
         assertTrue(decide(listOf(imprint, skipped), area = 5) is LabyrinthShopDecision.BuyRoleImprint)
         assertTrue(decide(listOf(skipped), area = 5) is LabyrinthShopDecision.Close)
-        assertEquals(3, resolver.attempt("3", 100, 100_000))
-        assertEquals(0, resolver.attempt("3", 101, 100_001))
-        resolver.clear()
-        assertEquals(0, resolver.attempt("3", 101, 100_002))
     }
 
     @Test fun `remaining titles finish bounded reading after third relic purchase`() {
@@ -88,5 +119,32 @@ class LabyrinthShopCategoryResolutionTest {
             .mapIndexed { i, title -> resolver.resolve(item(i.toString()), title, i.toLong(), 0) }
         assertTrue(decide(items, 3) is LabyrinthShopDecision.BuyRoleImprint)
         assertTrue(decide(items, 5) is LabyrinthShopDecision.Refresh)
+    }
+
+    /**
+     * 2026-09-22 shop: two 坦克型职能的随机印记 at 780 beside a 破防型职能的选择印记 at 1,820.
+     * Both grant a character of the named class, but the choice variant costs more than twice as
+     * much and opens a full-roster picker the run then has to answer, so the random one wins.
+     */
+    @Test fun `a random imprint is preferred over the pricier choice imprint`() {
+        val choice = resolver.resolve(item("1"), "破防型职能的选择印记", 1, 0)
+        val random = resolver.resolve(item("2"), "坦克型职能的随机印记", 2, 0)
+        assertTrue(choice.choiceRoleImprint)
+        assertFalse(random.choiceRoleImprint)
+
+        // Listed choice-first, the random one must still be the purchase.
+        val preferred = decide(listOf(choice, random), area = 5) as LabyrinthShopDecision.BuyRoleImprint
+        assertEquals("2", preferred.item.slotId)
+        assertFalse(preferred.opensRolePicker)
+
+        // With only the choice imprint available it is still bought rather than skipped.
+        val fallback = decide(listOf(choice), area = 5) as LabyrinthShopDecision.BuyRoleImprint
+        assertEquals("1", fallback.item.slotId)
+        assertTrue(fallback.opensRolePicker)
+
+        // Among equals the leftmost slot keeps the pick deterministic.
+        val second = resolver.resolve(item("3"), "坦克型职能的随机印记", 3, 0)
+        val tie = decide(listOf(second, random), area = 5) as LabyrinthShopDecision.BuyRoleImprint
+        assertEquals("2", tie.item.slotId)
     }
 }

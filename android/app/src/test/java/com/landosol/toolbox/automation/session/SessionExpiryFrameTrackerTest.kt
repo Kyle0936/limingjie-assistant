@@ -61,6 +61,28 @@ class SessionExpiryFrameTrackerTest {
     }
 
     @Test
+    fun `end confirmation dialog is never mistaken for the session expiry popup`() {
+        // 2026-09-17 batch 195521: the 结束确认 title bar scored as the expiry popup, so the
+        // terminator tapped 返回标题's coordinates, which is 撤退 on that dialog.
+        val tracker = SessionExpiryFrameTracker()
+        val errorTitle = EntryAnchorId.SESSION_ERROR_TITLE to
+            EntryAnchorMatch(score = 0.72, rect = EntryPixelRect(485, 259, 948, 66))
+        val choice = LabyrinthBattleEndConfirmationObservation(
+            stage = LabyrinthBattleEndConfirmationStage.CHOICE,
+            confidence = 0.9,
+            advanceButtonRect = EntryPixelRect(835, 700, 255, 90),
+        )
+
+        tracker.record(result(LabyrinthEntryPageState.BATTLE_FAILED, anchors = mapOf(errorTitle), endConfirmation = choice))
+        assertEquals(false, tracker.popupVisible)
+        // The chain keeps driving the dialog instead.
+        assertEquals(962.5f, requireNotNull(tracker.sessionInvalidationTrigger).x, 0.01f)
+
+        tracker.record(result(LabyrinthEntryPageState.UNKNOWN, anchors = mapOf(errorTitle)))
+        assertEquals(true, tracker.popupVisible)
+    }
+
+    @Test
     fun `failure page trigger walks 结束 then 撤退 then 确认 by recognised dialog stage`() {
         // 2026-09-17: 重新挑战 only returns to the EX challenge page; the retreat chain is the
         // action that reaches the server.

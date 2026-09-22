@@ -67,8 +67,9 @@ internal class LabyrinthCharacterGridDetector {
         val cardSize = mappedLength(frame, referenceCardSize).coerceAtLeast(MIN_CARD_PIXELS)
         val columnPitch = mappedLength(frame, referenceColumnPitch).coerceAtLeast(cardSize + 2)
         val rowPitch = mappedLength(frame, referenceRowPitch).coerceAtLeast(cardSize + 2)
+        val measuredColumns = detectColumnBands(frame, viewport, cardSize)
         val columns = regularizeBands(
-            bands = detectColumnBands(frame, viewport, cardSize),
+            bands = measuredColumns,
             expectedSize = cardSize,
             expectedPitch = columnPitch,
             maximumCount = maxColumns,
@@ -78,7 +79,12 @@ internal class LabyrinthCharacterGridDetector {
         if (columns.size < MIN_GRID_COLUMNS) {
             return LabyrinthGridDiagnostics(cardSize, emptyList(), emptyList(), emptyList())
         }
-        val rawRows = detectRowBands(frame, viewport, columns, cardSize)
+        val rawRows = detectRowBands(
+            frame,
+            viewport,
+            rowSupportColumns(measuredColumns, columns, cardSize),
+            cardSize,
+        )
         val regularized = regularizeRows(
             frame = frame,
             viewport = viewport,
@@ -182,7 +188,12 @@ internal class LabyrinthCharacterGridDetector {
             frame = frame,
             viewport = viewport,
             columns = columns,
-            bands = detectRowBands(frame, viewport, columns, cardSize),
+            bands = detectRowBands(
+                frame,
+                viewport,
+                rowSupportColumns(columnBands, columns, cardSize),
+                cardSize,
+            ),
             cardSize = cardSize,
             rowPitch = rowPitch,
         )
@@ -252,6 +263,33 @@ internal class LabyrinthCharacterGridDetector {
             minimumLengthRatio = COLUMN_MIN_LENGTH_RATIO,
         )
     }
+
+    /**
+     * The columns allowed to vote on where the rows are.
+     *
+     * [regularizeBands] extrapolates a full grid from however few column bands were actually
+     * measured, and the final card geometry needs that grid. Those predicted columns are not
+     * observations, though, so letting them carry row evidence allows unrelated chrome inside the
+     * viewport to masquerade as roster content. The battle editor's 用角色名搜索 box spans several
+     * predicted columns, and the row projection scores each row by its two strongest columns: on a
+     * roster filtered down to a single card the box alone lifted the projection peak to 1.0, which
+     * put the threshold above the one real card's 0.48 and left the detector with no rows at all
+     * (2026-09-19 live: 有效效果 listed one card, nothing resolved, and the scan rewound the list
+     * every 17 seconds for the rest of the session).
+     *
+     * Falling back to the regularized grid keeps the previous behaviour whenever no measured band
+     * survives the size filter.
+     */
+    private fun rowSupportColumns(
+        measured: List<Band>,
+        regularized: List<Band>,
+        cardSize: Int,
+    ): List<Band> = measured
+        .filter { band ->
+            band.length in (cardSize * BAND_MIN_SIZE_RATIO).roundToInt()..
+                (cardSize * BAND_MAX_SIZE_RATIO).roundToInt()
+        }
+        .ifEmpty { regularized }
 
     private fun detectRowBands(
         frame: PixelImage,

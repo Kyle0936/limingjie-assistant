@@ -37,6 +37,13 @@ data class LabyrinthNodeViewportSnapshot(
     val columnSpacingResidual: Double?,
     val geometryReliable: Boolean,
     val geometryInferred: Boolean = false,
+    /**
+     * Sampled pixels of the frame this snapshot was measured from. Animated scenery changes the
+     * signature hash almost every frame while the camera stays put, so an exact signature match
+     * is too strict to recognise the same viewport twice; these samples let
+     * [LabyrinthNodeViewportScanner.expectedScreenCenterX] fall back to a pixel comparison.
+     */
+    val pixels: NodeViewportPixels? = null,
 )
 
 data class LabyrinthNodeScanPlan(
@@ -220,6 +227,7 @@ class LabyrinthNodeViewportScanner {
             columnSpacingResidual = residual,
             geometryReliable = geometryReliable,
             geometryInferred = geometryInferred,
+            pixels = viewportPixels,
         )
 
         // A map edge is a camera fact, not a classification-string fact. Node type/confidence can
@@ -351,10 +359,36 @@ class LabyrinthNodeViewportScanner {
      * Returns null when topology geometry is not reliable enough to synthesize a tap coordinate.
      */
     fun expectedScreenCenterX(logicalColumn: Int): Double? {
-        val snapshot = snapshots[currentSignature] ?: return null
+        if (frameHeight <= 0) return null
+        val snapshot = snapshots[currentSignature]?.takeIf { it.geometryReliable && it.viewportWorldLeft != null }
+            ?: recalledStillSnapshot()
+            ?: return null
         val worldLeft = snapshot.viewportWorldLeft ?: return null
-        if (!snapshot.geometryReliable || frameHeight <= 0) return null
         return logicalColumn * labyrinthReferenceColumnPitch(frameHeight) - worldLeft
+    }
+
+    /**
+     * The most recent reliable snapshot whose sampled pixels prove the camera has not moved since.
+     *
+     * An exact signature match is the cheap path, but the signature hashes node classifications,
+     * which the map's glow animation perturbs while the camera is still. The pixel comparison is
+     * the same one the swipe logic trusts to tell an edge from a scroll. Only the last few
+     * snapshots are candidates: the map repeats its backdrop, so a far-away segment that merely
+     * looks alike must never lend its camera fit to the current frame, and the comparison itself
+     * is not free.
+     */
+    private fun recalledStillSnapshot(): LabyrinthNodeViewportSnapshot? {
+        val pixels = currentPixels ?: return null
+        var examined = 0
+        val iterator = snapshots.values.reversed().iterator()
+        while (iterator.hasNext() && examined < MAX_PIXEL_RECALL_CANDIDATES) {
+            val candidate = iterator.next()
+            examined++
+            if (!candidate.geometryReliable || candidate.viewportWorldLeft == null) continue
+            val previous = candidate.pixels ?: continue
+            if (pixels.motionFrom(previous) == NodeViewportMotion.UNCHANGED) return candidate
+        }
+        return null
     }
 
     private fun defaultPlan(): LabyrinthNodeScanPlan? {
@@ -418,6 +452,8 @@ class LabyrinthNodeViewportScanner {
 
     private companion object {
         const val MIN_TOPOLOGY_CONFIDENCE_FOR_GLOBAL_COORDINATE = 0.70
+        /** Snapshots (newest first) that [expectedScreenCenterX] may recall by pixel comparison. */
+        const val MAX_PIXEL_RECALL_CANDIDATES = 3
         const val MAX_COLUMN_SPACING_RESIDUAL_NODE_WIDTH_RATIO = 0.55
         const val MIN_UNCHANGED_OBSERVATIONS_FOR_BOUNDARY = 3
         const val MIN_CAMERA_MOVE_PITCH_RATIO = 0.16

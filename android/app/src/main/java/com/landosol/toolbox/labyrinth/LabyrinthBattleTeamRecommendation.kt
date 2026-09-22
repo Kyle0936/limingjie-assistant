@@ -107,11 +107,12 @@ class LabyrinthBattleTeamRecommendationPlanner(
         if (resolved.isEmpty()) {
             return LabyrinthBattleTeamRecommendationResult.Unavailable("没有已获得的可用角色")
         }
-        if (!allowSupplementLead && resolved.none { it.isEligibleBattleVanguard(context) }) {
-            return LabyrinthBattleTeamRecommendationResult.Unavailable(
-                "当前角色池中没有满足生存资格的一号位；不再仅按掩护者职阶强行上T",
-            )
-        }
+        // A pool with nobody fit to lead is not a reason to skip the fight: the run still has to
+        // play it. Fall back to the vanguard-less composition the Boss follow-up slots already use
+        // rather than blocking 编组 (2026-09-19, by request). The planner still never promotes a
+        // 掩护者 who fails the survival line into a "safe" lead; it just says so and plays on.
+        val poolHasVanguard = resolved.any { it.isEligibleBattleVanguard(context) }
+        val supplementLead = allowSupplementLead || !poolHasVanguard
 
         val plan = if (requestedBossTeamCount > 1 || allowSupplementLead) {
             teamPlanSearcher.bossMultiTeamSearch(
@@ -122,7 +123,7 @@ class LabyrinthBattleTeamRecommendationPlanner(
         } else {
             teamPlanSearcher.initialSearch(resolved, context)
         }
-        if (!allowSupplementLead && plan.teams.isNotEmpty() && plan.safeTeamCount == 0) {
+        if (!supplementLead && plan.teams.isNotEmpty() && plan.safeTeamCount == 0) {
             return LabyrinthBattleTeamRecommendationResult.Unavailable(
                 "当前角色池中没有满足生存资格的一号位；不再仅按掩护者职阶强行上T",
             )
@@ -154,7 +155,15 @@ class LabyrinthBattleTeamRecommendationPlanner(
             if (incompleteIds.isNotEmpty()) {
                 add("部分角色资料不完整，按已有信息参与编组评分：${incompleteIds.joinToString()}")
             }
-            if (leadIsSupplement) add("Boss后续队伍：无合格一号位，作为输出补刀队上场而不留空")
+            if (leadIsSupplement) {
+                add(
+                    if (poolHasVanguard) {
+                        "Boss后续队伍：无合格一号位，作为输出补刀队上场而不留空"
+                    } else {
+                        "角色池中没有满足生存资格的一号位；按无T阵容上场，不再空等"
+                    },
+                )
+            }
             add(plan.reason)
         }.distinct()
         return LabyrinthBattleTeamRecommendationResult.Ready(
@@ -204,13 +213,14 @@ class LabyrinthBattleTeamRecommendationPlanner(
         val protectedEffectiveIds = context.effectiveCharacterIds
             .map(::canonicalLabyrinthRoleId)
             .toSet()
-        val removable = failedTeam
-            .filterNot { it.isEligibleBattleVanguard(context) }
-            .filterNot { it.characterId in protectedEffectiveIds }
-            .sortedWith(
-                compareBy<LabyrinthRoleProfile> { it.effectiveUserScore ?: Double.NEGATIVE_INFINITY }
-                    .thenBy { it.characterId },
-            )
+        val byScore = compareBy<LabyrinthRoleProfile> { it.effectiveUserScore ?: Double.NEGATIVE_INFINITY }
+            .thenBy { it.characterId }
+        val nonVanguard = failedTeam.filterNot { it.isEligibleBattleVanguard(context) }
+        // Effective-effect roles go last, not never: 2026-09-17 a team of five effective roles
+        // made the retry refuse every swap and the run stalled on the failure page.
+        val preferred = nonVanguard.filterNot { it.characterId in protectedEffectiveIds }.sortedWith(byScore)
+        val lastResort = nonVanguard.filter { it.characterId in protectedEffectiveIds }.sortedWith(byScore)
+        val removable = preferred + lastResort
         if (removable.isEmpty()) return null
 
         val failedIdSet = failedTeam.map(LabyrinthRoleProfile::characterId).toSet()
@@ -254,7 +264,12 @@ class LabyrinthBattleTeamRecommendationPlanner(
                                 "EX第二次失败生存兜底：保留一号位候选，移除最低分非一号位 ${removed.displayName}" +
                                 "（${formatBattleTeamScore(removed.effectiveUserScore ?: 0.0)}），加入治疗 ${healer.displayName}" +
                                 "（治疗强度${formatBattleTeamScore(healer.exRetryHealingStrength())}）" +
-                                "；有效效果角色全部保留；EX攻略条件按现有角色尽力满足"
+                                (if (removed.characterId in protectedEffectiveIds) {
+                                    "；失败队全员为有效效果角色，有效效果角色不得不换出最低分的一名"
+                                } else {
+                                    "；有效效果角色全部保留"
+                                }) +
+                                "；EX攻略条件按现有角色尽力满足"
                             ).distinct(),
                         defenseMarkStacks = context.defenseMarkStacks,
                         targetCount = context.targetCount,
@@ -292,11 +307,10 @@ class LabyrinthBattleTeamRecommendationPlanner(
                 "战斗失败后可用角色不足${TEAM_SIZE}名，无法生成完整重试队伍",
             )
         }
-        if (!allowSupplementLead && resolved.none { it.isEligibleBattleVanguard(context) }) {
-            return LabyrinthBattleTeamRecommendationResult.Unavailable(
-                "战斗失败后角色池中没有满足生存资格的一号位；不能生成安全重试队伍",
-            )
-        }
+        // A retry with a vanguard-less team beats leaving the run parked on the failure page
+        // (2026-09-19, by request; same fallback as the first attempt).
+        val retryPoolHasVanguard = resolved.any { it.isEligibleBattleVanguard(context) }
+        val retrySupplementLead = allowSupplementLead || !retryPoolHasVanguard
 
         if (context.encounterStrategy != null && retryNumber >= 2 && lastFailedTeamSignature != null) {
             val recovery = exSecondFailureHealerRecovery(
@@ -306,30 +320,9 @@ class LabyrinthBattleTeamRecommendationPlanner(
                 lastFailedTeamSignature = lastFailedTeamSignature,
             )
             if (recovery != null) return recovery
-
-            val failedIds = lastFailedTeamSignature
-                .split(',')
-                .map(String::trim)
-                .filter(String::isNotBlank)
-                .map(::canonicalLabyrinthRoleId)
-                .toSet()
-            val protectedEffectiveIds = context.effectiveCharacterIds
-                .map(::canonicalLabyrinthRoleId)
-                .toSet()
-            val safeRemovableExists = resolved.any { role ->
-                role.characterId in failedIds &&
-                    !role.isEligibleBattleVanguard(context) &&
-                    role.characterId !in protectedEffectiveIds
-            }
-            return LabyrinthBattleTeamRecommendationResult.Unavailable(
-                if (!safeRemovableExists) {
-                    "EX第二次失败生存兜底无法执行：当前失败队没有可替换的非一号位、非有效效果角色；" +
-                        "有效效果角色禁止换出"
-                } else {
-                    "EX第二次失败生存兜底无法生成安全换奶阵容：已锁定一号位候选和全部有效效果角色，" +
-                        "且不会退回可能换走有效角色的普通fallback"
-                },
-            )
+            // No healer swap is possible (no healer owned, or every swap already failed). Fall
+            // through to the ordinary fallback search instead of refusing: a retry with a
+            // different formation beats leaving the run parked on the failure page.
         }
 
         val plan = if (requestedBossTeamCount > 1 || allowSupplementLead) {
@@ -347,7 +340,7 @@ class LabyrinthBattleTeamRecommendationPlanner(
                 excludedTeamSignatures = failedTeamSignatures,
             )
         }
-        if (!allowSupplementLead && plan.teams.isNotEmpty() && plan.safeTeamCount == 0) {
+        if (!retrySupplementLead && plan.teams.isNotEmpty() && plan.safeTeamCount == 0) {
             return LabyrinthBattleTeamRecommendationResult.Unavailable(
                 "战斗失败后角色池中没有满足生存资格的一号位；不能生成安全重试队伍",
             )
@@ -384,7 +377,14 @@ class LabyrinthBattleTeamRecommendationPlanner(
                 score = evaluation.score,
                 vanguard = vanguard,
                 survivalAnchor = evaluation.survivalAnchorCharacterId?.let(memberById::get),
-                reasons = (evaluation.reasons + plan.reason + "失败重试：禁止复用已失败的完整阵容").distinct(),
+                reasons = (
+                    evaluation.reasons + plan.reason + "失败重试：禁止复用已失败的完整阵容" +
+                        if (retryLeadIsSupplement && !retryPoolHasVanguard) {
+                            listOf("角色池中没有满足生存资格的一号位；按无T阵容重试")
+                        } else {
+                            emptyList()
+                        }
+                    ).distinct(),
                 defenseMarkStacks = context.defenseMarkStacks,
                 targetCount = context.targetCount,
                 plannedBossTeamCount = plan.teams.size.coerceIn(1, 3),

@@ -12,9 +12,19 @@
         <package android:name="com.bilibili.priconne" />
     </queries>
 
+    <!--
+        largeHeap raises this process's Dalvik heap limit (192 MB on the reporting device).
+        Screen capture holds several full-resolution ARGB frames at once: one 1920x1080 frame is
+        8.3 MB as an int[] plus 8.3 MB as a Bitmap, and recognition keeps the previous frame for
+        the viewport-stability check. 2026-09-20 live: "Failed to allocate a 8294416 byte
+        allocation with 7140992 free bytes ... growth limit 201326592" stopped capture outright.
+        This is a headroom change, not a leak fix - the per-frame pixel buffer is pooled in
+        MediaProjectionCaptureService so the steady state no longer churns 8 MB per frame.
+    -->
     <application
         android:name=".LandosolToolboxApplication"
         android:allowBackup="false"
+        android:largeHeap="true"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.LandosolToolbox">

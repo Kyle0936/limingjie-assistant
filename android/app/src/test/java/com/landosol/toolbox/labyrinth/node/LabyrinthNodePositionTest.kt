@@ -647,6 +647,41 @@ class LabyrinthNodePositionTest {
     }
 
     @Test
+    fun `semantic repair leaves a crop topology already bound to another node`() {
+        // 2026-09-20 bundle 020234. Route wanted link#30402. Topology read the column's rows and
+        // bound the crop at (820,220) to event#30403 and the crop at (810,650) to event#30401,
+        // which places 30402 in the undetected middle. The classifier called the top crop a link
+        // at 0.664 against topology's 0.810 (logged as a TYPE_CONFLICT), semantic repair adopted
+        // it because the route wanted a link, and the tap entered the event: "节点连结#30402
+        // 进入页面不匹配：识别为EVENT_CHOICE".
+        val topRect = EntryPixelRect(820, 220, 280, 350)
+        val bottomRect = EntryPixelRect(810, 650, 280, 350)
+        val mappings = NodePositionMapper().mapNodes(
+            classifications = listOf(
+                NodeClassification(4, 1, LabyrinthNodeTypes.LINK, 0.664, true, topRect, "node.link.inactive"),
+                NodeClassification(4, 3, LabyrinthNodeTypes.EVENT, 0.658, false, bottomRect, "node.event.inactive.bottom"),
+            ),
+            areaNodes = listOf(
+                node(30302, LabyrinthNodeTypes.RELIC),
+                node(30401, LabyrinthNodeTypes.EVENT),
+                node(30402, LabyrinthNodeTypes.LINK),
+                node(30403, LabyrinthNodeTypes.EVENT),
+            ),
+            currentColumn = 3,
+            reachableNodeIds = setOf(30402L, 30403L),
+            preferredNodeId = 30402L,
+        )
+
+        val target = mappings.firstOrNull { it.blockId == 30402L }
+        assertTrue(
+            "the disputed crop must not be handed to the route target: $target",
+            target?.screenRect != topRect,
+        )
+        // The crop keeps the owner topology gave it, so the run looks again instead of tapping.
+        assertEquals(topRect, mappings.firstOrNull { it.blockId == 30403L }?.screenRect)
+    }
+
+    @Test
     fun `mapNodes maps the only highlighted link in a reachable mixed column`() {
         val targetRect = EntryPixelRect(1360, 350, 280, 350)
         val mappings = NodePositionMapper().mapNodes(

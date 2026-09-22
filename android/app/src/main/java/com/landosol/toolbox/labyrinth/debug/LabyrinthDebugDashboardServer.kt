@@ -2,6 +2,7 @@ package com.landosol.toolbox.labyrinth.debug
 
 import android.graphics.Bitmap
 import android.util.Log
+import com.landosol.toolbox.AppVersion
 import com.landosol.toolbox.automation.overlay.AutomationOverlayPresentation
 import com.landosol.toolbox.labyrinth.LabyrinthEntryRecognitionSessionState
 import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryFrameResult
@@ -40,6 +41,8 @@ class LabyrinthDebugDashboardServer(
         val json: ByteArray,
         val jpeg: ByteArray?,
         val frameVersion: Long,
+        /** Capture time of [jpeg], which is not always the time of [json] — see [publish]. */
+        val jpegMillis: Long = Long.MIN_VALUE,
     )
 
     private val running = AtomicBoolean(false)
@@ -57,6 +60,9 @@ class LabyrinthDebugDashboardServer(
             frameVersion = 0L,
         ),
     )
+    /** Capture time of the JPEG currently stored in [latest]. */
+    @Volatile
+    private var latestJpegMillis = Long.MIN_VALUE
     @Volatile
     private var lastJpegAt = Long.MIN_VALUE
 
@@ -101,11 +107,13 @@ class LabyrinthDebugDashboardServer(
             previous.jpeg
         }
         val version = if (shouldRefreshJpeg) previous.frameVersion + 1L else previous.frameVersion
+        val jpegMillis = if (shouldRefreshJpeg) nowMillis else previous.jpegMillis
+        latestJpegMillis = jpegMillis
         val archivedFrame = archiveFrame(bitmap, state.frameCount)
-        val json = buildJson(state, result, presentation, version, nowMillis, archivedFrame)
+        val json = buildJson(state, result, presentation, version, nowMillis, archivedFrame, jpegMillis)
             .toString()
             .toByteArray(Charsets.UTF_8)
-        latest.set(Snapshot(json = json, jpeg = jpeg, frameVersion = version))
+        latest.set(Snapshot(json = json, jpeg = jpeg, frameVersion = version, jpegMillis = jpegMillis))
         synchronized(historyLock) {
             recentStates.addLast(json)
             while (recentStates.size > MAX_STATE_HISTORY_ENTRIES) recentStates.removeFirst()
@@ -298,11 +306,17 @@ class LabyrinthDebugDashboardServer(
                 "README.txt",
                 buildString {
                     appendLine("黎明界助手调试日志包")
+                    appendLine("应用版本: ${AppVersion.label}")
                     appendLine("生成时间: ${System.currentTimeMillis()}")
                     appendLine("服务地址: http://$IPV4_LOOPBACK:$port/")
                     appendLine("state/latest.json: 下载瞬间的结构化识别状态")
                     appendLine("state/history.ndjson: 最近 ${history.size} 条结构化状态历史")
-                    appendLine("frame/latest.jpg: 最近一帧截图（若已有）")
+                    appendLine(
+                        "frame/latest.jpg: 最近一帧截图（若已有）；对应 frameVersion=" +
+                            "${snapshot.frameVersion}，拍摄于 ${snapshot.jpegMillis}。" +
+                            "截图每 $JPEG_REFRESH_INTERVAL_MILLIS ms 才刷新一次，因此它可能早于 " +
+                            "state/latest.json：先比对两者的 frameVersion 再下结论",
+                    )
                     appendLine("frames/: 逐帧缩放截图（仅在面板开启逐帧归档后存在，${archivedFrames.size} 张）")
                     appendLine("state/history.ndjson 每条的 archivedFrame 字段指向 frames/ 中的文件名")
                     appendLine("logs/logcat.txt: 当前 App 进程最近日志")
@@ -322,7 +336,12 @@ class LabyrinthDebugDashboardServer(
             archivedFrames.forEach { file ->
                 runCatching { entry("frames/${file.name}", file.readBytes()) }
             }
-            entry("logs/logcat.txt", logcat)
+            // The captured window holds only the most recent lines, so a long run can scroll the
+            // startup banner out of it. Restate the build here rather than hope it survived.
+            entry(
+                "logs/logcat.txt",
+                "# 黎明界助手 ${AppVersion.label}\n".toByteArray(Charsets.UTF_8) + logcat,
+            )
         }
         bytes.toByteArray()
     }
@@ -365,9 +384,19 @@ class LabyrinthDebugDashboardServer(
         frameVersion: Long,
         nowMillis: Long,
         archivedFrame: String? = null,
+        jpegMillis: Long = Long.MIN_VALUE,
     ): JSONObject = JSONObject().apply {
+        put("appVersion", AppVersion.name)
+        put("appVersionCode", AppVersion.code)
         put("timestamp", nowMillis)
         put("frameVersion", frameVersion)
+        // The stored JPEG is refreshed at most every JPEG_REFRESH_INTERVAL_MILLIS, so several
+        // consecutive rows share one picture and only the first of them was actually taken from
+        // it. Say when the picture was taken, otherwise a reader pairs these scores with an image
+        // of a different page and draws the wrong conclusion (2026-09-20 bundle 121348: five rows
+        // shared frameVersion 6 while the page went UNKNOWN -> HOME -> UNKNOWN -> HOME).
+        put("frameImageTimestamp", jpegMillis.takeIf { it != Long.MIN_VALUE } ?: JSONObject.NULL)
+        put("frameImageStale", jpegMillis != Long.MIN_VALUE && jpegMillis != nowMillis)
         put("archivedFrame", archivedFrame ?: JSONObject.NULL)
         put("title", presentation.title)
         put("status", presentation.status)
@@ -642,7 +671,7 @@ class LabyrinthDebugDashboardServer(
             <head>
               <meta charset="utf-8">
               <meta name="viewport" content="width=device-width,initial-scale=1">
-              <title>黎明界实时分析</title>
+              <title>黎明界实时分析 ${AppVersion.name}</title>
               <style>
                 *{box-sizing:border-box} body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",sans-serif;background:#0b1020;color:#e8edf8}
                 header{padding:14px 18px;border-bottom:1px solid #27314d;display:flex;gap:18px;align-items:center;position:sticky;top:0;background:#0b1020ee;z-index:3;flex-wrap:wrap}
@@ -653,7 +682,7 @@ class LabyrinthDebugDashboardServer(
               </style>
             </head>
             <body>
-              <header><strong>黎明界实时分析</strong><span class="pill" id="status">等待数据</span><span class="pill" id="page">-</span><span class="muted" id="stamp"></span><a class="pill action" href="/logs.zip">下载日志 ZIP</a><a class="pill action" href="#" id="archiveToggle">逐帧归档：读取中</a></header>
+              <header><strong>黎明界实时分析</strong><span class="pill">${AppVersion.label}</span><span class="pill" id="status">等待数据</span><span class="pill" id="page">-</span><span class="muted" id="stamp"></span><a class="pill action" href="/logs.zip">下载日志 ZIP</a><a class="pill action" href="#" id="archiveToggle">逐帧归档：读取中</a></header>
               <main class="grid">
                 <section class="card"><div class="frameWrap" id="frameWrap"><img id="frame" alt="latest frame"></div></section>
                 <section class="stack">

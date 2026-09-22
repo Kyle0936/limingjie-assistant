@@ -238,6 +238,33 @@ class LabyrinthEntryFrameProcessorTest {
         )
 
     @Test
+    fun `node scan is skipped while the session cannot consume it and keeps the rest of the frame`() {
+        var consumable = false
+        val processor = LabyrinthEntryFrameProcessor(
+            templates = loadShippedTemplates(),
+            nodeTemplates = com.landosol.toolbox.labyrinth.node.NodeTemplateSet(mapOf(
+                "node.boss.platform" to readImage(File(assetRoot, "node_boss_platform.png")),
+            )),
+            nodeScanConsumable = { consumable },
+        )
+        val frame = readImage(File(projectRoot, "android/app/src/test/resources/labyrinth/final-boss-active-20260909.jpg"))
+        val deferred = processor.process(frame)
+        assertEquals(LabyrinthEntryPageState.NODE_SELECTION, deferred.observation.state)
+        assertEquals(NODE_SEARCH_MODE_DEFERRED, deferred.nodeSearchMode)
+        assertEquals(0L, deferred.stageMillis["nodes"])
+        assertEquals(0, deferred.nodeSearchWindowCount)
+        assertTrue(deferred.nodeClassifications.isEmpty())
+        // Page-level recognition still ran: the frame is fully classified, only the map scan is gone.
+        assertTrue(deferred.matchedFeatures.isNotEmpty())
+        assertTrue((deferred.stageMillis["pageAndOther"] ?: 0L) > 0L)
+
+        consumable = true
+        val scanned = processor.process(frame)
+        assertEquals("full", scanned.nodeSearchMode)
+        assertTrue(scanned.nodeSearchWindowCount > 0)
+    }
+
+    @Test
     fun `route proven final boss bypasses ordinary scans and returns to normal mode afterwards`() {
         var finalBoss = true
         val fastProcessor = LabyrinthEntryFrameProcessor(
@@ -1036,6 +1063,21 @@ class LabyrinthEntryFrameProcessorTest {
         assertTrue("return-title action target missing", sessionBlock.returnTitleRect != null)
     }
 
+    /**
+     * The entry templates exactly as the app ships them, read from the asset pack instead of the
+     * external `素材/ui` crop tree that [loadTemplates] needs. Tests that only need a
+     * representative page classification can run on any checkout with this.
+     */
+    private fun loadShippedTemplates(): LabyrinthEntryTemplateSet {
+        val assetsRoot = File(projectRoot, "android/app/src/main/assets")
+        val required = AndroidLabyrinthEntryTemplateLoader.TEMPLATE_PATHS
+            .mapValues { (_, path) -> readImage(File(assetsRoot, path)) }
+        val optional = AndroidLabyrinthEntryTemplateLoader.OPTIONAL_TEMPLATE_PATHS
+            .filterValues { path -> File(assetsRoot, path).isFile }
+            .mapValues { (_, path) -> readImage(File(assetsRoot, path)) }
+        return LabyrinthEntryTemplateSet(required + optional)
+    }
+
     private fun loadTemplates(): LabyrinthEntryTemplateSet {
         val paths = mapOf(
             EntryAnchorId.TITLE_LOGO to File(cropRoot, "主界面logo.bmp"),
@@ -1352,5 +1394,25 @@ class LabyrinthEntryFrameProcessorTest {
         return candidates
             .firstOrNull { File(it, "android/app/build.gradle.kts").isFile }
             ?: error("Cannot locate project root from ${File(".").canonicalPath}")
+    }
+
+    @Test fun `stage timings keep battle-team recognition separate from page classification`() {
+        // Across the 2026-09 bundles BATTLE_TEAM_SELECTION was 18% of run wall-clock and 88-94%
+        // of that was our own recognition — but every millisecond of it landed in "pageAndOther"
+        // together with the page classifier, so a bundle could not say which of the two to look
+        // at. The buckets must stay disjoint and must add up to the frame's own elapsed time.
+        val processor = createProcessor()
+        val result = processor.process(
+            PixelImage(1920, 1080, IntArray(1920 * 1080) { 0xff101018.toInt() }),
+        )
+        val stages = result.stageMillis
+        assertTrue("battleTeam bucket missing: ${stages.keys}", stages.containsKey("battleTeam"))
+        val parts = listOf("nodes", "bossPlatform", "battleTeam", "pageAndOther")
+            .sumOf { stages[it] ?: 0L }
+        assertTrue(
+            "stages $stages must not exceed elapsed ${result.elapsedMillis}",
+            parts <= result.elapsedMillis + 2,
+        )
+        assertTrue("stages must not be negative: $stages", parts >= 0 && stages.values.all { it >= 0 })
     }
 }

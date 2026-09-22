@@ -13,8 +13,9 @@ android {
         applicationId = "com.landosol.toolbox"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0-dev"
+        // major*10000 + minor*100 + patch, so the code stays monotonic as the name moves.
+        versionCode = 10011
+        versionName = "1.0.11"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

@@ -263,7 +263,10 @@ class LabyrinthBattleTeamRecommendationTest {
     }
 
     @Test
-    fun `automatic battle rejects roster without any tank`() {
+    fun `a roster without any tank still fields a team, marked as leading without one`() {
+        // 2026-09-19, by request: blocking 编组 left the run with nothing to send while the fight
+        // still had to be played. The team is composed anyway; what must not happen is a damage
+        // dealer being quietly promoted into a "safe" lead.
         val profiles = (1..6).map { index ->
             role("dps$index", "输出$index", position = index, userScore = 90.0, damage = 90.0)
         }.associateBy(LabyrinthRoleProfile::characterId)
@@ -271,9 +274,12 @@ class LabyrinthBattleTeamRecommendationTest {
         val result = recommendationPlanner(profiles).initialRecommendation(
             acquiredCharacterIds = profiles.keys,
             context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
-        ) as LabyrinthBattleTeamRecommendationResult.Unavailable
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
 
-        assertTrue(result.reason.contains("没有满足生存资格的一号位"))
+        assertEquals(5, result.recommendation.members.size)
+        // Zero safe teams is how "this lead is not a qualified vanguard" is reported.
+        assertEquals(0, result.recommendation.safeBossTeamCount)
+        assertTrue(result.recommendation.reasons.any { it.contains("无T阵容") })
     }
 
     @Test
@@ -298,9 +304,11 @@ class LabyrinthBattleTeamRecommendationTest {
         val result = recommendationPlanner(profiles).initialRecommendation(
             acquiredCharacterIds = profiles.keys,
             context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4),
-        ) as LabyrinthBattleTeamRecommendationResult.Unavailable
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
 
-        assertTrue(result.reason.contains("没有满足生存资格的一号位"))
+        // The team is fielded, but a setup-dependent untargetable is never counted as a safe lead.
+        assertEquals(0, result.recommendation.safeBossTeamCount)
+        assertTrue(result.recommendation.reasons.any { it.contains("无T阵容") })
     }
 
     @Test
@@ -490,7 +498,7 @@ class LabyrinthBattleTeamRecommendationTest {
     }
 
     @Test
-    fun `second ex failure refuses fallback when all non tanks are effective effect roles`() {
+    fun `second ex failure swaps out the lowest effective role when every non tank is effective`() {
         val profiles = listOf(
             role("tank", "T", 1, 95.0, 20.0, reliableVanguard = 100.0),
             role("a", "A", 2, 96.0, 96.0),
@@ -517,11 +525,45 @@ class LabyrinthBattleTeamRecommendationTest {
             failedTeamSignatures = setOf(failed),
             retryNumber = 2,
             lastFailedTeamSignature = failed,
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        val ids = retry.recommendation.members.map(LabyrinthRecommendedTeamMember::characterId).toSet()
+
+        // 2026-09-17: refusing here stalled the run. The lowest-scored effective role yields.
+        assertTrue("tank must be kept: $ids", "tank" in ids)
+        assertFalse("lowest effective role must leave: $ids", "d" in ids)
+        assertTrue("healer must be added: $ids", "heal" in ids)
+        assertTrue(retry.recommendation.reasons.any { it.contains("有效效果角色不得不换出") })
+    }
+
+    @Test
+    fun `second ex failure without any healer falls through to the ordinary fallback`() {
+        val profiles = listOf(
+            role("tank", "T", 1, 95.0, 20.0, reliableVanguard = 100.0),
+            role("a", "A", 2, 96.0, 96.0),
+            role("b", "B", 3, 90.0, 90.0),
+            role("c", "C", 4, 80.0, 80.0),
+            role("d", "D", 5, 70.0, 70.0),
+            role("e", "E", 6, 60.0, 60.0),
+        ).associateBy(LabyrinthRoleProfile::characterId)
+        val planner = recommendationPlanner(profiles)
+        val context = LabyrinthRoleDecisionContext(
+            defenseMarkStacks = 1,
+            encounterStrategy = LabyrinthExEncounterStrategy(id = "test-ex-no-healer", identityName = "无奶EX", targetCount = 1),
+            effectiveCharacterIds = setOf("a", "b", "c", "d"),
+        )
+        val failed = labyrinthBattleTeamSignature(listOf("tank", "a", "b", "c", "d"))
+
+        val retry = planner.retryRecommendation(
+            acquiredCharacterIds = profiles.keys,
+            context = context,
+            failedTeamSignatures = setOf(failed),
+            retryNumber = 2,
+            lastFailedTeamSignature = failed,
         )
 
-        assertTrue(retry is LabyrinthBattleTeamRecommendationResult.Unavailable)
-        val reason = (retry as LabyrinthBattleTeamRecommendationResult.Unavailable).reason
-        assertTrue("reason=$reason", reason.contains("有效效果角色禁止换出"))
+        assertTrue("retry=$retry", retry is LabyrinthBattleTeamRecommendationResult.Ready)
+        val ids = (retry as LabyrinthBattleTeamRecommendationResult.Ready).recommendation.members.map { it.characterId }
+        assertFalse(labyrinthBattleTeamSignature(ids) == failed)
     }
 
     @Test
@@ -608,6 +650,33 @@ class LabyrinthBattleTeamRecommendationTest {
         )
     }
 
+    @Test fun `a tankless retry is fielded instead of parking the run on the failure page`() {
+        // The first attempt's fallback would be pointless if the retry still refused: the run
+        // would stop on the failure page with nothing to submit.
+        val residual = (1..5).map { i -> role("d$i", "输出$i", i + 1, 70.0, 80.0) }
+            .associateBy { it.characterId }
+        val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4)
+
+        val retry = recommendationPlanner(residual).retryRecommendation(
+            acquiredCharacterIds = residual.keys,
+            context = context,
+            failedTeamSignatures = emptySet(),
+            retryNumber = 1,
+        ) as LabyrinthBattleTeamRecommendationResult.Ready
+        assertEquals(5, retry.recommendation.members.size)
+        assertEquals(0, retry.recommendation.safeBossTeamCount)
+
+        // A formation that already failed is still never resubmitted.
+        val signature = labyrinthBattleTeamSignature(retry.recommendation.members.map { it.characterId })
+        val again = recommendationPlanner(residual).retryRecommendation(
+            acquiredCharacterIds = residual.keys,
+            context = context,
+            failedTeamSignatures = setOf(signature),
+            retryNumber = 2,
+        )
+        assertTrue(again is LabyrinthBattleTeamRecommendationResult.Unavailable)
+    }
+
     @Test fun `boss follow-up slot fields a supplement team when the residual roster has no tank`() {
         // 2026-09-17: teams 1/2 took both tanks; slot 3 must still be filled with the leftover
         // damage dealers instead of leaving the Boss on a sliver.
@@ -615,13 +684,18 @@ class LabyrinthBattleTeamRecommendationTest {
             .associateBy { it.characterId }
         val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 4)
 
-        val strict = recommendationPlanner(residual).initialRecommendation(residual.keys, context, requestedBossTeamCount = 1)
-        assertTrue(strict is LabyrinthBattleTeamRecommendationResult.Unavailable)
+        // Since 2026-09-19 a tankless pool is fielded rather than refused, so both the strict and
+        // the explicit follow-up call produce a team; neither may report a safe lead.
+        val strict = recommendationPlanner(residual)
+            .initialRecommendation(residual.keys, context, requestedBossTeamCount = 1)
+            as LabyrinthBattleTeamRecommendationResult.Ready
+        assertEquals(0, strict.recommendation.safeBossTeamCount)
 
         val filled = recommendationPlanner(residual).initialRecommendation(
             residual.keys, context, requestedBossTeamCount = 1, allowSupplementLead = true,
         ) as LabyrinthBattleTeamRecommendationResult.Ready
         assertEquals(5, filled.recommendation.members.size)
+        assertEquals(0, filled.recommendation.safeBossTeamCount)
         assertTrue(filled.recommendation.reasons.any { it.contains("补刀队") })
 
         val retry = recommendationPlanner(residual).retryRecommendation(
