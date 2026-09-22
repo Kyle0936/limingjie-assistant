@@ -28,9 +28,6 @@ internal enum class LabyrinthFallbackTap(val x: Int, val y: Int) {
     SHOP_PURCHASE_COMPLETE_CLOSE(960, 746),
     /** Shop exit confirmation right button. */
     SHOP_EXIT_CONFIRM(1180, 745),
-    /** Event unknown-page alternating left/right probe points. */
-    EVENT_LEFT(160, 780),
-    EVENT_RIGHT(1760, 780),
     ;
 
     fun rect(frameWidth: Int, frameHeight: Int): EntryPixelRect {
@@ -116,10 +113,12 @@ internal val LABYRINTH_FALLBACK_TAP_POLICIES: List<LabyrinthFallbackTapPolicy> =
     LabyrinthFallbackTapPolicy(LabyrinthEntryPageState.RUN_CLEAR_REWARD_ANIMATION, LabyrinthFallbackTap.BOTTOM_CENTER, emptySet()),
     LabyrinthFallbackTapPolicy(LabyrinthEntryPageState.RUN_CLEAR_CONGRATULATIONS, LabyrinthFallbackTap.CENTER, emptySet()),
     LabyrinthFallbackTapPolicy(LabyrinthEntryPageState.RUN_CLEAR_CHEST_ANIMATION, LabyrinthFallbackTap.CENTER, emptySet()),
+    // What survives on UNKNOWN is the post-Boss settlement advance only; the reward/portrait
+    // blind taps were removed after they mis-clicked map nodes on the transition frames that
+    // follow a battle (2026-09-21). Settlement runs when no map is on screen.
     LabyrinthFallbackTapPolicy(LabyrinthEntryPageState.UNKNOWN, LabyrinthFallbackTap.CENTER, emptySet()),
     LabyrinthFallbackTapPolicy(LabyrinthEntryPageState.UNKNOWN, LabyrinthFallbackTap.BOTTOM_RIGHT, emptySet()),
-    LabyrinthFallbackTapPolicy(LabyrinthEntryPageState.UNKNOWN, LabyrinthFallbackTap.EVENT_LEFT, emptySet()),
-    LabyrinthFallbackTapPolicy(LabyrinthEntryPageState.UNKNOWN, LabyrinthFallbackTap.EVENT_RIGHT, emptySet()),
+    LabyrinthFallbackTapPolicy(LabyrinthEntryPageState.UNKNOWN, LabyrinthFallbackTap.BOTTOM_CENTER, emptySet()),
 )
 
 /** Fallback taps a page is allowed to issue. Pages absent from the table may not fall back at all. */

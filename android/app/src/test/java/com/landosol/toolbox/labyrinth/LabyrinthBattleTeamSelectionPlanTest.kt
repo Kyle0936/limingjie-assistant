@@ -18,33 +18,29 @@ import org.junit.Test
 class LabyrinthBattleTeamSelectionPlanTest {
 
     @Test
-    fun `empty effective filter ends the scan only after a stable complete team is visible`() {
-        val completeTeam = (1..5).map { index ->
-            match("current_member_$index", "$index", selected = true)
-        }
-
+    fun `empty effective filter finishes only when the stable empty notice is present`() {
         assertTrue(
-            labyrinthHasEmptyEffectiveFilterResult(
+            labyrinthEffectiveFilterIsEmpty(
                 observation(
                     currentFilter = LabyrinthBattleElementFilter.EFFECTIVE_EFFECT,
-                    selected = completeTeam,
                 ),
+                emptyNoticeScore = 0.90,
             ),
         )
         assertFalse(
-            labyrinthHasEmptyEffectiveFilterResult(
+            labyrinthEffectiveFilterIsEmpty(
                 observation(
                     currentFilter = LabyrinthBattleElementFilter.EFFECTIVE_EFFECT,
-                    selected = completeTeam.take(4),
                 ),
+                emptyNoticeScore = 0.79,
             ),
         )
         assertFalse(
-            labyrinthHasEmptyEffectiveFilterResult(
+            labyrinthEffectiveFilterIsEmpty(
                 observation(
                     currentFilter = LabyrinthBattleElementFilter.ALL,
-                    selected = completeTeam,
                 ),
+                emptyNoticeScore = 0.90,
             ),
         )
     }
@@ -373,6 +369,73 @@ class LabyrinthBattleTeamSelectionPlanTest {
         assertEquals(listOf("C", "D", "E"), plan.visibleSelectTargets.map(LabyrinthBattleTeamSelectionTarget::characterId))
         assertTrue(plan.readyToExecute)
         assertFalse(plan.teamReady)
+    }
+
+    @Test
+    fun `ordinary battle holds a full identified team and starts without touching it`() {
+        val planner = planner(ids = listOf("A", "B", "C", "D", "E", "F", "G"))
+        val recommendation = recommendation("A", "B", "C", "D", "G")
+        val current = listOf("A", "B", "C", "D", "E")
+        val observation = observation(
+            selected = current.mapIndexed { index, id -> match("selected-$index", id, selected = true) },
+            visible = listOf(match("visible-G", "G")),
+        )
+        val held = planner.plan(sessionId, recommendation, observation, holdCurrentTeamRequested = true)
+        assertTrue(held.holdCurrentTeam)
+        assertTrue(held.teamReady)
+        assertTrue(held.needSelectIds.isEmpty())
+        assertTrue(held.needDeselectIds.isEmpty())
+        assertEquals(current, held.recommendedIds)
+        // A recommendation that differs from the held team does not invalidate the plan; the
+        // page itself still does.
+        assertTrue(held.isStillValid(sessionId, recommendation("A", "B", "C", "D", "G"), observation))
+        assertFalse(held.isStillValid(sessionId, recommendation, observation(
+            selected = current.mapIndexed { index, id -> match("selected-$index", id, selected = true) },
+            viewportRevision = 2L,
+        )))
+        assertEquals(
+            LabyrinthBattleTeamExecutionKind.START_BATTLE,
+            requireNotNull(labyrinthBattleTeamExecutionStep(held, sessionId, recommendation, observation,
+                EntryPixelRect(1500, 900, 300, 100), 1920, 1080)).kind,
+        )
+
+        // Not requested (retry, EX, Boss): the ordinary diff applies.
+        val normal = planner.plan(sessionId, recommendation, observation)
+        assertFalse(normal.holdCurrentTeam)
+        assertEquals(listOf("E"), normal.needDeselectIds)
+        assertEquals(listOf("G"), normal.needSelectIds)
+    }
+
+    @Test
+    fun `ordinary battle never holds a short or partly unidentified team`() {
+        val planner = planner(ids = listOf("A", "B", "C", "D", "E"))
+        val recommendation = recommendation("A", "B", "C", "D", "E")
+        val short = planner.plan(
+            sessionId, recommendation,
+            observation(selected = listOf("A", "B", "C", "D").mapIndexed { i, id -> match("s-$i", id, selected = true) }),
+            holdCurrentTeamRequested = true,
+        )
+        assertFalse(short.holdCurrentTeam)
+        assertEquals(listOf("E"), short.needSelectIds)
+
+        val unidentified = planner.plan(
+            sessionId, recommendation,
+            observation(
+                selected = listOf("A", "B", "C", "D").mapIndexed { i, id -> match("s-$i", id, selected = true) } +
+                    LabyrinthBattleCharacterMatch(
+                        slotId = "s-4", characterId = null, displayName = null, iconVariant = "test",
+                        confidence = 0.2, screenRect = EntryPixelRect(500, 200, 100, 100), selected = true,
+                    ),
+            ),
+            holdCurrentTeamRequested = true,
+        )
+        assertFalse(unidentified.holdCurrentTeam)
+        assertFalse(unidentified.teamReady)
+
+        assertTrue(labyrinthHoldsCurrentTeam(requested = true, selectedSlotCount = 5, identifiedSelectedCount = 5))
+        assertFalse(labyrinthHoldsCurrentTeam(requested = true, selectedSlotCount = 5, identifiedSelectedCount = 4))
+        assertFalse(labyrinthHoldsCurrentTeam(requested = true, selectedSlotCount = 4, identifiedSelectedCount = 4))
+        assertFalse(labyrinthHoldsCurrentTeam(requested = false, selectedSlotCount = 5, identifiedSelectedCount = 5))
     }
 
     @Test

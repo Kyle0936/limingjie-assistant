@@ -42,7 +42,7 @@ class LabyrinthRoleRewardCommitTest {
             // that looks nothing like the UI copy must still persist the selection.
             dispatch.invoke(session, manager.current()!!.id.value,
                 LabyrinthPostEntryActionKind.SELECT_ROLE_REWARD, "random-label-9f3a", rect,
-                System.currentTimeMillis(), "left:1002", "1002", null, null, null, false)
+                System.currentTimeMillis(), "left:1002", "1002", null, null, null, false, emptyList<String>())
             val inFlight = field(session, "actionInFlight").get(session) as AtomicBoolean
             withTimeout(5_000) { while (inFlight.get()) delay(10) }
             assertEquals(expectedWrites, store.writes)

@@ -133,6 +133,25 @@ class LabyrinthPageRuntimePolicyTest {
                 hasUniqueReachableRouteTarget = true,
             ),
         )
+        // 2026-09-18 live: the shop exit dialog fading in classified UNKNOWN with the shop
+        // chrome still visible and was adopted as a movement confirmation for Boss#30701.
+        assertEquals(
+            false,
+            labyrinthCanRecoverOrphanNodeMoveConfirmation(
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                confirmationConfidence = 0.95,
+                hasUniqueReachableRouteTarget = true,
+                shopBackgroundVisible = true,
+            ),
+        )
+        assertTrue(
+            labyrinthCanRecoverOrphanNodeMoveConfirmation(
+                pageState = LabyrinthEntryPageState.UNKNOWN,
+                confirmationConfidence = 0.95,
+                hasUniqueReachableRouteTarget = true,
+                shopBackgroundVisible = false,
+            ),
+        )
     }
 
     @Test
@@ -735,6 +754,20 @@ class LabyrinthPageRuntimePolicyTest {
                 result(LabyrinthEntryPageState.BATTLE_TEAM_SELECTION, battleTeam = observation),
             ).isEmpty(),
         )
+    }
+
+    @Test
+    fun `empty effective filter completes the scan only with the notice and no cards`() {
+        val empty = battleTeamObservation(
+            state = LabyrinthBattleTeamRecognitionState.STABLE,
+            visible = emptyList(),
+        ).copy(currentFilter = LabyrinthBattleElementFilter.EFFECTIVE_EFFECT)
+        assertTrue(labyrinthEffectiveFilterIsEmpty(empty, emptyNoticeScore = 0.95))
+        // Notice alone (cards still loading in) or cards alone never count as empty.
+        assertTrue(!labyrinthEffectiveFilterIsEmpty(empty, emptyNoticeScore = 0.40))
+        assertTrue(!labyrinthEffectiveFilterIsEmpty(empty.copy(visibleCharacters = listOf(battleCharacter("1059", "可可萝"))), emptyNoticeScore = 0.95))
+        assertTrue(!labyrinthEffectiveFilterIsEmpty(empty.copy(recognitionState = LabyrinthBattleTeamRecognitionState.WAITING_FOR_STABILITY), emptyNoticeScore = 0.95))
+        assertTrue(!labyrinthEffectiveFilterIsEmpty(empty.copy(currentFilter = LabyrinthBattleElementFilter.ALL), emptyNoticeScore = 0.95))
     }
 
     @Test

@@ -70,6 +70,26 @@ internal fun gameSessionResetSkipsTermination(page: LabyrinthEntryPageState): Bo
 )
 
 /**
+ * Whether the reset may try to invalidate an old session.
+ *
+ * [clientObserved] is the part the page alone cannot express. The observation handler stops
+ * before reading a page whenever the client is not in the foreground, so a client that is still
+ * launching, backgrounded or absent leaves the peek at its initial UNKNOWN. UNKNOWN otherwise
+ * means "a labyrinth page we failed to classify", which does need invalidating, so the two cases
+ * used to be indistinguishable and the second one won.
+ *
+ * 2026-09-19 live: a batch round began while the game was still opening. Every captured frame was
+ * the portrait launcher, the peek returned UNKNOWN, and the anchor terminator spent its whole
+ * budget looking for a 黎明界 trigger on a screen the game was not even drawing, ending the batch
+ * with CLIENT_INVALIDATION_FAILED. With no client on screen there is no session to invalidate, so
+ * the reset should go straight to the entry navigation instead.
+ */
+internal fun gameSessionResetSkipsTermination(
+    page: LabyrinthEntryPageState,
+    clientObserved: Boolean,
+): Boolean = !clientObserved || gameSessionResetSkipsTermination(page)
+
+/**
  * Whether a recognized labyrinth-home/map frame may complete the reset.
  *
  * While the terminator is still driving the client the screen is by definition the *old*
@@ -138,6 +158,15 @@ class GameSessionResetWorkflow(
     @Volatile
     private var lastObservedPage: LabyrinthEntryPageState = LabyrinthEntryPageState.UNKNOWN
 
+    /**
+     * Set once a frame has been recognised with the client in the foreground.
+     *
+     * Without this the peek cannot tell an unclassifiable game page from no game at all, because
+     * both leave [lastObservedPage] on UNKNOWN.
+     */
+    @Volatile
+    private var clientObserved = false
+
     init {
         require(totalTimeoutMillis > 0)
     }
@@ -198,6 +227,7 @@ class GameSessionResetWorkflow(
         stableStageFrames = 0
         lastStageChangeAt = clock()
         lastObservedPage = LabyrinthEntryPageState.UNKNOWN
+        clientObserved = false
         _state.value = GameSessionResetState(
             status = GameSessionResetStatus.RUNNING,
             sessionId = session.id,
@@ -287,10 +317,33 @@ class GameSessionResetWorkflow(
                 // 2. 先看清客户端此刻在哪一页。批次首轮可能从标题/主页/冒险页发起，那些页面
                 //    尚未载入黎明界状态，没有旧会话可失效，直接走入口导航即可。
                 setMessage("识别客户端当前页面")
+                // A round can begin while the client is still opening. Give it time to reach the
+                // foreground before judging which page it is on; otherwise every frame belongs to
+                // the launcher and the peek below can only report UNKNOWN.
+                awaitClientObserved(sessionId, CLIENT_PRESENCE_TIMEOUT_MILLIS)
                 val observedPage = awaitObservedPage(sessionId, PAGE_PEEK_TIMEOUT_MILLIS)
-                Log.d(LOG_TAG, "peek page=$observedPage skipTermination=${gameSessionResetSkipsTermination(observedPage)}")
-                if (gameSessionResetSkipsTermination(observedPage)) {
-                    setMessage("客户端在 ${observedPage.name}，尚未载入黎明界，无需触发会话失效")
+                val skipTermination = gameSessionResetSkipsTermination(observedPage, clientObserved)
+                Log.d(
+                    LOG_TAG,
+                    "peek page=$observedPage clientObserved=$clientObserved skipTermination=$skipTermination",
+                )
+                if (skipTermination) {
+                    setMessage(
+                        if (!clientObserved) {
+                            "未看到公主连结画面，没有可失效的旧会话；直接进入登录导航"
+                        } else {
+                            "客户端在 ${observedPage.name}，尚未载入黎明界，无需触发会话失效"
+                        },
+                    )
+                    // Nothing was terminated, so the client may simply not be running. Ask the
+                    // backend to bring it up; the entry planner drives everything after that.
+                    if (!clientObserved) {
+                        transitionTo(sessionId, GameSessionResetStage.RELAUNCHING, "启动公主连结")
+                        val relaunch = backend.relaunchClient()
+                        if (relaunch != GameClientRelaunchResult.LAUNCH_REQUESTED) {
+                            error("启动客户端失败：$relaunch")
+                        }
+                    }
                 } else {
                     // 3. 关闭/退出客户端（ADB force-stop 或会话失效触发弹窗返回标题）
                     val terminationLabel = when (backend.kind) {
@@ -352,6 +405,20 @@ class GameSessionResetWorkflow(
     }
 
     /** Waits for the first recognised page (or the timeout) while the stage is still PENDING. */
+    /** Waits for one frame recognised with the client in the foreground. */
+    private suspend fun awaitClientObserved(
+        sessionId: AutomationSessionId,
+        timeoutMillis: Long,
+    ): Boolean {
+        val deadline = clock() + timeoutMillis
+        while (activeSessionId == sessionId && clock() < deadline) {
+            if (clientObserved) return true
+            kotlinx.coroutines.delay(FRAME_POLL_MILLIS)
+        }
+        if (activeSessionId != sessionId) error("会话重置已被停止")
+        return clientObserved
+    }
+
     private suspend fun awaitObservedPage(
         sessionId: AutomationSessionId,
         timeoutMillis: Long,
@@ -456,6 +523,7 @@ class GameSessionResetWorkflow(
 
                 val pageState = result.observation.state
                 lastObservedPage = pageState
+                clientObserved = true
                 if (stage == GameSessionResetStage.PENDING) {
                     // The flow is still deciding whether termination is needed; look, never act.
                     _state.value = _state.value.copy(message = "识别客户端当前页面：${pageState.name}")
@@ -638,6 +706,12 @@ class GameSessionResetWorkflow(
         const val FRAME_POLL_MILLIS = 250L
         /** How long the PENDING peek waits for a recognised page before defaulting to termination. */
         const val PAGE_PEEK_TIMEOUT_MILLIS = 6_000L
+
+/**
+ * How long a round waits for the client to reach the foreground before deciding there is no
+ * session to invalidate. Long enough to cover a cold start, well inside the flow's total budget.
+ */
+const val CLIENT_PRESENCE_TIMEOUT_MILLIS = 20_000L
         const val DEFAULT_TOTAL_TIMEOUT_MILLIS = 180_000L
     }
 }

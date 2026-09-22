@@ -57,4 +57,19 @@ class LabyrinthShopItemTextTest {
         assertTrue(LabyrinthShopItemText.looksLikeRoleImprint("治疗型职能的随机"))
         assertNull(LabyrinthShopItemText.roleImprintLabel("职能的随机印記"))
     }
+
+    @Test fun `selection imprints are told apart from random ones`() {
+        // 2026-09-20 bundle 155513: both kinds were on sale in one stock cycle. Only the 选择
+        // variant opens a roster picker after purchase, so the run has to know which it bought.
+        assertTrue(LabyrinthShopItemText.isChoiceRoleImprint("攻击型职能的选择印记"))
+        assertTrue(LabyrinthShopItemText.isChoiceRoleImprint("强化型职能的选择印记"))
+        assertFalse(LabyrinthShopItemText.isChoiceRoleImprint("攻击型职能的随机印记"))
+        assertFalse(LabyrinthShopItemText.isChoiceRoleImprint("干扰型职能的随机印记"))
+        // Live OCR of these titles, exactly as the bundle recorded them.
+        assertTrue(LabyrinthShopItemText.isChoiceRoleImprint("强化型职能的选择记"))
+        assertFalse(LabyrinthShopItemText.isChoiceRoleImprint("增益型识能的随机印记"))
+        // Relic titles are never imprints of either kind.
+        assertFalse(LabyrinthShopItemText.isChoiceRoleImprint("苍珠手镯"))
+        assertFalse(LabyrinthShopItemText.isChoiceRoleImprint(null))
+    }
 }

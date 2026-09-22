@@ -125,6 +125,7 @@ class AndroidLabyrinthEventChoiceResolver(
                 choice = choice,
                 buttonRect = rect,
                 buttonConfidence = blueButtonConfidence(bitmap, rect),
+                enabledConfidence = enabledButtonConfidence(bitmap, rect),
             )
         }
         val trusted = match.trusted && stableFrames >= REQUIRED_STABLE_FRAMES
@@ -192,6 +193,9 @@ class AndroidLabyrinthEventChoiceResolver(
         ) return
         schedule(bitmap, rect, fingerprint)
     }
+
+    private fun enabledButtonConfidence(bitmap: Bitmap, rect: EntryPixelRect): Double =
+        labyrinthEventEnabledButtonConfidence(rect) { x, y -> bitmap.getPixel(x, y) }
 
     private fun blueButtonConfidence(bitmap: Bitmap, rect: EntryPixelRect): Double =
         labyrinthEventBlueButtonConfidence(rect, bitmap::getPixel)

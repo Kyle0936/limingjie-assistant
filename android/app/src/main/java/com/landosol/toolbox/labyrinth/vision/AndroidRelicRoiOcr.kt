@@ -7,6 +7,9 @@ internal class AndroidRelicRoiOcr(private val submit: (Bitmap, (String?) -> Unit
     private val scheduler = RelicOcrScheduler({ android.os.SystemClock.elapsedRealtime() }, maximumAttempts = maximumAttempts)
     fun clear() = scheduler.clear()
 
+    /** See [RelicOcrScheduler.lastCompletionAt]. */
+    fun lastCompletionAt(): Long = scheduler.lastCompletionAt()
+
     fun read(bitmap: Bitmap, slot: String, rect: EntryPixelRect, scale: Int = 1): RelicOcrScheduler.Read? {
         val fingerprint = relicRoiFingerprint(bitmap, rect)
         val cached = scheduler.cached(slot, fingerprint)

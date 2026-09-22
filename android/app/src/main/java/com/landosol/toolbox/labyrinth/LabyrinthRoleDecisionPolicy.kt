@@ -2,6 +2,9 @@ package com.landosol.toolbox.labyrinth
 
 import kotlinx.serialization.Serializable
 import java.util.PriorityQueue
+import java.util.concurrent.Callable
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
 import kotlin.math.max
 
 @Serializable
@@ -12,6 +15,25 @@ enum class LabyrinthCharacterAttribute(val label: String) {
     LIGHT("光"),
     DARK("暗"),
     UNKNOWN("未知"),
+}
+
+/** Attribute table indexed by ordinal, for the scorer's allocation-free accumulation. */
+private val ATTRIBUTE_SLOTS = LabyrinthCharacterAttribute.values()
+private val ATTRIBUTE_SLOT_COUNT = ATTRIBUTE_SLOTS.size
+
+/**
+ * Worker threads for the formation search. Not the CPU count on purpose: the game shares the
+ * virtual machine, and the fork this was ported from measured 4 threads at 0.58x wall-clock and
+ * 8 at 0.45x, i.e. more threads made the whole run slower, not faster.
+ */
+private const val ROLE_SEARCH_THREADS = 4
+
+/** Below this many combinations the thread hand-off costs more than it saves. */
+private const val PARALLEL_MIN_COMBINATIONS = 512
+
+/** One process-wide pool: a run calls the search many times and must not spin threads up each time. */
+private val ROLE_SEARCH_EXECUTOR: ExecutorService = Executors.newFixedThreadPool(ROLE_SEARCH_THREADS) { runnable ->
+    Thread(runnable, "labyrinth-role-search").apply { isDaemon = true }
 }
 
 /**
@@ -578,7 +600,13 @@ class LabyrinthTeamScorer(
     fun evaluate(
         members: List<LabyrinthRoleProfile>,
         context: LabyrinthRoleDecisionContext,
-    ): LabyrinthTeamEvaluation = evaluateInternal(members, context, explain = true)
+    ): LabyrinthTeamEvaluation {
+        // Argument validation stays on the public entry: the search hot path evaluates tens of
+        // thousands of teams whose pool was already de-duplicated at rankedFormationsInternal.
+        require(members.isNotEmpty() && members.size <= TEAM_SIZE)
+        require(members.distinctBy(LabyrinthRoleProfile::characterId).size == members.size)
+        return evaluateInternal(members, context, explain = true)
+    }
 
     internal fun evaluateForSearch(
         members: List<LabyrinthRoleProfile>,
@@ -590,24 +618,67 @@ class LabyrinthTeamScorer(
         context: LabyrinthRoleDecisionContext,
         explain: Boolean,
     ): LabyrinthTeamEvaluation {
-        require(members.isNotEmpty() && members.size <= TEAM_SIZE)
-        require(members.distinctBy(LabyrinthRoleProfile::characterId).size == members.size)
-
         val targetCount = context.targetCount.coerceAtMost(3)
-        val attributeCounts = members.mapNotNull(LabyrinthRoleProfile::attribute).groupingBy { it }.eachCount()
-        val activeBonuses = attributeCounts.entries
-            .map { (attribute, count) ->
-                val bonus = config.attributeDamageBonus.getValue(count)
-                val groupDamage = members
-                    .filter { it.attribute == attribute }
-                    .sumOf { scenarioDamage(it, LabyrinthRoleDamageType.PHYSICAL, targetCount) +
-                        scenarioDamage(it, LabyrinthRoleDamageType.MAGIC, targetCount) }
-                Triple(attribute, bonus, groupDamage * bonus)
+        // One pass over the members into ordinal-indexed arrays. This is the same computation as
+        // the former mapNotNull/groupingBy/eachCount + Triple + stable sortedByDescending + take
+        // chain, minus its intermediate collections and boxing: the search hot path evaluates
+        // tens of thousands of teams per recommendation, and those temporaries were most of its
+        // garbage. Attribute order is first-appearance order, exactly as groupingBy produced it,
+        // and the per-attribute damage sums add members in member order, so the doubles are
+        // bit-identical.
+        val attributeCount = IntArray(ATTRIBUTE_SLOT_COUNT)
+        val attributeGroupDamage = DoubleArray(ATTRIBUTE_SLOT_COUNT)
+        val attributeFirstSeen = IntArray(members.size)
+        var attributeSeenCount = 0
+        for (member in members) {
+            val slot = (member.attribute ?: continue).ordinal
+            if (attributeCount[slot] == 0) attributeFirstSeen[attributeSeenCount++] = slot
+            attributeCount[slot]++
+            attributeGroupDamage[slot] += scenarioDamage(member, LabyrinthRoleDamageType.PHYSICAL, targetCount) +
+                scenarioDamage(member, LabyrinthRoleDamageType.MAGIC, targetCount)
+        }
+        val attributeCounts: Map<LabyrinthCharacterAttribute, Int> = if (attributeSeenCount == 0) {
+            emptyMap()
+        } else {
+            LinkedHashMap<LabyrinthCharacterAttribute, Int>(attributeSeenCount * 2).also { counts ->
+                for (index in 0 until attributeSeenCount) {
+                    val slot = attributeFirstSeen[index]
+                    counts[ATTRIBUTE_SLOTS[slot]] = attributeCount[slot]
+                }
             }
-            .filter { (_, bonus, _) -> bonus > 0.0 }
-            .sortedByDescending { (_, _, incrementalDamage) -> incrementalDamage }
-            .take(config.maximumActiveAttributeBonuses)
-            .associate { (attribute, bonus, _) -> attribute to bonus }
+        }
+        // Top-N by incremental damage with a bounded insertion sort. Ties keep first-appearance
+        // order, which is what the stable sortedByDescending did.
+        val maximumBonuses = config.maximumActiveAttributeBonuses
+        val chosenSlots = IntArray(maximumBonuses)
+        val chosenBonuses = DoubleArray(maximumBonuses)
+        val chosenIncremental = DoubleArray(maximumBonuses)
+        var chosenCount = 0
+        for (index in 0 until attributeSeenCount) {
+            val slot = attributeFirstSeen[index]
+            val bonus = config.attributeDamageBonus.getValue(attributeCount[slot])
+            if (bonus <= 0.0) continue
+            val incremental = attributeGroupDamage[slot] * bonus
+            if (chosenCount == maximumBonuses && chosenIncremental[chosenCount - 1] >= incremental) continue
+            var position = if (chosenCount < maximumBonuses) chosenCount else chosenCount - 1
+            while (position > 0 && chosenIncremental[position - 1] < incremental) {
+                chosenSlots[position] = chosenSlots[position - 1]
+                chosenBonuses[position] = chosenBonuses[position - 1]
+                chosenIncremental[position] = chosenIncremental[position - 1]
+                position--
+            }
+            chosenSlots[position] = slot
+            chosenBonuses[position] = bonus
+            chosenIncremental[position] = incremental
+            if (chosenCount < maximumBonuses) chosenCount++
+        }
+        val activeBonuses: Map<LabyrinthCharacterAttribute, Double> = if (chosenCount == 0) {
+            emptyMap()
+        } else {
+            LinkedHashMap<LabyrinthCharacterAttribute, Double>(chosenCount * 2).also { bonuses ->
+                for (index in 0 until chosenCount) bonuses[ATTRIBUTE_SLOTS[chosenSlots[index]]] = chosenBonuses[index]
+            }
+        }
 
         val physicalBase = members.sumOf { role ->
             scenarioDamage(role, LabyrinthRoleDamageType.PHYSICAL, targetCount) *
@@ -1159,6 +1230,13 @@ internal fun List<LabyrinthRoleProfile>.hasEligibleVanguardAtActualFront(
 
 class LabyrinthTeamOptimizer(
     private val scorer: LabyrinthTeamScorer,
+    /**
+     * Worker threads for the combination walk. Deliberately not tied to the CPU count: the game
+     * and this app share one virtual machine, and saturating every core makes the game drop
+     * frames, which lengthens the run more than the search it was meant to speed up. Set to 1 to
+     * force the serial path.
+     */
+    private val searchThreads: Int = ROLE_SEARCH_THREADS,
 ) {
     val scoringConfig: LabyrinthTeamScoringConfig
         get() = scorer.config
@@ -1321,35 +1399,134 @@ class LabyrinthTeamOptimizer(
         // Worst candidate first. For equal scores keep the earlier enumeration, exactly like
         // the old stable full sort, without retaining tens of thousands of evaluations.
         val order = compareBy<RankedCandidate> { it.score }.thenByDescending { it.ordinal }
-        val best = PriorityQueue(order)
-        var ordinal = 0L
-        visitCombinations(searchPool, size) { team ->
-            if (
-                (requiredCharacterId == null || team.any { it.characterId == requiredCharacterId }) &&
-                (requiredCharacterIds.isEmpty() || requiredCharacterIds.all { id -> team.any { it.characterId == id } }) &&
-                (!requireFrontmostTank ||
-                    team.hasEligibleVanguardAtActualFront(context, scorer.config.vanguardGate(context)))
+        val comboCount = binomialCount(searchPool.size, size)
+        val filter = CombinationFilter(
+            context = context,
+            requiredCharacterId = requiredCharacterId,
+            requiredCharacterIds = requiredCharacterIds,
+            vanguardGate = if (requireFrontmostTank) scorer.config.vanguardGate(context) else null,
+            forbidMixedDamageSystem = forbidMixedDamageSystem,
+            systemOnly = systemOnly,
+        )
+        val ranked = if (searchThreads > 1 && comboCount >= PARALLEL_MIN_COMBINATIONS) {
+            searchFormationsParallel(searchPool, size, comboCount.toInt(), filter, limit, order)
+        } else {
+            val best = PriorityQueue(order)
+            var ordinal = 0L
+            visitCombinations(searchPool, size) { team ->
+                val candidate = filter.evaluate(team, ordinal++) ?: return@visitCombinations
+                offer(best, candidate, limit)
+            }
+            best.sortedWith(order.reversed())
+        }
+        return ranked.map { scorer.evaluate(it.members, context) }
+    }
+
+    /** The per-team gate and score shared verbatim by the serial and parallel walks. */
+    private inner class CombinationFilter(
+        private val context: LabyrinthRoleDecisionContext,
+        private val requiredCharacterId: String?,
+        private val requiredCharacterIds: Set<String>,
+        private val vanguardGate: Double?,
+        private val forbidMixedDamageSystem: Boolean,
+        private val systemOnly: Boolean,
+    ) {
+        fun evaluate(team: List<LabyrinthRoleProfile>, ordinal: Long): RankedCandidate? {
+            if (requiredCharacterId != null && team.none { it.characterId == requiredCharacterId }) return null
+            if (requiredCharacterIds.isNotEmpty() && !requiredCharacterIds.all { id -> team.any { it.characterId == id } }) return null
+            if (vanguardGate != null && !team.hasEligibleVanguardAtActualFront(context, vanguardGate)) return null
+            val evaluation = scorer.evaluateForSearch(team, context)
+            if (forbidMixedDamageSystem &&
+                evaluation.damageType != LabyrinthTeamDamageType.PHYSICAL &&
+                evaluation.damageType != LabyrinthTeamDamageType.MAGIC
             ) {
-                val evaluation = scorer.evaluateForSearch(team, context)
-                if (
-                    forbidMixedDamageSystem &&
-                    evaluation.damageType !in setOf(
-                        LabyrinthTeamDamageType.PHYSICAL,
-                        LabyrinthTeamDamageType.MAGIC,
-                    )
-                ) {
-                    return@visitCombinations
+                return null
+            }
+            val score = if (systemOnly) evaluation.systemScore else evaluation.score
+            return RankedCandidate(evaluation.members, score, ordinal)
+        }
+    }
+
+    private fun offer(best: PriorityQueue<RankedCandidate>, candidate: RankedCandidate, limit: Int) {
+        val worst = best.peek()
+        if (best.size < limit || (worst != null && candidate.score.compareTo(worst.score) > 0)) {
+            if (best.size == limit) best.poll()
+            best.add(candidate)
+        }
+    }
+
+    /**
+     * Splits the [comboCount] lexicographic combinations into [searchThreads] contiguous ranges,
+     * ranks each range to its local top [limit], then merges. The merge order is (score desc,
+     * enumeration index asc), which is the serial path's order: the serial ordinal counts only
+     * teams that passed the gate, this one counts every enumerated combination, but both are
+     * strictly increasing along the same enumeration, so every tie resolves to the same team.
+     */
+    private fun searchFormationsParallel(
+        searchPool: List<LabyrinthRoleProfile>,
+        size: Int,
+        comboCount: Int,
+        filter: CombinationFilter,
+        limit: Int,
+        order: Comparator<RankedCandidate>,
+    ): List<RankedCandidate> {
+        // One flat index buffer for every combination (C(24,5) x 5 = 212,520 ints, ~850 KB)
+        // instead of tens of thousands of small arrays, which would be a single-threaded
+        // allocation storm that eats the parallel gain.
+        val flat = IntArray(comboCount * size)
+        fillCombinationIndices(searchPool.size, size, flat)
+        val chunkCount = minOf(searchThreads, comboCount)
+        val chunkSize = (comboCount + chunkCount - 1) / chunkCount
+        val tasks = (0 until chunkCount).map { chunk ->
+            Callable {
+                val best = PriorityQueue(order)
+                val team = ArrayList<LabyrinthRoleProfile>(size)
+                val from = chunk * chunkSize
+                val until = minOf(comboCount, from + chunkSize)
+                for (index in from until until) {
+                    team.clear()
+                    val base = index * size
+                    for (slot in 0 until size) team.add(searchPool[flat[base + slot]])
+                    val candidate = filter.evaluate(team, index.toLong()) ?: continue
+                    // The candidate keeps evaluation.members, a fresh list, so reusing `team` is safe.
+                    offer(best, candidate, limit)
                 }
-                val score = if (systemOnly) evaluation.systemScore else evaluation.score
-                val currentOrdinal = ordinal++
-                val worst = best.peek()
-                if (best.size < limit || (worst != null && score.compareTo(worst.score) > 0)) {
-                    if (best.size == limit) best.poll()
-                    best.add(RankedCandidate(evaluation.members, score, currentOrdinal))
-                }
+                best.toList()
             }
         }
-        return best.sortedWith(order.reversed()).map { scorer.evaluate(it.members, context) }
+        val partials = ROLE_SEARCH_EXECUTOR.invokeAll(tasks).map { it.get() }
+        val merged = ArrayList<RankedCandidate>(partials.sumOf { it.size })
+        partials.forEach(merged::addAll)
+        merged.sortWith(order.reversed())
+        return merged.take(limit)
+    }
+
+    /** C(n, k), used to size the parallel split. */
+    private fun binomialCount(n: Int, k: Int): Long {
+        if (k < 0 || k > n) return 0L
+        var result = 1L
+        for (index in 0 until k) result = result * (n - index) / (index + 1)
+        return result
+    }
+
+    /** Writes every k-combination of 0 until n in the same lexicographic order as [visitCombinations]. */
+    private fun fillCombinationIndices(n: Int, k: Int, target: IntArray) {
+        val working = IntArray(k)
+        var position = 0
+        fun visit(start: Int, depth: Int) {
+            if (depth == k) {
+                val base = position * k
+                for (slot in 0 until k) target[base + slot] = working[slot]
+                position++
+                return
+            }
+            val remaining = k - depth
+            for (index in start..n - remaining) {
+                working[depth] = index
+                visit(index + 1, depth + 1)
+            }
+        }
+        visit(0, 0)
     }
 
     /**
@@ -1783,11 +1960,25 @@ class LabyrinthTeamPlanSearcher(
         }
         val guideCore = labyrinthEncounterGuideCore(roster, context)
         val coreFirst = if (guideCore.isEmpty()) null else optimizer.bestBattleFormationIncluding(roster, context, guideCore)
-        val first = coreFirst ?: optimizer.bestBattleFormation(roster, context) ?: return LabyrinthTeamPlan(
-            LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
-            emptyList(),
-            "自动战斗要求实际一号位满足生存资格；当前角色池无法组成满足条件的队伍",
-        )
+        val first = coreFirst
+            ?: optimizer.bestBattleFormation(roster, context)
+            // Nobody in this pool can lead. Refusing leaves the run with nothing to send and the
+            // fight still has to be played, so compose the best team the pool allows and say
+            // plainly that it leads without a qualified tank (2026-09-19, by request). Boss
+            // follow-up slots have filled this way since 2026-09-17.
+            //
+            // Deliberately narrow: a pool that *does* hold a qualified vanguard but still cannot
+            // form a team has a different problem (unknown 站位, too few roles), and its specific
+            // reason below is what tells the user which. Only a genuinely tankless pool falls back.
+            ?: return if (hasAnyEligibleVanguard(roster, context)) {
+                LabyrinthTeamPlan(
+                    LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
+                    emptyList(),
+                    "自动战斗要求实际一号位满足生存资格；当前角色池无法组成满足条件的队伍",
+                )
+            } else {
+                vanguardlessPlan(roster, context)
+            }
         val coreNames = guideCore.joinToString("、") { id ->
             roster.firstOrNull { it.characterId == id }?.displayName ?: id
         }
@@ -1943,6 +2134,42 @@ class LabyrinthTeamPlanSearcher(
      * Follow-up teams for the slots [safeTeams] leaves open, built from the leftover roster with
      * the frontmost-tank gate off. Never reorders or replaces a safe team.
      */
+    /**
+     * One damage-only team for a pool with no qualified vanguard at all.
+     *
+     * [LabyrinthTeamPlanKind.SUPPLEMENT_FILL] with `safeTeamCount = 0` is the existing contract
+     * for "this team leads without a tank"; callers already surface that instead of treating it
+     * as a normal safe team.
+     */
+    private fun hasAnyEligibleVanguard(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+    ): Boolean {
+        val gate = optimizer.scoringConfig.vanguardGate(context)
+        return roster.any { it.isEligibleBattleVanguard(context, gate) }
+    }
+
+    private fun vanguardlessPlan(
+        roster: Collection<LabyrinthRoleProfile>,
+        context: LabyrinthRoleDecisionContext,
+        excludedTeamSignatures: Set<String> = emptySet(),
+    ): LabyrinthTeamPlan {
+        val unique = roster.distinctBy(LabyrinthRoleProfile::characterId)
+        val team = optimizer.bestSupplementFormation(unique, context)
+            ?.takeUnless { it.teamSignature() in excludedTeamSignatures }
+            ?: return LabyrinthTeamPlan(
+                LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
+                emptyList(),
+                "自动战斗要求实际一号位满足生存资格；当前角色池无法组成满足条件的队伍",
+            )
+        return LabyrinthTeamPlan(
+            LabyrinthTeamPlanKind.SUPPLEMENT_FILL,
+            listOf(team),
+            "当前角色池没有满足生存资格的一号位；按无T阵容上场，评分${formatScore(team.score)}",
+            safeTeamCount = 0,
+        )
+    }
+
     private fun supplementFill(
         safeTeams: List<LabyrinthTeamEvaluation>,
         unique: List<LabyrinthRoleProfile>,
@@ -1988,6 +2215,12 @@ class LabyrinthTeamPlanSearcher(
                     .joinToString(",") in excludedTeamSignatures
             }
         if (ranked.isEmpty()) {
+            // Same reasoning as the first attempt: with nobody fit to lead, a vanguard-less retry
+            // beats leaving the run parked on the failure page. A pool that does have a tank but
+            // exhausted its untried formations keeps the original message.
+            if (!hasAnyEligibleVanguard(roster, context)) {
+                return vanguardlessPlan(roster, context, excludedTeamSignatures)
+            }
             return LabyrinthTeamPlan(
                 LabyrinthTeamPlanKind.INSUFFICIENT_ROLES,
                 emptyList(),

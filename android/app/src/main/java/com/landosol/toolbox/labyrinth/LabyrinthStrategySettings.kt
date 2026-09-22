@@ -47,6 +47,19 @@ data class LabyrinthStrategySettings(
     val normalWinRate: Int = 95,
     val extremeWinRate: Int = 70,
     val personalRoleScores: Map<String, Int> = emptyMap(),
+    /**
+     * Per-guild opening picks, replacing the shipped plan: guild id -> three slots, each an
+     * ordered candidate list. The first candidate a slot finds on screen wins, so the order is the
+     * user's preference order. Guilds left out here keep the shipped plan.
+     */
+    val openingRosters: Map<Int, List<List<String>>> = emptyMap(),
+    /**
+     * Preferred relic marks, strongest first. Empty keeps the built-in ordering.
+     *
+     * Only the choices the policy is otherwise indifferent about are affected; reaching a 15 tier
+     * immediately still wins regardless of order.
+     */
+    val relicMarkPriority: List<LabyrinthRelicMark> = emptyList(),
 ) {
     fun validationError(): String? = when {
         listOf(playerWeight, damageWeight, survivalWeight, functionWeight, formationWeight,
@@ -65,7 +78,16 @@ data class LabyrinthStrategySettings(
         refreshFromArea !in 1..5 -> "商店刷新起始区域必须在 1–5 之间"
         personalRoleScores.any { (id, score) -> !id.matches(Regex("[0-9]{4,6}")) || score !in 0..100 } ->
             "个人角色评分必须使用有效角色 ID，分数在 0–100 之间"
+        openingRosterError() != null -> openingRosterError()
+        relicMarkPriority.distinct().size != relicMarkPriority.size -> "遗物优先级不能重复"
         else -> null
+    }
+
+    /** First problem across every configured guild, named so the settings screen can show it. */
+    fun openingRosterError(): String? = openingRosters.firstNotNullOfOrNull { (guildId, slots) ->
+        val guild = LabyrinthOpeningRosterCatalog.configs[guildId]
+            ?: return@firstNotNullOfOrNull "开局方案包含未知公会 $guildId"
+        openingRosterOverrideError(slots)?.let { "${guild.guildName}：$it" }
     }
 
     fun applyTo(document: LabyrinthRoleDecisionDocument): LabyrinthRoleDecisionDocument {
@@ -102,6 +124,7 @@ data class LabyrinthStrategySettings(
         debuffPivotMinimum = debuffPivotMinimum,
         debuffPivotTolerance = debuffPivotTolerance,
         baselineLastArea = baselineLastArea,
+        markPriority = relicMarkPriority.distinct(),
     ))
 }
 

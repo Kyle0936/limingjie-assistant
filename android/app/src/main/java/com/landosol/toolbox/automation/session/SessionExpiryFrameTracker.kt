@@ -69,9 +69,16 @@ class SessionExpiryFrameTracker {
 
     val frameSize: Pair<Int, Int> get() = width to height
 
-    /** 「错误提示」弹窗出现：标题条锚点达到置信度门槛 */
+    /**
+     * 「错误提示」弹窗出现：标题条锚点达到置信度门槛。
+     *
+     * 失败页上的「结束确认」对话框用同一种蓝色标题条，位置也几乎重合，标题条锚点同样过线
+     * （2026-09-17 批次 195521：点「结束」后立刻判为弹窗，把「返回标题」的坐标点在了中间的
+     * 「撤退」上，随后卡在确认页）。只要当前帧结构上识别为结束确认对话框，就不是失效弹窗。
+     */
     val popupVisible: Boolean
-        get() = (scores[EntryAnchorId.SESSION_ERROR_TITLE] ?: 0.0) >= POPUP_MIN_SCORE
+        get() = battleEndConfirmationPoint == null &&
+            (scores[EntryAnchorId.SESSION_ERROR_TITLE] ?: 0.0) >= POPUP_MIN_SCORE
 
     /** 已回到标题页（点击屏幕开始游戏） */
     val titleReached: Boolean

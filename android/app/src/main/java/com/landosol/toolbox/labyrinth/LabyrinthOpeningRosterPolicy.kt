@@ -162,17 +162,11 @@ object LabyrinthOpeningRosterCatalog {
         LabyrinthOpeningRosterConfig(
             guildId = 3,
             guildName = "咲恋救济院",
+            // 2026-09-19, by request: 女仆 / 花女仆 / 水电.
             slots = listOf(
-                slot(character("1145", "咲恋(圣诞节)")),
-                slot(character("1213", "胡桃(舞台)"), character("1085", "胡桃(圣诞节)")),
-                slot(
-                    character("1077", "铃莓(夏日)"),
-                    character("1121", "铃莓(新年)"),
-                    character("1308", "铃莓(春日)"),
-                    character("1023", "绫音"),
-                    character("1086", "绫音(圣诞节)"),
-                    character("1103", "咲恋(夏日)"),
-                ),
+                slot(character("1025", "铃莓")),
+                slot(character("1308", "铃莓(春日)")),
+                slot(character("1103", "咲恋(夏日)")),
             ),
         ),
         LabyrinthOpeningRosterConfig(
@@ -201,11 +195,73 @@ object LabyrinthOpeningRosterCatalog {
         ),
     ).associateBy(LabyrinthOpeningRosterConfig::guildId)
 
+    /** Guilds a user may configure, in catalog order. */
+    val guilds: List<LabyrinthOpeningRosterConfig> = configs.values.sortedBy(LabyrinthOpeningRosterConfig::guildId)
+
+    /** Names this catalog already knows, so an override of a default pick keeps a readable label. */
+    private val knownNames: Map<String, String> = configs.values
+        .flatMap { config -> config.slots.flatMap(LabyrinthOpeningRosterSlot::candidates) + config.grantedCharacters }
+        .associate { it.characterId to it.displayName }
+
     /** Characters [guildId] grants at the opening without a pick; empty for unknown guilds. */
     fun grantedCharactersFor(guildId: Int?): List<LabyrinthOpeningCharacter> =
         guildId?.let(configs::get)?.grantedCharacters.orEmpty()
 
-    fun policyFor(guildId: Int?): LabyrinthOpeningRosterPolicy? = guildId
-        ?.let(configs::get)
-        ?.let(::LabyrinthOpeningRosterPolicy)
+    /**
+     * The opening plan actually in force for [guildId].
+     *
+     * A user override replaces only the three pick slots. Guild identity and the characters the
+     * guild grants for free are game facts, so they are never editable.
+     *
+     * [displayNameFor] supplies labels for ids this catalog has never shipped; the planner's
+     * progress messages name the picks, so falling back to a bare id is a last resort.
+     */
+    fun configFor(
+        guildId: Int?,
+        overrides: Map<Int, List<List<String>>> = emptyMap(),
+        displayNameFor: (String) -> String? = { null },
+    ): LabyrinthOpeningRosterConfig? {
+        val base = guildId?.let(configs::get) ?: return null
+        val override = overrides[base.guildId]?.takeIf { openingRosterOverrideError(it) == null } ?: return base
+        return base.copy(
+            slots = override.map { candidates ->
+                LabyrinthOpeningRosterSlot(
+                    candidates.map { id ->
+                        LabyrinthOpeningCharacter(id, displayNameFor(id) ?: knownNames[id] ?: id)
+                    },
+                )
+            },
+        )
+    }
+
+    fun policyFor(
+        guildId: Int?,
+        overrides: Map<Int, List<List<String>>> = emptyMap(),
+        displayNameFor: (String) -> String? = { null },
+    ): LabyrinthOpeningRosterPolicy? =
+        configFor(guildId, overrides, displayNameFor)?.let(::LabyrinthOpeningRosterPolicy)
 }
+
+/**
+ * Why one guild's override cannot be used, or null when it is well formed.
+ *
+ * An override that fails this is ignored rather than applied partially: a half-built opening plan
+ * would pick the wrong characters silently, which is worse than falling back to the shipped one.
+ */
+fun openingRosterOverrideError(slots: List<List<String>>): String? {
+    if (slots.size != LabyrinthOpeningRosterConfig.REQUIRED_OPENING_CHARACTERS) {
+        return "开局方案必须正好有 ${LabyrinthOpeningRosterConfig.REQUIRED_OPENING_CHARACTERS} 个槽位"
+    }
+    slots.forEachIndexed { index, candidates ->
+        if (candidates.isEmpty()) return "第${index + 1}槽至少要有一个候选角色"
+        if (candidates.any { !it.matches(CHARACTER_ID_PATTERN) }) return "第${index + 1}槽包含无效角色 ID"
+        if (candidates.distinct().size != candidates.size) return "第${index + 1}槽有重复角色"
+    }
+    // The planner fills each slot independently, so a character listed twice could be picked twice
+    // and leave the opening one short.
+    val all = slots.flatten()
+    if (all.distinct().size != all.size) return "同一角色不能出现在多个槽位"
+    return null
+}
+
+private val CHARACTER_ID_PATTERN = Regex("[0-9]{4,6}")

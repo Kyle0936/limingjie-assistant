@@ -29,6 +29,7 @@ class AnchorTriggerSessionExpiryTerminatorTest {
         titleReached = titleReached,
         frameSize = frameSize,
         popupTimeoutMillis = popupTimeoutMillis,
+        popupAfterTapTimeoutMillis = popupTimeoutMillis / maxTriggerTaps,
         titleTimeoutMillis = titleTimeoutMillis,
         triggerTapDelayMillis = 0L,
         returnTapDelayMillis = 0L,
