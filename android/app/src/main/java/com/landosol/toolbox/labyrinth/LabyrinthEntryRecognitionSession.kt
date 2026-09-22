@@ -1108,6 +1108,15 @@ class LabyrinthEntryRecognitionSession(
     private var combatContext: LabyrinthCombatContext? = null
     @Volatile
     private var currentExEncounterStrategy: LabyrinthExEncounterStrategy? = null
+    /**
+     * An EX detail probe may reliably confirm that this is an EX encounter while its monster name
+     * has no entry in the local guide catalog.  That must not turn a playable challenge into a
+     * terminal batch failure: after closing the automation-owned detail modal, this flag permits
+     * the normal EX team-selection and challenge flow without claiming that a dedicated guide
+     * exists.  It is reset for every new route node/session.
+     */
+    @Volatile
+    private var exEncounterFallbackApproved = false
     @Volatile
     private var exSlot3ProbePending = false
     @Volatile
@@ -3440,9 +3449,53 @@ class LabyrinthEntryRecognitionSession(
      * Route block ids are deliberately ignored here: EX placement is randomized and event nodes
      * can also enter an EX.  A single EX is identified from challenge-page text.  A multi-monster
      * EX requires the stable five-info-button layout, then exactly slot 3 is opened and its fixed
-     * detail-name row is OCR'd.  Unknown identities stop safely rather than borrowing another
-     * encounter's guide.
+     * detail-name row is OCR'd.  A missing local guide never borrows another encounter's guide:
+     * the automation closes its own detail modal and proceeds with the generic EX battle path.
      */
+    private fun continueUnknownExAfterDetail(
+        sessionId: AutomationSessionId,
+        close: EntryPixelRect?,
+        observedName: String?,
+        timestampMillis: Long,
+    ) {
+        val displayName = observedName?.takeIf(String::isNotBlank) ?: "OCR无可靠文本"
+        if (close == null) {
+            // The modal belongs to this session, but without its own close control a generic
+            // coordinate tap could affect the monster list behind it. Keep waiting for the
+            // structural close anchor instead of converting an unknown guide into a blind tap.
+            if (activeSessionId == sessionId) {
+                _state.value = _state.value.copy(
+                    message = "$exIdentityProbeDescription 未匹配本地攻略（$displayName）；等待详情关闭按钮确认",
+                )
+            }
+            return
+        }
+        if (lastPostEntryActionAt != Long.MIN_VALUE &&
+            timestampMillis - lastPostEntryActionAt < POST_ENTRY_ACTION_INTERVAL_MILLIS
+        ) return
+
+        // This is deliberately narrower than a global UNKNOWN fallback. It is enabled only after
+        // the session itself opened an EX monster-detail modal, so it cannot dismiss a panel the
+        // user opened manually. The existing EX team planner still runs, simply without a
+        // encounter-specific guide.
+        exEncounterFallbackApproved = true
+        lastBattleTeamRecommendationKey = null
+        nodeLog("ex-guide-fallback name=$displayName action=close-detail-and-continue", warning = true)
+        dispatchPostEntryTap(
+            sessionId = sessionId,
+            kind = LabyrinthPostEntryActionKind.EX_CLOSE_DETAIL,
+            label = "EX攻略未建档：关闭魔物详情并继续挑战",
+            rect = close,
+            timestampMillis = timestampMillis,
+        )
+        if (activeSessionId == sessionId) {
+            _state.value = _state.value.copy(
+                combatContext = combatContext,
+                message = "$exIdentityProbeDescription 未匹配本地攻略（$displayName）；已关闭详情并按通用EX流程继续",
+            )
+        }
+    }
+
     private fun handleExEncounterRecognitionFrame(
         sessionId: AutomationSessionId,
         result: LabyrinthEntryFrameResult,
@@ -3492,6 +3545,7 @@ class LabyrinthEntryRecognitionSession(
                 targetCount = combatContext?.targetCount ?: 1,
             )
             currentExEncounterStrategy = null
+            exEncounterFallbackApproved = false
             exSlot3ProbePending = false
             exEncounterProbeStartedAt = Long.MIN_VALUE
             lastBattleTeamRecommendationKey = null
@@ -3518,6 +3572,7 @@ class LabyrinthEntryRecognitionSession(
                 },
             )
             currentExEncounterStrategy = null
+            exEncounterFallbackApproved = false
             exSlot3ProbePending = false
             exSlot3ProbeAttempts = 0
             exEncounterProbeStartedAt = timestampMillis
@@ -3597,11 +3652,11 @@ class LabyrinthEntryRecognitionSession(
                 if (exEncounterProbeStartedAt != Long.MIN_VALUE &&
                     timestampMillis - exEncounterProbeStartedAt >= EX_ENCOUNTER_DETAIL_TIMEOUT_MILLIS
                 ) {
-                    finishFromPlanner(
-                        sessionId,
-                        "$exIdentityProbeDescription 详情在限定时间内未匹配已知EX：" +
-                            (observation.monsterDetailText?.takeIf(String::isNotBlank) ?: "OCR无可靠文本") +
-                            "；保留页面等待补录攻略",
+                    continueUnknownExAfterDetail(
+                        sessionId = sessionId,
+                        close = observation.closeButtonRect,
+                        observedName = observation.monsterDetailText,
+                        timestampMillis = timestampMillis,
                     )
                 } else if (activeSessionId == sessionId) {
                     _state.value = _state.value.copy(
@@ -3612,9 +3667,11 @@ class LabyrinthEntryRecognitionSession(
             }
             val strategy = LabyrinthExEncounterCatalog.all.firstOrNull { it.id == observation.encounterId }
             if (strategy == null || strategy.identityName.startsWith("？？？")) {
-                finishFromPlanner(
-                    sessionId,
-                    "$exIdentityProbeDescription 已读为${observation.encounterName ?: observation.encounterId}，但攻略尚未建档；保持详情页",
+                continueUnknownExAfterDetail(
+                    sessionId = sessionId,
+                    close = observation.closeButtonRect,
+                    observedName = observation.encounterName ?: observation.encounterId,
+                    timestampMillis = timestampMillis,
                 )
                 return true
             }
@@ -3674,7 +3731,10 @@ class LabyrinthEntryRecognitionSession(
                 }
             }
         }
-        if (currentExEncounterStrategy != null) return false
+        // A guide-less EX was confirmed from an automation-owned details modal and deliberately
+        // dismissed.  Do not reopen the modal or wait for a strategy that cannot arrive; allow
+        // the existing generic EX team-selection path to take over instead.
+        if (currentExEncounterStrategy != null || exEncounterFallbackApproved) return false
 
         if (exEncounterProbeStartedAt == Long.MIN_VALUE) exEncounterProbeStartedAt = timestampMillis
         if (exSlot3ProbePending) {
@@ -4652,6 +4712,7 @@ class LabyrinthEntryRecognitionSession(
                         challengeDifficultyResolved = result.exEncounter?.challengeDifficultyResolved == true,
                         extremeChallenge = result.exEncounter?.extremeChallenge == true,
                         exEncounterResolved = currentExEncounterStrategy != null,
+                        exGuideFallbackApproved = exEncounterFallbackApproved,
                     )
                 ) {
                     LabyrinthPostEntryTapPlan(
@@ -5121,6 +5182,7 @@ class LabyrinthEntryRecognitionSession(
 
     private fun resetExEncounterTracking() {
         currentExEncounterStrategy = null
+        exEncounterFallbackApproved = false
         exSlot3ProbePending = false
         exSlot3ProbeAttempts = 0
         exEncounterProbeStartedAt = Long.MIN_VALUE

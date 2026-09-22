@@ -158,16 +158,19 @@ internal fun labyrinthSingleExDetailProbeRect(
  * BATTLE_CHALLENGE frame before "极难" has returned from OCR, allowing the generic challenge
  * branch to tap first. Boss nodes are already semantically identified by the route. Every other
  * challenge must either be positively classified as a non-EX title, or have a concrete EX guide
- * resolved before the challenge button may fire.
+ * resolved. An automation-owned EX details probe may also explicitly approve a guide-less
+ * fallback after it has closed the modal; this remains distinct from a generic unknown page.
  */
 internal fun labyrinthBattleChallengeCanAutoStart(
     combatContext: LabyrinthCombatContext?,
     challengeDifficultyResolved: Boolean,
     extremeChallenge: Boolean,
     exEncounterResolved: Boolean,
+    exGuideFallbackApproved: Boolean = false,
 ): Boolean = when {
     combatContext?.kind == LabyrinthCombatKind.BOSS -> true
-    combatContext?.kind == LabyrinthCombatKind.EX || extremeChallenge -> exEncounterResolved
+    combatContext?.kind == LabyrinthCombatKind.EX || extremeChallenge ->
+        exEncounterResolved || exGuideFallbackApproved
     !challengeDifficultyResolved -> false
     else -> true
 }

@@ -40,7 +40,7 @@ class LabyrinthPageRuntimePolicyTest {
         assertFalse(labyrinthShopJoinedRewardOwnsRoute(frame, Long.MIN_VALUE, 10_000))
     }
     @Test
-    fun `challenge button waits for difficulty and never bypasses unresolved EX guide`() {
+    fun `challenge button waits for difficulty and accepts only explicit EX guide fallback`() {
         val normal = LabyrinthCombatContext(LabyrinthCombatKind.NORMAL)
         val ex = LabyrinthCombatContext(LabyrinthCombatKind.EX)
         val boss = LabyrinthCombatContext(LabyrinthCombatKind.BOSS)
@@ -53,6 +53,18 @@ class LabyrinthPageRuntimePolicyTest {
         assertEquals(false, labyrinthBattleChallengeCanAutoStart(null, true, true, false))
         assertTrue(labyrinthBattleChallengeCanAutoStart(ex, false, true, true))
         assertEquals(false, labyrinthBattleChallengeCanAutoStart(ex, true, true, false))
+        // A guide-less EX may continue only after the automation-owned details probe has closed
+        // the modal and recorded an explicit fallback approval. Generic unknown EX frames remain
+        // blocked by the preceding assertion.
+        assertTrue(
+            labyrinthBattleChallengeCanAutoStart(
+                ex,
+                challengeDifficultyResolved = true,
+                extremeChallenge = true,
+                exEncounterResolved = false,
+                exGuideFallbackApproved = true,
+            ),
+        )
 
         // Route-known Bosses keep their existing direct challenge behavior.
         assertTrue(labyrinthBattleChallengeCanAutoStart(boss, false, false, false))
