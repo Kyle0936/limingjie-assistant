@@ -84,6 +84,14 @@ class SessionExpiryFrameTracker {
     val titleReached: Boolean
         get() = pageState == LabyrinthEntryPageState.TITLE_WAITING_TAP
 
+    /**
+     * The trigger request succeeded instead of being rejected as stale. Reaching the native
+     * home after tapping 黎明界's「我的主页」proves the client is already synchronized with the
+     * server, so waiting forever for an expiry popup would be both incorrect and destructive.
+     */
+    val clientSynchronizedWithoutExpiry: Boolean
+        get() = pageState == LabyrinthEntryPageState.HOME
+
     fun anchorCenter(anchorId: String, minScore: Double = ANCHOR_ACTION_MIN_SCORE): ScreenPoint? =
         matches[anchorId]
             ?.takeIf { it.score >= minScore }

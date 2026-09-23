@@ -788,6 +788,20 @@ class LabyrinthEntryRecognitionPolicyTest {
             labyrinthObservedDestinationType(LabyrinthEntryPageState.ITEM_REWARD))
         assertEquals(null,
             labyrinthObservedDestinationType(LabyrinthEntryPageState.UNKNOWN))
+        assertEquals(
+            LabyrinthNodeTypes.BOSS,
+            labyrinthObservedDestinationType(
+                LabyrinthEntryPageState.BATTLE_IN_PROGRESS,
+                LabyrinthNodeTypes.BOSS,
+            ),
+        )
+        assertEquals(
+            LabyrinthNodeTypes.EX_BATTLE,
+            labyrinthObservedDestinationType(
+                LabyrinthEntryPageState.BATTLE_TEAM_SELECTION,
+                LabyrinthNodeTypes.EX_BATTLE,
+            ),
+        )
     }
 
     @Test

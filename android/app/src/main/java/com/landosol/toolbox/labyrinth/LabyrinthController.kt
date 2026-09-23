@@ -315,6 +315,7 @@ class LabyrinthController(
             reportMessage("开始前请确认允许彻底撤退现有开局")
             return
         }
+        invalidateExplicitOpeningRead("单独刷开局即将改变服务端开局；完成后请重新读取")
         frozenStart = account to config
         chrome.update { it.copy(startedAtMillis = System.currentTimeMillis()) }
         requestFrozenStart()
@@ -434,6 +435,75 @@ class LabyrinthController(
         } finally {
             withContext(NonCancellable) { runCatching { refreshCheckpoint(account.id) } }
             chrome.update { it.copy(isWorking = false, progress = null) }
+        }
+    }
+
+    /**
+     * Atomically consumes the UI's explicit read as a one-shot batch authorization.
+     *
+     * The persisted checkpoint remains available to the route executor, but merely loading that
+     * checkpoint must never recreate this authorization after the opening has been played.
+     */
+    @Synchronized
+    fun consumeReusableOpeningForBatch(
+        expectedGuildId: Int,
+        expectedDifficulty: Int,
+    ): com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening? {
+        val current = chrome.value
+        val enterId = current.checkpointEnterId
+        if (
+            current.isWorking || current.captcha != null ||
+            current.currentOpeningReadStatus != LabyrinthCurrentOpeningReadStatus.TARGET ||
+            current.routeVerdict != LabyrinthRouteVerdict.TARGET ||
+            enterId == null || enterId <= 0L ||
+            current.currentGuildId != expectedGuildId ||
+            current.currentDifficulty != expectedDifficulty
+        ) return null
+        chrome.value = current.copy(
+            currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.NOT_READ,
+            currentOpeningReadMessage = "已将本次显式读取交给批量执行；再次执行前需要重新读取",
+        )
+        return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening(
+            enterId = enterId,
+            guildId = expectedGuildId,
+            difficulty = expectedDifficulty,
+        )
+    }
+
+    /** Fresh server comparison performed immediately before the batch reuses an opening. */
+    suspend fun verifyReusableOpeningForBatch(
+        accountId: Long,
+        opening: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening,
+    ): com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck {
+        val account = uiState.value.selectedAccount
+        if (account == null || account.id != accountId || account.id != settingsAccountId) {
+            return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Failure("当前账号已变化")
+        }
+        val session = sessionRegistry.read(accountId)
+            ?: return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Failure(
+                "显式读取使用的登录会话已失效，请重新点击“登录并读取”",
+            )
+        return when (val result = BilibiliLabyrinthApi(session).top()) {
+            is LabyrinthOperationResult.Success -> {
+                val top = result.value
+                when {
+                    top.enterId != opening.enterId ->
+                        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Stale(
+                            "服务端当前 Enter ID 已变化",
+                        )
+                    top.guildId != null && top.guildId != opening.guildId ->
+                        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Stale(
+                            "服务端当前公会已变化",
+                        )
+                    top.difficulty != null && top.difficulty != opening.difficulty ->
+                        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Stale(
+                            "服务端当前难度已变化",
+                        )
+                    else -> com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Valid
+                }
+            }
+            is LabyrinthOperationResult.Failure ->
+                com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Failure(result.message)
         }
     }
 
@@ -942,11 +1012,12 @@ class LabyrinthController(
     fun stop() {
         startRequested = false
         frozenStart = null
-        pendingLoginAction = null
         runningJob?.cancel()
         // Cancellation is asynchronous: keep controls locked until the job's finally has finished.
         if (runningJob == null) chrome.update { it.copy(isWorking = false, progress = null) }
-        if (chrome.value.captcha != null) cancelCaptcha()
+        // cancelCaptcha must read pendingLoginAction before it is cleared, otherwise a stopped
+        // CHECK_STATUS captcha remains displayed forever as "waiting for verification".
+        if (chrome.value.captcha != null) cancelCaptcha() else pendingLoginAction = null
     }
 
     fun stopWithReason(message: String) {
@@ -1078,16 +1149,10 @@ class LabyrinthController(
     ) {
         val checkpoint = RoomLabyrinthRerollCheckpointStore(database).load(accountId)
         chrome.update { current ->
-            val restoredStatus = if (preserveExplicitReadOutcome) {
-                current.currentOpeningReadStatus
-            } else {
-                when (checkpoint?.verdict) {
-                    LabyrinthRouteVerdict.TARGET -> LabyrinthCurrentOpeningReadStatus.TARGET
-                    LabyrinthRouteVerdict.NOT_TARGET -> LabyrinthCurrentOpeningReadStatus.NOT_TARGET
-                    LabyrinthRouteVerdict.PENDING_VERIFICATION -> LabyrinthCurrentOpeningReadStatus.PENDING_VERIFICATION
-                    null -> current.currentOpeningReadStatus
-                }
-            }
+            // A persisted route/checkpoint is diagnostic data, not proof that the opening still
+            // exists. Only checkStatus() may promote this UI state to TARGET/NOT_TARGET.
+            val restoredStatus = current.currentOpeningReadStatus.takeIf { preserveExplicitReadOutcome }
+                ?: LabyrinthCurrentOpeningReadStatus.NOT_READ
             current.copy(
                 routeVerdict = checkpoint?.verdict,
                 verdictMessage = checkpoint?.message,
@@ -1096,8 +1161,19 @@ class LabyrinthController(
                 currentOpeningReadMessage = if (preserveExplicitReadOutcome) {
                     current.currentOpeningReadMessage
                 } else {
-                    checkpoint?.message ?: current.currentOpeningReadMessage
+                    "尚未显式读取当前开局；保存的路线不会自动获得复用资格"
                 },
+            )
+        }
+    }
+
+    private fun invalidateExplicitOpeningRead(message: String) {
+        chrome.update { current ->
+            current.copy(
+                currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.NOT_READ,
+                currentOpeningReadMessage = message,
+                currentGuildId = null,
+                currentDifficulty = null,
             )
         }
     }

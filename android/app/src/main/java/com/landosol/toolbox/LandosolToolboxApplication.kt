@@ -59,6 +59,9 @@ import com.landosol.toolbox.labyrinth.LabyrinthAutoRunWorkflow
 import com.landosol.toolbox.labyrinth.LabyrinthAutoRunRoundOutcome
 import com.landosol.toolbox.labyrinth.LabyrinthExecutionGateResult
 import com.landosol.toolbox.labyrinth.validateLabyrinthExecution
+import com.landosol.toolbox.labyrinth.validateLabyrinthTakeoverExecution
+import com.landosol.toolbox.protocol.labyrinth.BilibiliLabyrinthApi
+import com.landosol.toolbox.protocol.labyrinth.LabyrinthOperationResult
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -259,14 +262,32 @@ class LandosolToolboxApplication : Application() {
 
     private suspend fun validateLabyrinthExecutionForAccount(
         accountId: Long?,
+        takeoverCurrentRun: Boolean,
     ): LabyrinthExecutionGateResult {
         val id = accountId
             ?: return LabyrinthExecutionGateResult.Blocked("未选择账号，已禁止执行保存路线")
         val route = labyrinthRouteStore.loadLatest(id)
         val checkpoint = com.landosol.toolbox.labyrinth.RoomLabyrinthRerollCheckpointStore(database).load(id)
-        // 执行入口复用上次刷开局/“当前开局”成功后保存的 TARGET 检查点。
-        // 这里不能再次调用 top：应用进程重启后内存游戏会话不存在，也不应因此要求用户重新登录。
-        return validateLabyrinthExecution(route, checkpoint, top = null)
+        if (!takeoverCurrentRun) {
+            // 普通批量流程在进入这里前已经完成服务端刷取与客户端同步；这里仅校验保存数据一致性。
+            return validateLabyrinthExecution(route, checkpoint, top = null)
+        }
+        val session = gameSessionRegistry.read(id)
+            ?: return LabyrinthExecutionGateResult.Blocked("接管当前挑战前请先登录并读取当前开局")
+        val api = BilibiliLabyrinthApi(session)
+        val top = when (val result = api.top()) {
+            is LabyrinthOperationResult.Success -> result.value
+            is LabyrinthOperationResult.Failure ->
+                return LabyrinthExecutionGateResult.Blocked("接管前读取当前开局失败：${result.message}")
+        }
+        val enterId = top.enterId
+            ?: return LabyrinthExecutionGateResult.Blocked("服务端当前没有正在进行的黎明界挑战")
+        val resume = when (val result = api.resume(enterId)) {
+            is LabyrinthOperationResult.Success -> result.value
+            is LabyrinthOperationResult.Failure ->
+                return LabyrinthExecutionGateResult.Blocked("接管前读取挑战进度失败：${result.message}")
+        }
+        return validateLabyrinthTakeoverExecution(route, checkpoint, top, resume)
     }
 
     /**
@@ -294,6 +315,7 @@ class LandosolToolboxApplication : Application() {
             returnTitlePoint = SESSION_RETURN_TITLE_POINT,
             popupVisible = { frameTracker.popupVisible },
             titleReached = { frameTracker.titleReached },
+            synchronizedWithoutExpiry = { frameTracker.clientSynchronizedWithoutExpiry },
             frameSize = { frameTracker.frameSize },
             available = LandosolAccessibilityService::isConnected,
             returnTitleAnchorPoint = { frameTracker.anchorCenter(EntryAnchorId.SESSION_RETURN_TITLE) },
@@ -373,6 +395,11 @@ class LandosolToolboxApplication : Application() {
             ports = object : com.landosol.toolbox.labyrinth.batch.LabyrinthBatchPorts {
                 override suspend fun reroll(accountId: Long, guildId: Int, difficulty: Int) =
                     labyrinthController.rerollForBatch(accountId, guildId, difficulty)
+
+                override suspend fun verifyReusableOpening(
+                    accountId: Long,
+                    opening: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening,
+                ) = labyrinthController.verifyReusableOpeningForBatch(accountId, opening)
 
                 override suspend fun invalidateClientSessionAndReturn():
                     com.landosol.toolbox.labyrinth.batch.LabyrinthBatchInvalidationResult {
@@ -484,25 +511,23 @@ class LandosolToolboxApplication : Application() {
     ): Boolean {
         val id = accountId ?: return false
         if (goals.isEmpty()) return false
+        if (autoRunJob?.isActive == true) return false
+        // The launch coroutine only lives until BatchController.start() has handed the run to the
+        // frame session, so autoRunJob alone is not an activity lock. Check the persisted batch
+        // stage before consuming the one-shot opening authorization; otherwise a second tap could
+        // consume it and create a new batch while the first run is still active.
+        if (labyrinthBatchController.state.value?.stage in ACTIVE_BATCH_STAGES) return false
         val ui = labyrinthController.uiState.value
-        val reusableOpening = if (
-            ui.currentOpeningReadStatus == com.landosol.toolbox.labyrinth.LabyrinthCurrentOpeningReadStatus.TARGET &&
-            ui.routeVerdict == com.landosol.toolbox.labyrinth.LabyrinthRouteVerdict.TARGET &&
-            ui.checkpointEnterId != null &&
-            ui.currentGuildId != null &&
-            ui.currentDifficulty != null
-        ) {
-            com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening(
-                enterId = ui.checkpointEnterId,
-                guildId = ui.currentGuildId,
-                difficulty = ui.currentDifficulty,
-            )
-        } else {
-            null
+        if (ui.isWorking || ui.captcha != null || labyrinthEntryRecognitionSession.state.value.running) {
+            return false
         }
+        val firstGoal = goals.first()
+        val reusableOpening = labyrinthController.consumeReusableOpeningForBatch(
+            expectedGuildId = firstGoal.guildId,
+            expectedDifficulty = ui.selectedDifficulty,
+        )
         val batchId = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT)
             .format(java.util.Date())
-        autoRunJob?.cancel()
         autoRunJob = autoRunScope.launch {
             labyrinthBatchController.start(
                 batchId = batchId,

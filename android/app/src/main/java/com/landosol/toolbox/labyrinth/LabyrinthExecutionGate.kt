@@ -1,6 +1,7 @@
 package com.landosol.toolbox.labyrinth
 
 import com.landosol.toolbox.protocol.labyrinth.LabyrinthTop
+import com.landosol.toolbox.protocol.labyrinth.LabyrinthResume
 
 /**
  * Result of the safety check performed before live route execution.
@@ -100,5 +101,63 @@ fun validateLabyrinthExecution(
     return LabyrinthExecutionGateResult.Allowed(
         route = route,
         message = "已验证 TARGET 与当前 Enter ID 一致（${route.enterId}），允许执行路线",
+    )
+}
+
+/**
+ * Stronger gate for manual takeover of a run that is already open in the game client.
+ *
+ * A stable screen only proves that a labyrinth page is visible. It does not prove that it is
+ * the same guild, enter id, or route that this app saved. Takeover therefore requires a fresh
+ * top/resume pair and advances the local cursor to the server's current node before any tap is
+ * allowed. A stale local cursor may move forward, but may never move the live run backwards.
+ */
+fun validateLabyrinthTakeoverExecution(
+    route: LabyrinthRouteJson?,
+    checkpoint: LabyrinthRerollCheckpoint?,
+    top: LabyrinthTop?,
+    resume: LabyrinthResume?,
+): LabyrinthExecutionGateResult {
+    val base = validateLabyrinthExecution(route, checkpoint, top)
+    if (base is LabyrinthExecutionGateResult.Blocked) return base
+    val saved = (base as LabyrinthExecutionGateResult.Allowed).route
+    val live = resume
+        ?: return LabyrinthExecutionGateResult.Blocked("无法读取正在进行的黎明界，已禁止接管")
+    if (live.enterId != saved.enterId) {
+        return LabyrinthExecutionGateResult.Blocked(
+            "正在进行的挑战与保存路线不一致：当前=${live.enterId}，路线=${saved.enterId}",
+        )
+    }
+    if (live.guildId != null && live.guildId != saved.guildId) {
+        return LabyrinthExecutionGateResult.Blocked(
+            "正在进行的挑战公会与保存路线不一致：当前=${live.guildId}，路线=${saved.guildId}",
+        )
+    }
+    val liveMapIds = live.map.mapTo(hashSetOf()) { it.blockId }
+    if (!saved.blockIds.all(liveMapIds::contains)) {
+        return LabyrinthExecutionGateResult.Blocked("正在进行的挑战地图不属于已保存路线，已禁止接管")
+    }
+    val currentBlockId = live.currentBlockId
+        ?: return LabyrinthExecutionGateResult.Blocked("服务端未返回当前节点，无法安全接管")
+    val liveIndex = saved.blockIds.indexOf(currentBlockId)
+    if (liveIndex < 0) {
+        return LabyrinthExecutionGateResult.Blocked(
+            "当前节点 $currentBlockId 不在已保存路线中，已禁止用旧路线接管",
+        )
+    }
+    val savedIndex = saved.currentBlockId?.let { savedBlockId ->
+        saved.blockIds.indexOf(savedBlockId).takeIf { it >= 0 }
+            ?: return LabyrinthExecutionGateResult.Blocked(
+                "保存的当前节点 $savedBlockId 不在保存路线中，路线数据已损坏",
+            )
+    } ?: -1
+    if (savedIndex > liveIndex) {
+        return LabyrinthExecutionGateResult.Blocked(
+            "保存路线进度领先于服务端：保存=${saved.currentBlockId}，当前=$currentBlockId",
+        )
+    }
+    return LabyrinthExecutionGateResult.Allowed(
+        route = saved.copy(currentBlockId = currentBlockId),
+        message = "已联网确认当前挑战与保存路线一致，并从节点 $currentBlockId 接管",
     )
 }

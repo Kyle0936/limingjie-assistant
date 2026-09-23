@@ -664,7 +664,10 @@ internal fun labyrinthNodeEntryMatchesExpectedType(
 }
 
 /** Only a stable, actionable destination may override stale route node metadata. */
-internal fun labyrinthObservedDestinationType(state: LabyrinthEntryPageState): Int? = when (state) {
+internal fun labyrinthObservedDestinationType(
+    state: LabyrinthEntryPageState,
+    expectedType: Int? = null,
+): Int? = when (state) {
     LabyrinthEntryPageState.SHOP,
     LabyrinthEntryPageState.SHOP_PURCHASE_CONFIRMATION,
     LabyrinthEntryPageState.SHOP_PURCHASE_COMPLETE,
@@ -675,7 +678,9 @@ internal fun labyrinthObservedDestinationType(state: LabyrinthEntryPageState): I
     LabyrinthEntryPageState.RELIC_CHOICE -> LabyrinthNodeTypes.RELIC
     LabyrinthEntryPageState.BATTLE_CHALLENGE,
     LabyrinthEntryPageState.BATTLE_TEAM_SELECTION,
-    LabyrinthEntryPageState.BATTLE_IN_PROGRESS -> LabyrinthNodeTypes.NORMAL_BATTLE
+    LabyrinthEntryPageState.BATTLE_IN_PROGRESS ->
+        expectedType.takeIf { it in setOf(LabyrinthNodeTypes.BOSS, LabyrinthNodeTypes.EX_BATTLE) }
+            ?: LabyrinthNodeTypes.NORMAL_BATTLE
     // Generic reward/transition screens do not identify the node that produced them.
     else -> null
 }
@@ -1050,7 +1055,7 @@ class LabyrinthEntryRecognitionSession(
     private val runStateStore: LabyrinthRunStateStore? = null,
     private val routeLoader: (suspend (Long?) -> LabyrinthRouteJson?)? = null,
     private val routeProgressSaver: (suspend (Long, Long, Long) -> Boolean)? = null,
-    private val routeExecutionGate: (suspend (Long?) -> LabyrinthExecutionGateResult)? = null,
+    private val routeExecutionGate: (suspend (Long?, Boolean) -> LabyrinthExecutionGateResult)? = null,
     private val nodeTemplateLoader: (() -> NodeTemplateSet)? = null,
     private val nodeSessionFactory: () -> LabyrinthNodeSession = {
         LabyrinthNodeSession(
@@ -1068,6 +1073,7 @@ class LabyrinthEntryRecognitionSession(
      * Fired at most once per run id, after the run has fully stopped. Absent runId = no batch.
      */
     private val runTerminalListener: (suspend (LabyrinthRunTerminalEvent) -> Unit)? = null,
+    private val takeoverWaitTimeoutMillis: Long = TAKEOVER_WAIT_TIMEOUT_MILLIS,
 ) {
     private data class QueuedFrame(
         val sessionId: AutomationSessionId,
@@ -1459,9 +1465,11 @@ class LabyrinthEntryRecognitionSession(
     private var activeNodeType: Int? = null
     @Volatile
     private var activeNodeArea: Int? = null
+    @Volatile
     private var takeoverCurrentRunPending = false
     private var takeoverPage: LabyrinthEntryPageState? = null
     private var takeoverStableFrames = 0
+    private var takeoverWatchdog: Job? = null
     @Volatile
     private var eventActionAttempts = 0
     @Volatile
@@ -1477,8 +1485,14 @@ class LabyrinthEntryRecognitionSession(
         dryRun: Boolean = true,
         accountId: Long? = null,
         takeoverCurrentRun: Boolean = false,
+        runId: String? = null,
     ): LabyrinthEntryRecognitionStartResult = mutex.withLock {
         activeSessionId?.let { return LabyrinthEntryRecognitionStartResult.AlreadyRunning(it) }
+        sessionManager.current()?.let { running ->
+            val reason = "已有${running.mode.name}任务运行"
+            _state.value = _state.value.copy(status = LabyrinthEntryRecognitionStatus.ERROR, message = reason)
+            return LabyrinthEntryRecognitionStartResult.Blocked(reason)
+        }
         if (!dryRun && (actionExecutor == null || !actionsAvailable())) {
             val reason = "无障碍服务未连接；若系统开关显示已开启，请关闭后重新开启"
             _state.value = _state.value.copy(status = LabyrinthEntryRecognitionStatus.ERROR, message = reason)
@@ -1494,10 +1508,11 @@ class LabyrinthEntryRecognitionSession(
             val gate = routeExecutionGate
             if (gate == null) {
                 val reason = "未配置路线执行联网门禁，已禁止自动点节点"
+                requestCaptureStop()
                 _state.value = _state.value.copy(status = LabyrinthEntryRecognitionStatus.ERROR, message = reason)
                 return LabyrinthEntryRecognitionStartResult.Blocked(reason)
             }
-            when (val result = runCatching { gate(accountId) }.getOrElse { failure ->
+            when (val result = runCatching { gate(accountId, takeoverCurrentRun) }.getOrElse { failure ->
                 LabyrinthExecutionGateResult.Blocked(
                     "执行前联网校验失败：${failure.message ?: "未知错误"}",
                 )
@@ -1507,6 +1522,7 @@ class LabyrinthEntryRecognitionSession(
                     result.route
                 }
                 is LabyrinthExecutionGateResult.Blocked -> {
+                    requestCaptureStop()
                     _state.value = _state.value.copy(
                         status = LabyrinthEntryRecognitionStatus.ERROR,
                         message = result.message,
@@ -1520,6 +1536,7 @@ class LabyrinthEntryRecognitionSession(
         val strategySnapshot = try {
             strategyProvider?.invoke()
         } catch (failure: Exception) {
+            requestCaptureStop()
             val reason = "策略配置加载失败：${failure.message}"
             _state.value = _state.value.copy(status = LabyrinthEntryRecognitionStatus.ERROR, message = reason)
             return LabyrinthEntryRecognitionStartResult.Blocked(reason)
@@ -1592,11 +1609,18 @@ class LabyrinthEntryRecognitionSession(
             return LabyrinthEntryRecognitionStartResult.Blocked(reason)
         }
         lease = (registration as CaptureFrameRegistrationResult.Registered).lease
-        activeSessionId = session.id
-        activeRunAccountId = accountId
+        // Set the takeover guard before publishing the session id. A frame callback gates only on
+        // activeSessionId, so the reverse order leaves a small window where ordinary clicks can
+        // run against the user's live challenge before takeover protection becomes visible.
         takeoverCurrentRunPending = !dryRun && takeoverCurrentRun
         takeoverPage = null
         takeoverStableFrames = 0
+        takeoverWatchdog?.cancel()
+        takeoverWatchdog = null
+        currentRunId = if (dryRun) null else runId
+        pendingTerminalOutcome = null
+        activeSessionId = session.id
+        activeRunAccountId = accountId
         shopImprintRewardConfirmedAt = Long.MIN_VALUE
         confirmedNodeEntryReceipt = null
         validatedRoute = executionRoute
@@ -1669,6 +1693,9 @@ class LabyrinthEntryRecognitionSession(
             lease?.let(CaptureFrameBus::unregister)
             lease = null
             activeSessionId = null
+            takeoverCurrentRunPending = false
+            currentRunId = null
+            pendingTerminalOutcome = null
             validatedRoute = null
             sessionManager.stop(session.id)
             requestCaptureStop()
@@ -1681,12 +1708,18 @@ class LabyrinthEntryRecognitionSession(
             return LabyrinthEntryRecognitionStartResult.Blocked(reason)
         }
         armFirstFrameWatchdog(session.id)
+        if (takeoverCurrentRunPending) armTakeoverWatchdog(session.id)
         if (!dryRun && !takeoverCurrentRun && !gameLauncher()) {
             firstFrameWatchdog?.cancel()
             firstFrameWatchdog = null
             lease?.let(CaptureFrameBus::unregister)
             lease = null
             activeSessionId = null
+            takeoverCurrentRunPending = false
+            takeoverWatchdog?.cancel()
+            takeoverWatchdog = null
+            currentRunId = null
+            pendingTerminalOutcome = null
             validatedRoute = null
             actionPlanner = null
             sessionManager.stop(session.id)
@@ -1708,12 +1741,12 @@ class LabyrinthEntryRecognitionSession(
         runId: String? = null,
         takeoverCurrentRun: Boolean = false,
     ): LabyrinthEntryRecognitionStartResult {
-        val result = start(dryRun = false, accountId = accountId, takeoverCurrentRun = takeoverCurrentRun)
-        if (result is LabyrinthEntryRecognitionStartResult.Started) {
-            currentRunId = runId
-            pendingTerminalOutcome = null
-        }
-        return result
+        return start(
+            dryRun = false,
+            accountId = accountId,
+            takeoverCurrentRun = takeoverCurrentRun,
+            runId = runId,
+        )
     }
 
     suspend fun setPaused(paused: Boolean): Boolean = mutex.withLock {
@@ -1751,6 +1784,11 @@ class LabyrinthEntryRecognitionSession(
         stopRequested.set(true)
         firstFrameWatchdog?.cancel()
         firstFrameWatchdog = null
+        takeoverWatchdog?.cancel()
+        takeoverWatchdog = null
+        takeoverCurrentRunPending = false
+        takeoverPage = null
+        takeoverStableFrames = 0
         activeSessionId = null
         activeRunAccountId = null
         validatedRoute = null
@@ -1806,10 +1844,13 @@ class LabyrinthEntryRecognitionSession(
      */
     private fun publishRunTerminal(reason: String, userInitiated: Boolean) {
         val runId = currentRunId ?: return
-        val listener = runTerminalListener ?: return
         val outcome = pendingTerminalOutcome
+        // Run ownership is session-local state and must be cleared even in builds/tests that do
+        // not install a batch listener. Otherwise the next interactive run inherits a stale run
+        // id and may retain capture or report a terminal event to the wrong batch.
         currentRunId = null
         pendingTerminalOutcome = null
+        val listener = runTerminalListener ?: return
         val event = when {
             outcome == LabyrinthRunTerminalOutcome.CLEARED -> LabyrinthRunTerminalEvent.Cleared(runId)
             outcome == LabyrinthRunTerminalOutcome.FAILED_MAX_RETRY -> LabyrinthRunTerminalEvent.FailedMaxRetry(runId)
@@ -1971,18 +2012,6 @@ class LabyrinthEntryRecognitionSession(
                 nodeSearchWindowCount = result.nodeSearchWindowCount,
             ),
         )
-        if (
-            handleSessionBlockFrame(
-                sessionId = sessionId,
-                result = result,
-                frameWidth = frameWidth,
-                frameHeight = frameHeight,
-                timestampMillis = timestampMillis,
-                dryRun = current.dryRun,
-            )
-        ) {
-            return
-        }
         val pageState = result.observation.state
         if (takeoverCurrentRunPending) {
             // The user starts this mode in the assistant, then switches to the already-open
@@ -2007,10 +2036,24 @@ class LabyrinthEntryRecognitionSession(
                 return
             }
             takeoverCurrentRunPending = false
+            takeoverWatchdog?.cancel()
+            takeoverWatchdog = null
             entryPhaseComplete = true
             existingRunResumeHandoffArmed = true
             nodeLog("manual-current-run-takeover page=${pageState.name}")
             _state.value = _state.value.copy(message = "已接管当前挑战：${pageState.name}；继续已保存路线")
+        }
+        if (
+            handleSessionBlockFrame(
+                sessionId = sessionId,
+                result = result,
+                frameWidth = frameWidth,
+                frameHeight = frameHeight,
+                timestampMillis = timestampMillis,
+                dryRun = current.dryRun,
+            )
+        ) {
+            return
         }
         if (skipRoleRewardJoinedRecognition &&
             !labyrinthKeepsRoleRewardBatchOnPage(pageState, labyrinthIsRoleRewardPage(result))
@@ -2354,6 +2397,35 @@ class LabyrinthEntryRecognitionSession(
             }
         }
     }
+
+    private fun armTakeoverWatchdog(sessionId: AutomationSessionId) {
+        takeoverWatchdog?.cancel()
+        takeoverWatchdog = actionScope.launch {
+            delay(takeoverWaitTimeoutMillis)
+            if (activeSessionId != sessionId || !takeoverCurrentRunPending) return@launch
+            requestStopAfterFailure(
+                sessionId,
+                "接管等待超过${takeoverWaitTimeoutMillis / 1000}秒，未确认连续稳定的黎明界路线页面，已安全停止",
+            )
+        }
+    }
+
+    /** Feeds an already-recognized frame through the real safety gates without an Android bitmap. */
+    internal fun processRecognizedFrameForTest(
+        result: LabyrinthEntryFrameResult,
+        timestampMillis: Long,
+    ) {
+        val sessionId = activeSessionId ?: error("recognition session is not running")
+        processFrameResult(
+            sessionId = sessionId,
+            result = result,
+            frameWidth = result.frameWidth,
+            frameHeight = result.frameHeight,
+            timestampMillis = timestampMillis,
+        )
+    }
+
+    internal fun takeoverPendingForTest(): Boolean = takeoverCurrentRunPending
 
     private fun requestStopAfterFailure(sessionId: AutomationSessionId, reason: String) {
         if (!stopRequested.compareAndSet(false, true)) return
@@ -7201,7 +7273,7 @@ class LabyrinthEntryRecognitionSession(
                 }
                 return
             }
-            val observedType = labyrinthObservedDestinationType(pageState)
+            val observedType = labyrinthObservedDestinationType(pageState, pending.blockType)
             if (observedType == null) {
                 // A generic reward or transition may belong to the previous node. Keep
                 // observing instead of either advancing an unproven cursor or ending the run.
@@ -8540,6 +8612,7 @@ class LabyrinthEntryRecognitionSession(
         const val OWNER = "labyrinth-entry-recognition"
         const val FRAME_INTERVAL_MILLIS = 500L
         const val FIRST_FRAME_TIMEOUT_MILLIS = 5_000L
+        const val TAKEOVER_WAIT_TIMEOUT_MILLIS = 90_000L
         const val NODE_CLICK_STABLE_FRAMES = 3
         /** How long a strong FULL_COLUMN target rect outranks weaker re-bindings without a gesture. */
         const val NODE_STRONG_BINDING_MEMORY_MILLIS = 8_000L
