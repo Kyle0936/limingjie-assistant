@@ -263,10 +263,11 @@ class LabyrinthEntryPageClassifier(
                 battleTeamScore,
                 battleTeamStartScore,
             ),
-            LabyrinthEntryPageState.BATTLE_IN_PROGRESS to minimum(
-                anchorScores[EntryAnchorId.BATTLE_IN_PROGRESS_MENU_BUTTON],
-                anchorScores[EntryAnchorId.BATTLE_IN_PROGRESS_AUTO_BUTTON],
-            ),
+            // "自动" is state-dependent and can disappear during a fight. The fixed
+            // top-right menu is the stable battle identity; it is not an action target.
+            LabyrinthEntryPageState.BATTLE_IN_PROGRESS to anchorScores[
+                EntryAnchorId.BATTLE_IN_PROGRESS_MENU_BUTTON
+            ],
             LabyrinthEntryPageState.BATTLE_RESULT to battleResultScore,
             LabyrinthEntryPageState.RUN_CLEAR_RESULT to minimum(
                 anchorScores[EntryAnchorId.RUN_RESULT_LOGO],
