@@ -6,10 +6,12 @@ import com.landosol.toolbox.data.local.AppDatabase
 import com.landosol.toolbox.security.AccountCredentials
 import com.landosol.toolbox.security.CredentialStore
 import com.landosol.toolbox.protocol.bilibili.AccountLoginMaterial
+import com.landosol.toolbox.protocol.bilibili.GameServer
 import com.landosol.toolbox.protocol.bilibili.SdkSessionStore
 import com.landosol.toolbox.protocol.bilibili.GameSessionRegistry
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 
 data class AccountListItem(
@@ -25,6 +27,7 @@ data class AccountEditorData(
     val alias: String,
     val loginId: String,
     val gameUid: String,
+    val server: GameServer,
 )
 
 class AccountRepository(
@@ -39,12 +42,19 @@ class AccountRepository(
             AccountListItem(
                 id = entity.id,
                 alias = entity.alias,
-                serverName = serverDisplayName(entity.serverId),
+                serverName = GameServer.fromStorageId(entity.serverId).displayName,
                 gameUid = entity.gameUid,
                 isSelected = entity.isSelected,
             )
         }
     }
+
+    /** 选中账号所属的服务器；没有选中账号时为 null。决定自动化要操作哪个游戏客户端。 */
+    fun observeSelectedServer(): Flow<GameServer?> = database.accountDao().observeAll()
+        .map { accounts ->
+            accounts.firstOrNull { it.isSelected }?.let { GameServer.fromStorageId(it.serverId) }
+        }
+        .distinctUntilChanged()
 
     suspend fun loadEditor(id: Long): AccountEditorData {
         val account = requireNotNull(database.accountDao().getById(id)) { "账号不存在" }
@@ -54,6 +64,7 @@ class AccountRepository(
             alias = account.alias,
             loginId = credentials.loginId,
             gameUid = account.gameUid.orEmpty(),
+            server = GameServer.fromStorageId(account.serverId),
         )
     }
 
@@ -65,6 +76,7 @@ class AccountRepository(
             credentialKey = account.credentialKey,
             loginId = credentials.loginId,
             password = credentials.password,
+            server = GameServer.fromStorageId(account.serverId),
         )
     }
 
@@ -77,7 +89,7 @@ class AccountRepository(
                 database.accountDao().insert(
                     AccountEntity(
                         alias = input.alias,
-                        serverId = SERVER_CN_BILIBILI,
+                        serverId = input.server.storageId,
                         gameUid = input.gameUid,
                         credentialKey = credentialKey,
                         isSelected = database.accountDao().count() == 0,
@@ -94,12 +106,16 @@ class AccountRepository(
 
     suspend fun update(id: Long, input: NormalizedAccountInput) {
         val account = requireNotNull(database.accountDao().getById(id)) { "账号不存在" }
+        // 凭据含义随服务器而变（B 服密码 / 渠道服 access_key）：换服务器必须同时给出新密码，
+        // 且旧服务器的 SDK / 游戏会话一律作废。
+        val serverChanged = input.server.storageId != account.serverId
+        require(!serverChanged || input.password.isNotEmpty()) { "更换服务器需要重新填写密码" }
         val previous = requireNotNull(credentialStore.read(account.credentialKey)) { "账号凭据不可用" }
         val replacement = AccountCredentials(
             loginId = input.loginId,
             password = input.password.ifEmpty { previous.password },
         )
-        val credentialsChanged = replacement != previous
+        val credentialsChanged = serverChanged || replacement != previous
         val previousSession = if (credentialsChanged) sessionStore.read(account.credentialKey) else null
         try {
             if (credentialsChanged) sessionStore.delete(account.credentialKey)
@@ -108,6 +124,7 @@ class AccountRepository(
             database.accountDao().update(
                 account.copy(
                     alias = input.alias,
+                    serverId = input.server.storageId,
                     gameUid = input.gameUid,
                     updatedAt = clock(),
                 ),
@@ -150,14 +167,5 @@ class AccountRepository(
             if (previousSession != null) sessionStore.save(account.credentialKey, previousSession)
             throw failure
         }
-    }
-
-    private fun serverDisplayName(serverId: String): String = when (serverId) {
-        SERVER_CN_BILIBILI -> "国服 Bilibili"
-        else -> serverId
-    }
-
-    private companion object {
-        const val SERVER_CN_BILIBILI = "cn-bilibili"
     }
 }

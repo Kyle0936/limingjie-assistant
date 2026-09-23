@@ -1,5 +1,6 @@
 package com.landosol.toolbox.account
 
+import com.landosol.toolbox.protocol.bilibili.GameServer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -46,5 +47,30 @@ class AccountInputValidatorTest {
         )
 
         assertTrue(result is AccountValidationResult.Valid)
+    }
+
+    @Test
+    fun `channel access key is trimmed but a Bilibili password is kept verbatim`() {
+        val channel = AccountInputValidator.validate(
+            alias = "渠道号",
+            loginId = " 12345678 ",
+            password = " access-key\n",
+            gameUid = "",
+            passwordRequired = true,
+            server = GameServer.CN_XIAOMI,
+        ) as AccountValidationResult.Valid
+        val bilibili = AccountInputValidator.validate(
+            alias = "B 服号",
+            loginId = "tester",
+            password = " pass word ",
+            gameUid = "",
+            passwordRequired = true,
+        ) as AccountValidationResult.Valid
+
+        assertEquals("12345678", channel.value.loginId)
+        assertEquals("access-key", channel.value.password)
+        assertEquals(GameServer.CN_XIAOMI, channel.value.server)
+        assertEquals(" pass word ", bilibili.value.password)
+        assertEquals(GameServer.CN_BILIBILI, bilibili.value.server)
     }
 }

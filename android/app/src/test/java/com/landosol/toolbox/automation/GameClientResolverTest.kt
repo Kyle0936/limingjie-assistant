@@ -1,0 +1,82 @@
+package com.landosol.toolbox.automation
+
+import com.landosol.toolbox.protocol.bilibili.GameServer
+import java.io.File
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class GameClientResolverTest {
+    private val bilibili = GameServer.CN_BILIBILI.packageName
+    private val xiaomi = GameServer.CN_XIAOMI.packageName
+
+    @Test
+    fun `selected account decides the client even when several are installed`() {
+        assertEquals(
+            GameClientResolution.Available(GameServer.CN_XIAOMI),
+            GameClientResolver.resolve(GameServer.CN_XIAOMI, setOf(bilibili, xiaomi)),
+        )
+    }
+
+    @Test
+    fun `missing client of the selected account is reported, never swapped for another channel`() {
+        assertEquals(
+            GameClientResolution.NotInstalled(GameServer.CN_HUAWEI),
+            GameClientResolver.resolve(GameServer.CN_HUAWEI, setOf(xiaomi)),
+        )
+    }
+
+    @Test
+    fun `without a selected account a single install is used`() {
+        assertEquals(
+            GameClientResolution.Available(GameServer.CN_XIAOMI),
+            GameClientResolver.resolve(null, setOf(xiaomi)),
+        )
+        assertEquals(
+            GameClientResolution.Available(GameServer.CN_BILIBILI),
+            GameClientResolver.resolve(null, setOf(bilibili)),
+        )
+    }
+
+    @Test
+    fun `without a selected account nothing installed is unavailable`() {
+        assertEquals(GameClientResolution.Unavailable, GameClientResolver.resolve(null, emptySet()))
+    }
+
+    @Test
+    fun `without a selected account several installs are ambiguous`() {
+        val resolution = GameClientResolver.resolve(null, setOf(bilibili, xiaomi))
+        assertTrue(resolution is GameClientResolution.Ambiguous)
+        assertEquals(2, (resolution as GameClientResolution.Ambiguous).servers.size)
+    }
+
+    @Test
+    fun `storage ids and package names are unique`() {
+        assertEquals(GameServer.entries.size, GameServer.entries.map { it.storageId }.toSet().size)
+        assertEquals(GameServer.entries.size, GameServer.entries.map { it.packageName }.toSet().size)
+    }
+
+    @Test
+    fun `manifest declares a package query for every server client`() {
+        // Android 11+ hides packages not declared in <queries>; a missing entry reads as "not installed".
+        val manifest = File("src/main/AndroidManifest.xml").readText()
+        GameServer.entries.forEach { server ->
+            assertTrue(server.packageName, manifest.contains("<package android:name=\"${server.packageName}\" />"))
+        }
+    }
+
+    @Test
+    fun `only the Bilibili server uses the Bilibili SDK login`() {
+        assertFalse(GameServer.CN_BILIBILI.isChannelServer)
+        assertTrue(GameServer.entries.filter { it != GameServer.CN_BILIBILI }.all { it.isChannelServer })
+    }
+
+    @Test
+    fun `unknown storage id falls back to Bilibili`() {
+        assertEquals(GameServer.CN_BILIBILI, GameServer.fromStorageId("cn-bilibili"))
+        assertEquals(GameServer.CN_XIAOMI, GameServer.fromStorageId("cn-xiaomi"))
+        assertEquals(GameServer.CN_BILIBILI, GameServer.fromStorageId("cn-unknown"))
+        assertEquals(GameServer.CN_BILIBILI, GameServer.fromStorageId(null))
+    }
+}

@@ -7,15 +7,11 @@ class BilibiliNativeLoginCoordinator(
     sdkCoordinatorProvider: () -> BilibiliLoginCoordinator,
     sdkGatewayProvider: () -> BilibiliSdkGateway,
     private val sessionStore: SdkSessionStore,
-    private val gameGateway: BilibiliGameGateway,
+    /** 每个服务器一个游戏服网关：B 服与渠道服的网关、资源密钥和 PLATFORM-ID 各不相同。 */
+    private val gameGatewayFor: (GameServer) -> BilibiliGameGateway,
     private val gameSessionRegistry: GameSessionRegistry,
-    /**
-     * 渠道服凭据直通：账号页填写的 loginId / password 即 uid / access_key，
-     * 跳过 B 服 SDK 登录那一层，直接进入游戏服登录。
-     */
-    private val directCredentials: Boolean = false,
 ) {
-    /** 保持旧调用点与既有测试可用；等价于 B 服模式。 */
+    /** 保持旧调用点与既有测试可用；所有账号都走同一个网关。 */
     constructor(
         sdkCoordinator: BilibiliLoginCoordinator,
         sdkGateway: BilibiliSdkGateway,
@@ -26,13 +22,13 @@ class BilibiliNativeLoginCoordinator(
         { sdkCoordinator },
         { sdkGateway },
         sessionStore,
-        gameGateway,
+        { gameGateway },
         gameSessionRegistry,
-        false,
     )
 
-    // B 服 SDK 依赖按需求值：直通模式下绝不触发，否则会查询本机未安装的国服包。
-    private val sdkCoordinator by lazy { sdkCoordinatorProvider() }
+    // B 服 SDK 依赖按需求值：只有渠道服账号时绝不触发，否则会查询本机未安装的国服包。
+    private val sdkCoordinatorLazy = lazy(sdkCoordinatorProvider)
+    private val sdkCoordinator by sdkCoordinatorLazy
     private val sdkGateway by lazy { sdkGatewayProvider() }
 
     private val mutex = Mutex()
@@ -40,8 +36,9 @@ class BilibiliNativeLoginCoordinator(
 
     suspend fun start(material: AccountLoginMaterial): NativeLoginResult = mutex.withLock {
         pending.remove(material.accountId)
-        if (directCredentials) {
-            // 渠道服：直接用已有 uid / access_key 建立会话进入游戏服登录。
+        if (material.server.isChannelServer) {
+            // 渠道服凭据直通：账号页填写的 loginId / password 即 uid / access_key，
+            // 跳过 B 服 SDK 登录那一层，直接进入游戏服登录。
             // deviceSeed 传 loginId(uid)，与外部工具的 DEVICE-ID 推导一致。
             // 游戏服拒绝会话时不回落到 SDK 登录，直接返回失败。
             return@withLock loginGame(
@@ -52,7 +49,7 @@ class BilibiliNativeLoginCoordinator(
         sdkCoordinator.cancel(material.accountId)
         val cached = sessionStore.read(material.credentialKey)
         if (cached != null) {
-            when (val result = gameGateway.loginAndLoadProfile(cached, material.loginId)) {
+            when (val result = gameGatewayFor(material.server).loginAndLoadProfile(cached, material.loginId)) {
                 is GameLoginResult.SessionRejected -> {
                     sessionStore.delete(material.credentialKey)
                     loginSdk(material)
@@ -104,7 +101,8 @@ class BilibiliNativeLoginCoordinator(
     suspend fun cancel(accountId: Long) {
         mutex.withLock {
             pending.remove(accountId)
-            if (!directCredentials) sdkCoordinator.cancel(accountId)
+            // 从未走过 SDK 登录就没有可取消的 SDK 流程；不为取消而创建 SDK 依赖。
+            if (sdkCoordinatorLazy.isInitialized()) sdkCoordinator.cancel(accountId)
         }
     }
 
@@ -130,7 +128,7 @@ class BilibiliNativeLoginCoordinator(
     ): NativeLoginResult = handleGameResult(
         material,
         session,
-        gameGateway.loginAndLoadProfile(session, material.loginId, captcha),
+        gameGatewayFor(material.server).loginAndLoadProfile(session, material.loginId, captcha),
     )
 
     private suspend fun handleGameResult(
@@ -154,7 +152,7 @@ class BilibiliNativeLoginCoordinator(
         material: AccountLoginMaterial,
         session: SdkSession,
     ): NativeLoginResult {
-        if (directCredentials) {
+        if (material.server.isChannelServer) {
             return failure(
                 LoginFailureKind.Rejected,
                 "游戏服要求风险验证，渠道服凭据模式无法完成，请在游戏内完成验证后重试",

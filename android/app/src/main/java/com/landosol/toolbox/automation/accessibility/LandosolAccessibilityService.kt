@@ -290,14 +290,18 @@ class LandosolAccessibilityService : AccessibilityService() {
 }
 
 class AndroidAccessibilityActionBackend(
-    private val expectedPackageName: String? = GAME_PACKAGE_NAME,
+    /** 每次动作时取值：切换到另一渠道的账号后，校验目标随之改变。null 表示不校验前台包。 */
+    private val expectedPackageName: () -> String?,
 ) : AutomationActionBackend {
+    constructor(expectedPackageName: String? = GAME_PACKAGE_NAME) : this({ expectedPackageName })
+
     override suspend fun execute(action: AutomationAction): AutomationBackendResult {
         if (!action.hasValidCoordinates()) return AutomationBackendResult.Rejected("动作坐标无效")
         val service = LandosolAccessibilityService.current()
             ?: return AutomationBackendResult.Rejected("无障碍服务未连接")
         val foregroundPackage = LandosolAccessibilityService.foregroundPackage()
-        if (expectedPackageName != null && foregroundPackage != expectedPackageName) {
+        val expected = expectedPackageName()
+        if (expected != null && foregroundPackage != expected) {
             return AutomationBackendResult.Rejected(GAME_NOT_FOREGROUND_REASON)
         }
         return service.perform(

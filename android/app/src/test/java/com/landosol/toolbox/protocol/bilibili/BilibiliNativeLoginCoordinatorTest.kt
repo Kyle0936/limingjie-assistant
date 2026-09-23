@@ -75,6 +75,47 @@ class BilibiliNativeLoginCoordinatorTest {
         assertEquals("challenge", gameGateway.lastCaptcha?.challenge)
     }
 
+    @Test
+    fun `channel account logs in with its own gateway and never touches the Bilibili SDK`() = runTest {
+        val channelMaterial = AccountLoginMaterial(8L, "channel-key", "12345678", "access-key", GameServer.CN_XIAOMI)
+        val bilibiliGateway = FakeGameGateway(results = ArrayDeque())
+        val channelGateway = FakeGameGateway(results = ArrayDeque(listOf(success(789L, "渠道玩家", 30))))
+        val coordinator = BilibiliNativeLoginCoordinator(
+            sdkCoordinatorProvider = { error("channel login must not create the Bilibili SDK coordinator") },
+            sdkGatewayProvider = { error("channel login must not create the Bilibili SDK gateway") },
+            sessionStore = InMemorySdkSessionStore(),
+            gameGatewayFor = { server -> if (server.isChannelServer) channelGateway else bilibiliGateway },
+            gameSessionRegistry = InMemoryGameSessionRegistry(),
+        )
+
+        val result = coordinator.start(channelMaterial)
+        coordinator.cancel(channelMaterial.accountId)
+
+        assertTrue(result is NativeLoginResult.Success)
+        assertEquals(0, bilibiliGateway.loginCount)
+        assertEquals(1, channelGateway.loginCount)
+        assertEquals("12345678", channelGateway.lastSession?.uid)
+        assertEquals("access-key", channelGateway.lastSession?.accessKey)
+        assertEquals("12345678", channelGateway.lastDeviceSeed)
+    }
+
+    @Test
+    fun `channel account risk check fails instead of starting a Bilibili captcha`() = runTest {
+        val channelMaterial = AccountLoginMaterial(9L, "channel-key", "12345678", "access-key", GameServer.CN_HUAWEI)
+        val coordinator = BilibiliNativeLoginCoordinator(
+            sdkCoordinatorProvider = { error("unexpected SDK coordinator") },
+            sdkGatewayProvider = { error("unexpected SDK gateway") },
+            sessionStore = InMemorySdkSessionStore(),
+            gameGatewayFor = { FakeGameGateway(results = ArrayDeque(listOf(GameLoginResult.RiskRequired))) },
+            gameSessionRegistry = InMemoryGameSessionRegistry(),
+        )
+
+        val result = coordinator.start(channelMaterial)
+
+        assertTrue(result is NativeLoginResult.Failure)
+        assertEquals(LoginFailureKind.Rejected, (result as NativeLoginResult.Failure).kind)
+    }
+
     private class FakeSdkGateway(
         private val loginResults: ArrayDeque<SdkLoginResult> = ArrayDeque(),
         private val captchaResults: ArrayDeque<SdkCaptchaResult> = ArrayDeque(),
@@ -95,6 +136,8 @@ class BilibiliNativeLoginCoordinatorTest {
     ) : BilibiliGameGateway {
         var loginCount = 0
         var lastCaptcha: CaptchaSolution? = null
+        var lastSession: SdkSession? = null
+        var lastDeviceSeed: String? = null
 
         override suspend fun loginAndLoadProfile(
             sdkSession: SdkSession,
@@ -103,6 +146,8 @@ class BilibiliNativeLoginCoordinatorTest {
         ): GameLoginResult {
             loginCount++
             lastCaptcha = captcha
+            lastSession = sdkSession
+            lastDeviceSeed = deviceSeed
             return results.removeFirst()
         }
     }

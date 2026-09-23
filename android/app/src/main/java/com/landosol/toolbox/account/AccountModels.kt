@@ -1,10 +1,13 @@
 package com.landosol.toolbox.account
 
+import com.landosol.toolbox.protocol.bilibili.GameServer
+
 data class NormalizedAccountInput(
     val alias: String,
     val loginId: String,
     val password: String,
     val gameUid: String?,
+    val server: GameServer = GameServer.CN_BILIBILI,
 )
 
 sealed interface AccountValidationResult {
@@ -19,10 +22,14 @@ object AccountInputValidator {
         password: String,
         gameUid: String,
         passwordRequired: Boolean,
+        server: GameServer = GameServer.CN_BILIBILI,
     ): AccountValidationResult {
         val normalizedAlias = alias.trim()
         val normalizedLoginId = loginId.trim()
         val normalizedUid = gameUid.trim().ifEmpty { null }
+        // 渠道服的密码是 access_key，不含空白；粘贴时混入的首尾空白会让游戏服拒绝会话。
+        // B 服密码保持原样，不替用户改动。
+        val normalizedPassword = if (server.isChannelServer) password.trim() else password
 
         return when {
             normalizedAlias.isEmpty() -> AccountValidationResult.Invalid("请输入账号名称")
@@ -31,16 +38,17 @@ object AccountInputValidator {
             normalizedLoginId.isEmpty() -> AccountValidationResult.Invalid("请输入登录账号")
             normalizedLoginId.length > 128 -> AccountValidationResult.Invalid("登录账号不能超过 128 个字符")
             normalizedLoginId.any(Char::isISOControl) -> AccountValidationResult.Invalid("登录账号包含不可用字符")
-            passwordRequired && password.isEmpty() -> AccountValidationResult.Invalid("请输入密码")
-            password.length > 512 -> AccountValidationResult.Invalid("密码长度超出限制")
+            passwordRequired && normalizedPassword.isEmpty() -> AccountValidationResult.Invalid("请输入密码")
+            normalizedPassword.length > 512 -> AccountValidationResult.Invalid("密码长度超出限制")
             normalizedUid != null && normalizedUid.length > 64 -> AccountValidationResult.Invalid("游戏 UID 不能超过 64 个字符")
             normalizedUid?.any(Char::isISOControl) == true -> AccountValidationResult.Invalid("游戏 UID 包含不可用字符")
             else -> AccountValidationResult.Valid(
                 NormalizedAccountInput(
                     alias = normalizedAlias,
                     loginId = normalizedLoginId,
-                    password = password,
+                    password = normalizedPassword,
                     gameUid = normalizedUid,
+                    server = server,
                 ),
             )
         }

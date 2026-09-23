@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.landosol.toolbox.protocol.bilibili.CaptchaChallenge
+import com.landosol.toolbox.protocol.bilibili.GameServer
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -17,8 +18,14 @@ data class AccountEditorState(
     val loginId: String = "",
     val password: String = "",
     val gameUid: String = "",
+    val server: GameServer = GameServer.CN_BILIBILI,
+    /** 编辑时账号原本所属的服务器；新增时为 null。 */
+    val savedServer: GameServer? = null,
 ) {
     val isEditing: Boolean get() = id != null
+
+    /** 换服务器后凭据含义随之改变（B 服密码 / 渠道服 access_key），必须重填密码。 */
+    val serverChanged: Boolean get() = savedServer != null && server != savedServer
 }
 
 data class AccountUiState(
@@ -77,6 +84,8 @@ class AccountViewModel(
                         loginId = value.loginId,
                         password = "",
                         gameUid = value.gameUid,
+                        server = value.server,
+                        savedServer = value.server,
                     ),
                 )
             }
@@ -99,7 +108,8 @@ class AccountViewModel(
                 loginId = editor.loginId,
                 password = editor.password,
                 gameUid = editor.gameUid,
-                passwordRequired = !editor.isEditing,
+                passwordRequired = !editor.isEditing || editor.serverChanged,
+                server = editor.server,
             )
         ) {
             is AccountValidationResult.Invalid -> chrome.update { it.copy(message = validation.message) }

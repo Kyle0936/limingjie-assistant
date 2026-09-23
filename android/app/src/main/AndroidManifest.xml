@@ -11,6 +11,13 @@
     <queries>
         <package android:name="com.bilibili.priconne" />
         <package android:name="com.bilibili.priconne.mi" />
+        <package android:name="com.bilibili.priconne.huawei" />
+        <package android:name="com.bilibili.priconne.vivo" />
+        <package android:name="com.bilibili.priconne.nearme.gamecenter" />
+        <package android:name="com.bilibili.priconne.aligames" />
+        <package android:name="com.bilibili.priconne.m4399" />
+        <package android:name="com.bilibili.priconne.yofun.mumu" />
+        <package android:name="com.tencent.tmgp.bilibili.priconne" />
     </queries>
 
     <!--

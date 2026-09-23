@@ -1,6 +1,7 @@
 package com.landosol.toolbox.ui.account
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -15,6 +16,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -23,6 +26,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -30,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.landosol.toolbox.account.AccountEditorState
 import com.landosol.toolbox.account.AccountListItem
 import com.landosol.toolbox.account.AccountUiState
+import com.landosol.toolbox.protocol.bilibili.GameServer
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -194,12 +202,11 @@ private fun AccountEditorDialog(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                OutlinedTextField(
-                    value = "国服 Bilibili",
-                    onValueChange = {},
-                    readOnly = true,
-                    label = { Text("服务器") },
-                    modifier = Modifier.fillMaxWidth(),
+                ServerField(
+                    server = editor.server,
+                    serverChanged = editor.serverChanged,
+                    changeable = !isWorking,
+                    onSelect = { server -> onChange { it.copy(server = server) } },
                 )
                 OutlinedTextField(
                     value = editor.alias,
@@ -211,14 +218,23 @@ private fun AccountEditorDialog(
                 OutlinedTextField(
                     value = editor.loginId,
                     onValueChange = { value -> onChange { it.copy(loginId = value) } },
-                    label = { Text("登录账号") },
+                    label = { Text(if (editor.server.isChannelServer) "登录账号（uid）" else "登录账号") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OutlinedTextField(
                     value = editor.password,
                     onValueChange = { value -> onChange { it.copy(password = value) } },
-                    label = { Text(if (editor.isEditing) "新密码（留空则不修改）" else "密码") },
+                    label = {
+                        val name = if (editor.server.isChannelServer) "密码（access_key）" else "密码"
+                        Text(
+                            when {
+                                editor.serverChanged -> "新$name（更换服务器必填）"
+                                editor.isEditing -> "新$name（留空则不修改）"
+                                else -> name
+                            },
+                        )
+                    },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
                     modifier = Modifier.fillMaxWidth(),
@@ -245,6 +261,50 @@ private fun AccountEditorDialog(
             TextButton(onClick = onDismiss, enabled = !isWorking) { Text("取消") }
         },
     )
+}
+
+@Composable
+private fun ServerField(
+    server: GameServer,
+    serverChanged: Boolean,
+    changeable: Boolean,
+    onSelect: (GameServer) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Box(modifier = Modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = server.displayName,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text("服务器") },
+            trailingIcon = if (changeable) {
+                { TextButton(onClick = { expanded = true }) { Text("选择") } }
+            } else {
+                null
+            },
+            supportingText = when {
+                serverChanged -> {
+                    { Text("更换服务器后需重新填写密码，该账号已有的登录会话会失效") }
+                }
+                server.isChannelServer -> {
+                    { Text("渠道服不走 B 站账号登录：登录账号填 uid，密码填 access_key") }
+                }
+                else -> null
+            },
+            modifier = Modifier.fillMaxWidth(),
+        )
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            GameServer.entries.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(option.displayName) },
+                    onClick = {
+                        expanded = false
+                        onSelect(option)
+                    },
+                )
+            }
+        }
+    }
 }
 
 @Composable

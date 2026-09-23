@@ -10,7 +10,7 @@ data class GameProtocolProfile(
 
 /**
  * 协议层的游戏包不再固定为 B 服：由调用方传入已确认的渠道包名
- * （见 automation/GameClientProfile.kt 的解析结果），使小米渠道包也能提供 APP-VER。
+ * （账号所属服务器的客户端，见 GameServer），使渠道服客户端也能提供 APP-VER。
  */
 class AndroidGameProtocolProfileFactory(
     private val context: Context,
