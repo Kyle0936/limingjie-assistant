@@ -1,128 +1,1130 @@
 {
   "schemaVersion": 1,
   "assets": [
-    {"id":"home.adventure","file":"vision/adventure.bmp","kind":"template","width":129,"height":134,"sha256":"4f4fdc8876f4d4b4eed22d2d5a926d6b8b995113f4a4e8f082894f69f2a17532","anchor":"home"},
-    {"id":"guild.confirm","file":"vision/guild_confirm.bmp","kind":"template","width":96,"height":55,"sha256":"7d51bd031bae5a3a22b4078ad2bd9723b682c860c4fda3832c2b7f6a1a0e4dd8","anchor":"guild_select"},
-    {"id":"battle.confirm","file":"vision/battle_confirm.bmp","kind":"template","width":107,"height":64,"sha256":"9db00e9e5bdc00e66b6b91e8c0615c8eac6b763c23b96357be938960cb0486b4","anchor":"battle_prepare"},
-    {"id":"entry.battle_challenge.button","file":"vision/battle_challenge/battle_challenge_button.png","kind":"template","width":440,"height":125,"sha256":"6903290809d11f67f5f3cc4a81677ceae1b739769584ea58c708f7111019f251","anchor":"battle_challenge"},
-    {"id":"entry.battle_challenge.header.normal","file":"vision/battle_challenge/battle_challenge_header_normal.png","kind":"template","width":620,"height":100,"sha256":"f574a0913630538ca5794b6f3ffc7a3a0effc3f6560ed3df3a0ffdad1b27919d","anchor":"battle_challenge"},
-    {"id":"entry.battle_challenge.suffix.normal","file":"vision/battle_challenge/battle_challenge_normal_suffix.png","kind":"template","width":135,"height":60,"sha256":"a7845826df5f996fc286f0ea4dd40718457e0d7249db18f9a2fdb29b69dc4023","anchor":"battle_challenge"},
-    {"id":"entry.battle_challenge.suffix.extreme","file":"vision/battle_challenge/battle_challenge_extreme_suffix.png","kind":"template","width":135,"height":60,"sha256":"4dce6773ced0142ed0c846cbc6be24ef46dd054cb2600cc747e92bb45568eb96","anchor":"battle_challenge"},
-    {"id":"entry.battle_challenge.view_map_button","file":"vision/battle_challenge/battle_challenge_view_map_button.png","kind":"template","width":440,"height":125,"sha256":"7e402732bbfb608fa86ebd5b7d9e5ae3ef867ddedb9f36521446b0ac5ae04a65","anchor":"battle_challenge"},
-    {"id":"entry.battle_team.cancel_button","file":"vision/battle_team_selection/battle_team_selection_cancel_button.png","kind":"template","width":270,"height":110,"sha256":"f1828431dd66bcf848479b0c160515a227331928ab394bc8a96e76e3671a6ea4","anchor":"battle_team_selection"},
-    {"id":"entry.battle_team.current_members_summary","file":"vision/battle_team_selection/battle_team_selection_current_members_summary.png","kind":"template","width":1100,"height":60,"sha256":"1ef76cff7232dd43aa10555743e22a0a2ff26024e77d7eb263b895d79fb4d538","anchor":"battle_team_selection"},
-    {"id":"entry.battle_team.filter_bar","file":"vision/battle_team_selection/battle_team_selection_filter_bar.png","kind":"template","width":1040,"height":80,"sha256":"4000066e45caefd101f3ba9e43968eea35000ec613bff5b62bbd3550110c95e4","anchor":"battle_team_selection"},
-    {"id":"entry.battle_team.header","file":"vision/battle_team_selection/battle_team_selection_header.png","kind":"template","width":1840,"height":90,"sha256":"26ce564dbae86f66742615628b1b972b3899b48e8abdc4c555490eb7ae3eaa61","anchor":"battle_team_selection"},
-    {"id":"entry.battle_team.start_button","file":"vision/battle_team_selection/battle_team_selection_start_button.png","kind":"template","width":270,"height":110,"sha256":"8620605628410a0cda3aee6e7959abbc2f865f0b5c3b360eb56d29241e0cb69c","anchor":"battle_team_selection"},
-    {"id":"guild.labilins","file":"vision/guild_labilins.bmp","kind":"template","width":185,"height":50,"sha256":"6111ceede5a173d4469d34d2292a14e2447dcb8f5207c88879799e3064a69e40","anchor":"guild_select"},
-    {"id":"labyrinth.entry","file":"vision/labyrinth.bmp","kind":"template","width":204,"height":163,"sha256":"05849fc4f189a7c8b66bd9bbb0de3b7e31793469cef303a949bb24c169143b80","anchor":"adventure_menu"},
-    {"id":"labyrinth.start","file":"vision/labyrinth_start.bmp","kind":"template","width":97,"height":51,"sha256":"97514d1b3ed78ebf7ddde95d8ff085589bfd6ebde90f65c7135a923b6c2c31bc","anchor":"labyrinth_home"},
-    {"id":"ticket.owned","file":"vision/ticket_owned.bmp","kind":"template","width":379,"height":40,"sha256":"48dfc7448b6e9533ca75404880fba67f5e632e869ca3d653907a5e237467aa70","anchor":"labyrinth_home"},
-    {"id":"guild.gourmet","file":"vision/guild_gourmet.bmp","kind":"template","width":183,"height":54,"sha256":"f48d328aa7169ff5d9db8c237309ac767adf5dd5719f8457a83cf245abda953a","anchor":"guild_select"},
-    {"id":"guild.dawnstar","file":"vision/guild_dawnstar.bmp","kind":"template","width":91,"height":100,"sha256":"960a62bc265747141017534cea9af49e912ee3e8437cabc0afe9170bf8d2897a","anchor":"guild_select"},
-    {"id":"guild.nightmare","file":"vision/guild_nightmare.bmp","kind":"template","width":329,"height":100,"sha256":"1aa64ca8d58215a0bea6f94160eb161d9cc7777fb5f4f76df15658f6ea788300","anchor":"guild_select"},
-    {"id":"guild.saren","file":"vision/guild_saren.bmp","kind":"template","width":226,"height":47,"sha256":"1ff0c087f0ad94b037a64761dc56dc7a803336851dbbfb6c7ca8b47912795b48","anchor":"guild_select"},
-    {"id":"entry.title.logo","file":"vision/entry_title_logo.bmp","kind":"template","width":847,"height":323,"sha256":"aa8c35e4a92e06bfad7e247e85ef4a6bde3e1864de0075e6a8a9abb43640bf55","anchor":"title_waiting_tap"},
-    {"id":"entry.title.tap_prompt","file":"vision/entry_tap_prompt.bmp","kind":"template","width":478,"height":70,"sha256":"04aa62264f17cf20966e87c4547671ab0c5bf3017a6cde11d9286282e5ec70e6","anchor":"title_waiting_tap"},
-    {"id":"entry.loading.notice","file":"vision/entry_loading_notice.bmp","kind":"template","width":455,"height":43,"sha256":"8c9e2bc36e06c5dcee0ca3b4677d502a965305d49617761db4393347fffa0d02","anchor":"game_loading_progress"},
-    {"id":"entry.loading.notice_standard","file":"vision/entry_loading_notice_standard.bmp","kind":"template","width":410,"height":45,"sha256":"26b5dcb158330447680274b6b7f6e0821a350fe0d9ab0fe973b6d7652eb2e3e6","anchor":"game_loading_progress"},
-    {"id":"entry.loading.progress","file":"vision/entry_loading_progress.bmp","kind":"template","width":997,"height":35,"sha256":"26c00985db88352ae642d8e8423c3936a06675fcfdc3dc5922f4094177ce0941","anchor":"game_loading_progress"},
-    {"id":"entry.data.connecting","file":"vision/entry_data_connecting.bmp","kind":"template","width":387,"height":59,"sha256":"2d830f81732e77613ea98295c414c0413606b90056ce23feceaefe0a1a2f83c7","anchor":"pre_home_data_loading"},
-    {"id":"entry.loading.indicator","file":"vision/entry_loading_indicator.bmp","kind":"template","width":162,"height":65,"sha256":"822eef60ab9328bf27f06198338d8979caabfa8477d4dab7dcb3658f07a0cb42","anchor":"pre_home_data_loading"},
-    {"id":"entry.announcement.header","file":"vision/entry_announcement_header.bmp","kind":"template","width":1961,"height":159,"sha256":"c9907283953966d81051c13ee2f225a9f9bf38fbed9f9e1dd469193cc0e739d8","anchor":"home_announcement"},
-    {"id":"entry.announcement.close","file":"vision/entry_announcement_close.bmp","kind":"template","width":452,"height":126,"sha256":"4663383825f2a9166045cfcfa8c9f01167117511354a93593ecdb9b604d25668","anchor":"home_announcement"},
-    {"id":"entry.home.level","file":"vision/entry_home_level.bmp","kind":"template","width":99,"height":35,"sha256":"03f21d8318dfb1ca54a8a0f31c513ac7ed3853d3b387bbbdc2c829867e78d657","anchor":"home"},
-    {"id":"entry.adventure.header","file":"vision/entry_adventure_header.bmp","kind":"template","width":420,"height":115,"sha256":"1d6c10bd52bd3399d46af0f28053be2becda91c7b5fcacff4fff4175824d8ec2","anchor":"adventure"},
-    {"id":"entry.adventure.header_standard","file":"vision/entry_adventure_header_standard.bmp","kind":"template","width":294,"height":110,"sha256":"b2594499978030fd1a5c2aabd67dd074887bf755190bb656b1982e56047c51d5","anchor":"adventure"},
-    {"id":"entry.adventure.labyrinth","file":"vision/entry_labyrinth_entry.bmp","kind":"template","width":203,"height":51,"sha256":"6234df241158075d64b760d51de988e27be6330e01e66608d322a4c955ffa4bc","anchor":"adventure"},
-    {"id":"entry.dawn.start","file":"vision/entry_dawn_start.bmp","kind":"template","width":127,"height":62,"sha256":"6083133a696f26c34470e449fca4ff1af5a684db42b8e5ecb8694ca0e28db601","anchor":"dawn_realm_home"},
-    {"id":"entry.dawn.start_standard","file":"vision/entry_dawn_start_standard.bmp","kind":"template","width":130,"height":58,"sha256":"4634be834050f6198fc2cf18a503ac3bdb5481805632f3fad037de6c0d5cd837","anchor":"dawn_realm_home"},
-    {"id":"entry.dawn.active","file":"vision/entry_dawn_active.bmp","kind":"template","width":110,"height":45,"sha256":"d937d01cf497f56fffbce2a49decb0b820879fb397486717a4d45db5ce914487","anchor":"dawn_realm_home_active"},
-    {"id":"entry.dawn.active_standard","file":"vision/entry_dawn_active_standard.bmp","kind":"template","width":126,"height":45,"sha256":"676bf2f0f7f0bf2a547e55648ee28e2678a4f4e1d13edf8053346f427f85c1bd","anchor":"dawn_realm_home_active"},
-    {"id":"entry.dawn.ticket_label","file":"vision/entry_dawn_ticket_label.bmp","kind":"template","width":285,"height":43,"sha256":"930048cecac3cfe6583381f241bc6071aeb2d09c5f45a98dcba16ef29c9cfa30","anchor":"dawn_realm_home"},
-    {"id":"entry.dawn.ticket_label_standard","file":"vision/entry_dawn_ticket_label_standard.bmp","kind":"template","width":266,"height":45,"sha256":"28539d65711210d1e3f3131b6004f1bcaa18ef6f678c65ba57f6e7b1b311d5fe","anchor":"dawn_realm_home"},
-    {"id":"entry.selection.header","file":"vision/entry_selection_header.bmp","kind":"template","width":1956,"height":75,"sha256":"c8b0e3e6067482bff6d69ec72902a7cef868017fa29dfa38fe412d48d803e8b2","anchor":"initial_character_selection"},
-    {"id":"entry.selection.header_standard","file":"vision/entry_selection_header_standard.bmp","kind":"template","width":1820,"height":65,"sha256":"929bb97f90efe0a284439dee2958c84e429cc1b27cdd4cf0c18489a11dc1ef8e","anchor":"initial_character_selection"},
-    {"id":"entry.selection.count_none","file":"vision/entry_selection_count_none.bmp","kind":"template","width":350,"height":52,"sha256":"2a552912289ecea2ddb3f06d12cbacab111140fff1c058ce0994be5e182a37a7","anchor":"initial_character_selection"},
-    {"id":"entry.selection.count_none_standard","file":"vision/entry_selection_count_none_standard.bmp","kind":"template","width":321,"height":50,"sha256":"96116c47d842e9404f68caaa8bfbe73c7488bca7ce6da75b36f3b301c369ad41","anchor":"initial_character_selection"},
-    {"id":"entry.selection.count_complete","file":"vision/entry_selection_count_complete.bmp","kind":"template","width":346,"height":44,"sha256":"6ba37ccac46b53de16f297d7f2d0baf9d10ef03da9f97aef74a2a556815ec85b","anchor":"initial_character_selection"},
-    {"id":"entry.selection.count_complete_standard","file":"vision/entry_selection_count_complete_standard.bmp","kind":"template","width":321,"height":50,"sha256":"a4976b3b2b2f60f4277e41097041d5bd9df12422364b8eac659193f334c55f85","anchor":"initial_character_selection"},
-    {"id":"entry.selection.invite_disabled","file":"vision/entry_invite_disabled.bmp","kind":"template","width":448,"height":109,"sha256":"7e38b72782b0e12d075c3aa9f7038bd4f3858867f5d4e9fd55b5f0c72876592b","anchor":"initial_character_selection"},
-    {"id":"entry.selection.invite_disabled_standard","file":"vision/entry_invite_disabled_standard.bmp","kind":"template","width":415,"height":95,"sha256":"f09052ef92e25ce4dce5fb5d2be67255795a74e01947f6dafd180adc81a01866","anchor":"initial_character_selection"},
-    {"id":"entry.selection.invite_enabled","file":"vision/entry_invite_enabled.bmp","kind":"template","width":445,"height":113,"sha256":"d7db46accc1394f4f14aa90af3a474d2395c04dd1df0db8ab7ccfc7ecdabc08d","anchor":"initial_character_selection"},
-    {"id":"entry.selection.invite_enabled_standard","file":"vision/entry_invite_enabled_standard.bmp","kind":"template","width":415,"height":95,"sha256":"8cb4c704a8ba48806bd53b2f43fbf923f1f0791285ae273bd1dc0c6224c5c4ed","anchor":"initial_character_selection"},
-    {"id":"entry.joined.header","file":"vision/entry_joined_header.bmp","kind":"template","width":197,"height":58,"sha256":"5c8c7223fd35c796d5ec5f8b4ca7fa07a3d2fc8bc2ff84ad5fb18f0e5b961891","anchor":"character_joined"},
-    {"id":"entry.joined.header_standard","file":"vision/entry_joined_header_standard.bmp","kind":"template","width":210,"height":55,"sha256":"8201a93710ddd0c40dbf4e20c980af7b54de96d68e155ff2827fd1ed4a2bec04","anchor":"character_joined"},
-    {"id":"entry.joined.close","file":"vision/entry_joined_close.bmp","kind":"template","width":111,"height":55,"sha256":"712026e5207fc06b997490b890c767f5c1c9dae8da937eca4f055855855f9f96","anchor":"character_joined"},
-    {"id":"entry.joined.close_standard","file":"vision/entry_joined_close_standard.bmp","kind":"template","width":120,"height":60,"sha256":"1dc328212ba46a681ce982e5bb2eadc115dc6442ed450e2226c7e31487c59220","anchor":"character_joined"},
-    {"id":"entry.node.header","file":"vision/entry_node_header.bmp","kind":"template","width":366,"height":68,"sha256":"746be593544863314746419df510694759b048c88ee1ef041665e13dec50868b","anchor":"node_selection"},
-    {"id":"entry.node.characters","file":"vision/entry_node_characters.bmp","kind":"template","width":67,"height":116,"sha256":"1b1af2247143338132ccbc840fa6858a310634a941cbb7d05cfcd2a9d73bfb08","anchor":"node_selection"},
-    {"id":"entry.node.characters_standard","file":"vision/entry_node_characters_standard.bmp","kind":"template","width":115,"height":126,"sha256":"553d5702c8bd72cf7031620125ea319c2339ba095705d3c25d4f5cdfcb831220","anchor":"node_selection"},
-    {"id":"entry.node.relics","file":"vision/entry_node_relics.bmp","kind":"template","width":114,"height":103,"sha256":"b113a8046273086e7e60339e22b0e43c0000f63587c63146ef029c15737425df","anchor":"node_selection"},
-    {"id":"entry.node.relics_standard","file":"vision/entry_node_relics_standard.bmp","kind":"template","width":135,"height":126,"sha256":"1bcb43a7fbe86ced298733e0202540e641a98b16232d27de5d9c89fffd3c81e6","anchor":"node_selection"},
-    {"id":"entry.node.retreat","file":"vision/entry_node_retreat.bmp","kind":"template","width":230,"height":71,"sha256":"61186c9f1bcb30cca627fb409d10e8aa9dcd79e9ff17ae977e35a105d7e10ba5","anchor":"node_selection"},
-    {"id":"entry.node.retreat_standard","file":"vision/entry_node_retreat_standard.bmp","kind":"template","width":323,"height":95,"sha256":"53ca8cc0f84665274b4522e1b68b51405d692f6620ece9d1129491b325b6aa1b","anchor":"node_selection"},
-    {"id":"entry.node.return","file":"vision/entry_node_return.bmp","kind":"template","width":225,"height":78,"sha256":"3f07d3c657dc833d50dadc8ef0813e59cc12f7d0d5fe841cbe6f8ab2063fb306","anchor":"node_selection"},
-    {"id":"node.event.active","file":"vision/node_event_active.png","kind":"template","width":280,"height":350,"sha256":"f1565e6864618d53ac6c0d45509d394731022f87053d9b46a26cae41c519ab27","anchor":"node_map"},
-    {"id":"node.event.active.bottom","file":"vision/node_event_active_bottom.png","kind":"template","width":280,"height":350,"sha256":"0824af12ce7ad1c2cba33948ebc0a37d089f2e2afe5adf3ee38e1c310acb8861","anchor":"node_map"},
-    {"id":"node.event.inactive","file":"vision/node_event_inactive.png","kind":"template","width":280,"height":350,"sha256":"2b1c2f8da6b775b09dace7b58910607790b601578114379e2a54a0260b592209","anchor":"node_map"},
-    {"id":"node.event.inactive.bottom","file":"vision/node_event_inactive_bottom.png","kind":"template","width":280,"height":350,"sha256":"6eb1b6726c738b487681db419f51e853b126131f71f5eee940e99a7c58ad10f5","anchor":"node_map"},
-    {"id":"node.ex_battle.inactive","file":"vision/node_ex_battle_inactive.png","kind":"template","width":280,"height":350,"sha256":"21998206ccaad69fb30be6f9230856396ae7214675727826c81a195497a27770","anchor":"node_map"},
-    {"id":"node.boss.yellow","file":"vision/node_boss_yellow.png","kind":"template","width":650,"height":700,"sha256":"958552cb5c310a817a8ccde3b1ce4f166d8c7b3ca45300c24009515f8bd459fe","anchor":"node_map_special"},
-    {"id":"node.boss.dragon","file":"vision/node_boss_dragon.png","kind":"template","width":650,"height":700,"sha256":"4843c005ba6e412c97e715280ed67adf129097c1f8b1be1c2d9353ed70dc8f19","anchor":"node_map_special"},
-    {"id":"node.boss.platform","file":"vision/node_boss_platform.png","kind":"template","width":500,"height":350,"sha256":"b238393526d8b3467d1eb5ec5fefa06eb7d22aeadb4a61da5bbfa5fbb92151eb","anchor":"node_map_special"},
-    {"id":"node.clear","file":"vision/node_clear.png","kind":"template","width":500,"height":500,"sha256":"22c06807f180a21b8d4af541c98ec3d5e62ad570a89743bda4be2880b2d087eb","anchor":"node_map_special"},
-    {"id":"node.link.active","file":"vision/node_link_active.png","kind":"template","width":280,"height":350,"sha256":"e7a26e10c8f7e377a9efd0b0159f009387341ae93cd48bff717bd2d3b11e5453","anchor":"node_map"},
-    {"id":"node.link.active.map","file":"vision/node_link_map.png","kind":"template","width":280,"height":350,"sha256":"f8e145f8494ca044e3f0105d4f1178c420735410c71996e2f4fd774d6f36535e","anchor":"node_map"},
-    {"id":"node.link.inactive","file":"vision/node_link_inactive.png","kind":"template","width":280,"height":350,"sha256":"745936100157b5e9d81c33645237aee75c6d1d6ca2d5d4fe9d7329e258b57d49","anchor":"node_map"},
-    {"id":"node.normal_battle.active","file":"vision/node_normal_battle_active.png","kind":"template","width":280,"height":350,"sha256":"1635c4b3cd35408890c0c7ca07d66c95fcafd2a34a4d5310520e5b68d840e502","anchor":"node_map"},
-    {"id":"node.normal_battle.active.bottom","file":"vision/node_normal_battle_active_bottom.png","kind":"template","width":280,"height":350,"sha256":"83685eb465a55426a12e7518a80a6671466d07d8d5a52a14040de22a390b540d","anchor":"node_map"},
-    {"id":"node.normal_battle.inactive","file":"vision/node_normal_battle_inactive.png","kind":"template","width":280,"height":350,"sha256":"6fae06f9e23a731a383124e8a56ba06988ea5cf3e445388761ee09133a08545a","anchor":"node_map"},
-    {"id":"node.normal_battle.inactive.bottom","file":"vision/node_normal_battle_inactive_bottom.png","kind":"template","width":280,"height":350,"sha256":"f6323d08d6b8be597bbdf2b71132a11a977985e4a25bb2248012c5eaad6f4755","anchor":"node_map"},
-    {"id":"node.normal_battle.inactive.video","file":"vision/node_normal_battle_inactive_video.png","kind":"template","width":300,"height":350,"sha256":"f74ea7068ea874efdfd74fabb7dbab8e73e648a9b668f6949aa62c4e579fdbd9","anchor":"node_map"},
-    {"id":"node.relic.active","file":"vision/node_relic_active.png","kind":"template","width":280,"height":350,"sha256":"dd4fa951b84b0381d3cf5db5dc39e27dd6e44200a1f47eb746bd4c8b21b30e41","anchor":"node_map"},
-    {"id":"node.relic.inactive","file":"vision/node_relic_inactive.png","kind":"template","width":280,"height":350,"sha256":"e41557e330a96f93a043e04429dba5e3944448ff5bb8f47e2a680f3731c032d2","anchor":"node_map"},
-    {"id":"node.relic.map","file":"vision/node_relic_map.png","kind":"template","width":280,"height":350,"sha256":"dd4fa951b84b0381d3cf5db5dc39e27dd6e44200a1f47eb746bd4c8b21b30e41","anchor":"node_map"},
-    {"id":"node.shop.active","file":"vision/node_shop_active.png","kind":"template","width":280,"height":350,"sha256":"58cc3ae5b86b643dbaa5bd1cf70651bc5b70a8e296a12032e05aea0a43e96c7b","anchor":"node_map"},
-    {"id":"entry.selection.role_reward.title","file":"vision/initial_role_reward/initial_role_reward_title.png","kind":"template","width":580,"height":120,"sha256":"c32f28534c92e18280a464af75a72d615161b7bce9ea17a540ad4e8ed98f27ec","anchor":"initial_character_selection"},
-    {"id":"entry.selection.role_reward.instruction","file":"vision/initial_role_reward/initial_role_reward_instruction.png","kind":"template","width":570,"height":75,"sha256":"9f02a887e28ec571a7f0798528ef76e6f28aadace44dfb50bf9601aeeb4aa216","anchor":"initial_character_selection"},
-    {"id":"entry.selection.role_reward.select_button","file":"vision/initial_role_reward/initial_role_reward_select_button.png","kind":"template","width":290,"height":155,"sha256":"9946c3c337011078798f6c8297cfc73b677d66bd393677b5006634ac76095e30","anchor":"initial_character_selection"},
-    {"id":"entry.item_reward.title","file":"vision/item_reward/item_reward_title.png","kind":"template","width":400,"height":75,"sha256":"b98e862513f4f2e12166d9df23e590ed0c6285381abcda0e7cdb86e88bed6ef0","anchor":"item_reward"},
-    {"id":"entry.item_reward.instruction","file":"vision/item_reward/item_reward_instruction.png","kind":"template","width":360,"height":70,"sha256":"cda4cb07a435a6eb5587f8cae0b5ed29cfe6e41c9e0bdbdea29bd709c87ea784","anchor":"item_reward"},
-    {"id":"entry.item_reward.close","file":"vision/item_reward/item_reward_close.png","kind":"template","width":430,"height":140,"sha256":"0f0d94c29961b5e90086a3a0bca4218ac9a7f9b4eac8770ab6580ad43c6564bb","anchor":"item_reward"},
-    {"id":"entry.shop.title","file":"vision/shop/shop_title.png","kind":"template","width":220,"height":75,"sha256":"f320d851abb2387a67d685e03c936e1117b6dda8e7d7835fb3eae092bbfe1f6f","anchor":"shop"},
-    {"id":"entry.shop.instruction","file":"vision/shop/shop_instruction.png","kind":"template","width":520,"height":75,"sha256":"98e079c83d8e0c0127036478178f7ec11b30f30a7e4dcc3d5bbce08bb95ba1ae","anchor":"shop"},
-    {"id":"entry.shop.close","file":"vision/shop/shop_close_button.png","kind":"template","width":430,"height":115,"sha256":"42a936f36cd4ded60762acb96380941542275d181e0fc09effd85940cedd6b7c","anchor":"shop"},
-    {"id":"entry.shop.buy_button","file":"vision/shop/shop_buy_button.png","kind":"template","width":290,"height":90,"sha256":"0eee5de9caaa1892b540674b91158531264af0f34190f803343c2aa9aef69b56","anchor":"shop"},
-    {"id":"entry.shop.refresh_button","file":"vision/shop/shop_refresh_button.png","kind":"template","width":350,"height":85,"sha256":"4e9343599d22b253686e071d5a7c610f7736dddbb1da61e4c0a14e719377643a","anchor":"shop"},
-    {"id":"entry.shop.purchase_confirmation.title","file":"vision/shop/shop_purchase_confirmation_title.png","kind":"template","width":420,"height":75,"sha256":"686e83d53fef57ed4d618421145a2ab9de21dc984e202195b037bbb3100b7ef4","anchor":"shop_purchase_confirmation"},
-    {"id":"entry.shop.purchase_complete.title","file":"vision/shop/shop_purchase_complete_title.png","kind":"template","width":420,"height":75,"sha256":"705f3ca1422317415a649dca750a648f974419d0459ff5e4c7f43a5440c2d76e","anchor":"shop_purchase_complete"},
-    {"id":"entry.shop.exit_confirmation.title","file":"vision/shop/shop_exit_confirmation_title.png","kind":"template","width":420,"height":75,"sha256":"5bfb9fe786ba2f0c6d5e007bfc429a82060aa358ebe4b534c28218504d8ef105","anchor":"shop_exit_confirmation"},
-    {"id":"character_joined.1209.name","file":"vision/character_joined/characters/character_1209_name.png","kind":"template","width":350,"height":90,"sha256":"e9a9fe084c3cc69cbebd743cb843221e765689452db607bca3061ae35e8a5d5f","anchor":"character_joined"},
-    {"id":"character_joined.1257.name","file":"vision/character_joined/characters/character_1257_name.png","kind":"template","width":430,"height":90,"sha256":"7b9d573e5d3bef641f3e431409fa6cfa4a5eb34e865d37572b78e60632911db8","anchor":"character_joined"},
-    {"id":"character_joined.1139.name","file":"vision/character_joined/characters/character_1139_name.png","kind":"template","width":370,"height":90,"sha256":"eb083c39e58ae966a133af71e5dcc93cbe4c35fe83750a9e6a0a1f366d27952a","anchor":"character_joined"},
-    {"id":"entry.node.header_standard","file":"vision/entry_node_header_standard.bmp","kind":"template","width":295,"height":70,"sha256":"01ffb0b0fe7a5682fd05b36cc61c6154c5b798fd1081aed99084c32658f845ec","anchor":"node_selection"},
-    {"id":"entry.node.return_standard","file":"vision/entry_node_return_standard.bmp","kind":"template","width":320,"height":95,"sha256":"bfcdeb77c6b43ef26cdf5407e27ed2aee3d7ee3af4df86cc1dbe151a85fe4102","anchor":"node_selection"},
-    {"id":"session.error.title","file":"vision/session_error_title.bmp","kind":"template","width":948,"height":66,"sha256":"6aeb03cf8c4820533c6417aea4a00fa0486e3962775680a1b4e8f0ed031c8f3e","anchor":"session_error"},
-    {"id":"session.return.title","file":"vision/session_return_title.bmp","kind":"template","width":410,"height":94,"sha256":"93e9ac06e68ad8da4636b7bb20981d8e84b015c5aa60c222c27a36193ea66844","anchor":"session_error"},
-    {"id":"session.date_change.title","file":"vision/session_date_change_title.png","kind":"template","width":340,"height":70,"sha256":"470c910a00cb4b85c5f824d7db4f7ad97b02cb9ca4cb1ac4b63cbc80483f1ff5","anchor":"session_date_change"},
-    {"id":"session.date_change.confirm","file":"vision/session_date_change_confirm.png","kind":"template","width":415,"height":102,"sha256":"20cd7ce43ebb99a9044ae3e67e995ed2b83e59c2d0cacd5dea3aab7d19d8b7ba","anchor":"session_date_change"},
-    {"id":"entry.link_choice.title","file":"vision/link_choice/link_choice_title.png","kind":"template","width":650,"height":110,"sha256":"b165c191b5a7ec74acee9a70cbc40f767794b5c398704cb4fba83735c771dd45","anchor":"link_choice"},
-    {"id":"entry.link_choice.instruction","file":"vision/link_choice/link_choice_instruction.png","kind":"template","width":620,"height":90,"sha256":"0accd35ef0120288854923a692ab18d8d3ef62e5b5baa5dc61ec0c849380c513","anchor":"link_choice"},
-    {"id":"entry.link_choice.remaining","file":"vision/link_choice/link_choice_remaining.png","kind":"template","width":230,"height":70,"sha256":"8e812e199da889c12e83cf35aedd8b98ab80879a42b08f76d1b5289490690fef","anchor":"link_choice"},
-    {"id":"entry.link_choice.card_signature","file":"vision/link_choice/link_choice_card_signature.png","kind":"template","width":160,"height":190,"sha256":"10078bc1f94aabaa4e131c7270e1652178488bd2015b14dd8c32b1dae418f9a0","anchor":"link_choice"},
-    {"id":"entry.relic_choice.instruction","file":"vision/relic_choice/relic_choice_instruction.png","kind":"template","width":620,"height":90,"sha256":"f79d4454ea14c529f1251ed484871fdba12c9fe3564a933c0c401aa250b8930f","anchor":"relic_choice"},
-    {"id":"link_choice.element.fire","file":"vision/link_choice/element_fire.png","kind":"template","width":90,"height":90,"sha256":"c2b0538d2e296d063aa87323138dd04e3f5ce5a6af70b386ef471a52c7fa7bb5","anchor":"link_choice"},
-    {"id":"link_choice.element.dark","file":"vision/link_choice/element_dark.png","kind":"template","width":90,"height":90,"sha256":"3e95c6c1afa520dd1ad0d9de57df0fc15fee686dbf15020bf58dbfb5fe8ceef8","anchor":"link_choice"},
-    {"id":"link_choice.element.light","file":"vision/link_choice/element_light.png","kind":"template","width":90,"height":90,"sha256":"04c5b76e8653d56771c7aa1f1db7820cba2109f89e99ff517b53192e38236d5e","anchor":"link_choice"},
-    {"id":"link_choice.element.wind","file":"vision/link_choice/element_wind.png","kind":"template","width":90,"height":90,"sha256":"1513a421e4b86a5861efca059535eeb262d125e6ae856308e97dd163c3da68d9","anchor":"link_choice"},
-    {"id":"link_choice.element.water","file":"vision/link_choice/element_water.png","kind":"template","width":90,"height":90,"sha256":"bc15ca8baf178509fe3f18553288a6793535c43e2cf7de798613a64b034f2515","anchor":"link_choice"},
-    {"id":"battle.in_progress.menu_button","file":"vision/battle_in_progress/battle_menu_button.png","kind":"template","width":192,"height":50,"sha256":"ad9b47b0500b83fef11823a8a33a54884b049fcfe477ff59daf24cb212dc2ded","anchor":"battle_in_progress"},
-    {"id":"battle.in_progress.auto_button","file":"vision/battle_in_progress/battle_auto_button.png","kind":"template","width":106,"height":108,"sha256":"c91b5c54a891935757faf4816f8f172a2b0b1d220c0c970414a3452c453792a9","anchor":"battle_in_progress"},
-    {"id":"battle.result.reward_banner","file":"vision/battle_result/battle_result_reward_banner.png","kind":"template","width":540,"height":82,"sha256":"d2522d20d88627b90214c16219032b30369a647a8fd96698945f7e71adaaa138","anchor":"battle_result"},
-    {"id":"battle.result.next_button","file":"vision/battle_result/battle_result_next_button.png","kind":"template","width":388,"height":92,"sha256":"ed41173b8f8b51dab619b17d92fbca415c976d18b5565f699d05fbd4e14bf83a","anchor":"battle_result"},
-    {"id":"run.result.logo","file":"vision/run_result/run_result_logo.png","kind":"template","width":380,"height":104,"sha256":"454acef36bd8ccf80f33eb1f49ce5151932c4dc31d5dd7fb11a4873d15bf7518","anchor":"run_result"},
-    {"id":"run.result.close_button","file":"vision/run_result/run_result_close_button.png","kind":"template","width":416,"height":92,"sha256":"d861fac920c55c03aa74ec12ffa4519e2e8060090efe9576aa32ec14d95a5719","anchor":"run_result"},
-    {"id":"entry.shop.exit_confirm_button","file":"vision/shop/shop_exit_confirm_button.png","kind":"template","width":400,"height":80,"sha256":"bab2df20c2da33eb72d587da26a25fdf9b498c6b1b2d8318fec6484f66d6f05f","anchor":"shop"}
+    {
+      "id": "home.adventure",
+      "file": "vision/adventure.bmp",
+      "kind": "template",
+      "width": 129,
+      "height": 134,
+      "sha256": "4f4fdc8876f4d4b4eed22d2d5a926d6b8b995113f4a4e8f082894f69f2a17532",
+      "anchor": "home"
+    },
+    {
+      "id": "guild.confirm",
+      "file": "vision/guild_confirm.bmp",
+      "kind": "template",
+      "width": 96,
+      "height": 55,
+      "sha256": "7d51bd031bae5a3a22b4078ad2bd9723b682c860c4fda3832c2b7f6a1a0e4dd8",
+      "anchor": "guild_select"
+    },
+    {
+      "id": "battle.confirm",
+      "file": "vision/battle_confirm.bmp",
+      "kind": "template",
+      "width": 107,
+      "height": 64,
+      "sha256": "9db00e9e5bdc00e66b6b91e8c0615c8eac6b763c23b96357be938960cb0486b4",
+      "anchor": "battle_prepare"
+    },
+    {
+      "id": "entry.battle_challenge.button",
+      "file": "vision/battle_challenge/battle_challenge_button.png",
+      "kind": "template",
+      "width": 440,
+      "height": 125,
+      "sha256": "6903290809d11f67f5f3cc4a81677ceae1b739769584ea58c708f7111019f251",
+      "anchor": "battle_challenge"
+    },
+    {
+      "id": "entry.battle_challenge.header.normal",
+      "file": "vision/battle_challenge/battle_challenge_header_normal.png",
+      "kind": "template",
+      "width": 620,
+      "height": 100,
+      "sha256": "f574a0913630538ca5794b6f3ffc7a3a0effc3f6560ed3df3a0ffdad1b27919d",
+      "anchor": "battle_challenge"
+    },
+    {
+      "id": "entry.battle_challenge.suffix.normal",
+      "file": "vision/battle_challenge/battle_challenge_normal_suffix.png",
+      "kind": "template",
+      "width": 135,
+      "height": 60,
+      "sha256": "a7845826df5f996fc286f0ea4dd40718457e0d7249db18f9a2fdb29b69dc4023",
+      "anchor": "battle_challenge"
+    },
+    {
+      "id": "entry.battle_challenge.suffix.extreme",
+      "file": "vision/battle_challenge/battle_challenge_extreme_suffix.png",
+      "kind": "template",
+      "width": 135,
+      "height": 60,
+      "sha256": "4dce6773ced0142ed0c846cbc6be24ef46dd054cb2600cc747e92bb45568eb96",
+      "anchor": "battle_challenge"
+    },
+    {
+      "id": "entry.battle_challenge.view_map_button",
+      "file": "vision/battle_challenge/battle_challenge_view_map_button.png",
+      "kind": "template",
+      "width": 440,
+      "height": 125,
+      "sha256": "7e402732bbfb608fa86ebd5b7d9e5ae3ef867ddedb9f36521446b0ac5ae04a65",
+      "anchor": "battle_challenge"
+    },
+    {
+      "id": "entry.battle_team.cancel_button",
+      "file": "vision/battle_team_selection/battle_team_selection_cancel_button.png",
+      "kind": "template",
+      "width": 270,
+      "height": 110,
+      "sha256": "f1828431dd66bcf848479b0c160515a227331928ab394bc8a96e76e3671a6ea4",
+      "anchor": "battle_team_selection"
+    },
+    {
+      "id": "entry.battle_team.current_members_summary",
+      "file": "vision/battle_team_selection/battle_team_selection_current_members_summary.png",
+      "kind": "template",
+      "width": 1100,
+      "height": 60,
+      "sha256": "1ef76cff7232dd43aa10555743e22a0a2ff26024e77d7eb263b895d79fb4d538",
+      "anchor": "battle_team_selection"
+    },
+    {
+      "id": "entry.battle_team.filter_bar",
+      "file": "vision/battle_team_selection/battle_team_selection_filter_bar.png",
+      "kind": "template",
+      "width": 1040,
+      "height": 80,
+      "sha256": "4000066e45caefd101f3ba9e43968eea35000ec613bff5b62bbd3550110c95e4",
+      "anchor": "battle_team_selection"
+    },
+    {
+      "id": "entry.battle_team.header",
+      "file": "vision/battle_team_selection/battle_team_selection_header.png",
+      "kind": "template",
+      "width": 1840,
+      "height": 90,
+      "sha256": "26ce564dbae86f66742615628b1b972b3899b48e8abdc4c555490eb7ae3eaa61",
+      "anchor": "battle_team_selection"
+    },
+    {
+      "id": "entry.battle_team.start_button",
+      "file": "vision/battle_team_selection/battle_team_selection_start_button.png",
+      "kind": "template",
+      "width": 270,
+      "height": 110,
+      "sha256": "8620605628410a0cda3aee6e7959abbc2f865f0b5c3b360eb56d29241e0cb69c",
+      "anchor": "battle_team_selection"
+    },
+    {
+      "id": "guild.labilins",
+      "file": "vision/guild_labilins.bmp",
+      "kind": "template",
+      "width": 185,
+      "height": 50,
+      "sha256": "6111ceede5a173d4469d34d2292a14e2447dcb8f5207c88879799e3064a69e40",
+      "anchor": "guild_select"
+    },
+    {
+      "id": "labyrinth.entry",
+      "file": "vision/labyrinth.bmp",
+      "kind": "template",
+      "width": 204,
+      "height": 163,
+      "sha256": "05849fc4f189a7c8b66bd9bbb0de3b7e31793469cef303a949bb24c169143b80",
+      "anchor": "adventure_menu"
+    },
+    {
+      "id": "labyrinth.start",
+      "file": "vision/labyrinth_start.bmp",
+      "kind": "template",
+      "width": 97,
+      "height": 51,
+      "sha256": "97514d1b3ed78ebf7ddde95d8ff085589bfd6ebde90f65c7135a923b6c2c31bc",
+      "anchor": "labyrinth_home"
+    },
+    {
+      "id": "ticket.owned",
+      "file": "vision/ticket_owned.bmp",
+      "kind": "template",
+      "width": 379,
+      "height": 40,
+      "sha256": "48dfc7448b6e9533ca75404880fba67f5e632e869ca3d653907a5e237467aa70",
+      "anchor": "labyrinth_home"
+    },
+    {
+      "id": "guild.gourmet",
+      "file": "vision/guild_gourmet.bmp",
+      "kind": "template",
+      "width": 183,
+      "height": 54,
+      "sha256": "f48d328aa7169ff5d9db8c237309ac767adf5dd5719f8457a83cf245abda953a",
+      "anchor": "guild_select"
+    },
+    {
+      "id": "guild.dawnstar",
+      "file": "vision/guild_dawnstar.bmp",
+      "kind": "template",
+      "width": 91,
+      "height": 100,
+      "sha256": "960a62bc265747141017534cea9af49e912ee3e8437cabc0afe9170bf8d2897a",
+      "anchor": "guild_select"
+    },
+    {
+      "id": "guild.nightmare",
+      "file": "vision/guild_nightmare.bmp",
+      "kind": "template",
+      "width": 329,
+      "height": 100,
+      "sha256": "1aa64ca8d58215a0bea6f94160eb161d9cc7777fb5f4f76df15658f6ea788300",
+      "anchor": "guild_select"
+    },
+    {
+      "id": "guild.saren",
+      "file": "vision/guild_saren.bmp",
+      "kind": "template",
+      "width": 226,
+      "height": 47,
+      "sha256": "1ff0c087f0ad94b037a64761dc56dc7a803336851dbbfb6c7ca8b47912795b48",
+      "anchor": "guild_select"
+    },
+    {
+      "id": "entry.title.logo",
+      "file": "vision/entry_title_logo.bmp",
+      "kind": "template",
+      "width": 847,
+      "height": 323,
+      "sha256": "aa8c35e4a92e06bfad7e247e85ef4a6bde3e1864de0075e6a8a9abb43640bf55",
+      "anchor": "title_waiting_tap"
+    },
+    {
+      "id": "entry.title.tap_prompt",
+      "file": "vision/entry_tap_prompt.bmp",
+      "kind": "template",
+      "width": 478,
+      "height": 70,
+      "sha256": "04aa62264f17cf20966e87c4547671ab0c5bf3017a6cde11d9286282e5ec70e6",
+      "anchor": "title_waiting_tap"
+    },
+    {
+      "id": "entry.loading.notice",
+      "file": "vision/entry_loading_notice.bmp",
+      "kind": "template",
+      "width": 455,
+      "height": 43,
+      "sha256": "8c9e2bc36e06c5dcee0ca3b4677d502a965305d49617761db4393347fffa0d02",
+      "anchor": "game_loading_progress"
+    },
+    {
+      "id": "entry.loading.notice_standard",
+      "file": "vision/entry_loading_notice_standard.bmp",
+      "kind": "template",
+      "width": 410,
+      "height": 45,
+      "sha256": "26b5dcb158330447680274b6b7f6e0821a350fe0d9ab0fe973b6d7652eb2e3e6",
+      "anchor": "game_loading_progress"
+    },
+    {
+      "id": "entry.loading.progress",
+      "file": "vision/entry_loading_progress.bmp",
+      "kind": "template",
+      "width": 997,
+      "height": 35,
+      "sha256": "26c00985db88352ae642d8e8423c3936a06675fcfdc3dc5922f4094177ce0941",
+      "anchor": "game_loading_progress"
+    },
+    {
+      "id": "entry.data.connecting",
+      "file": "vision/entry_data_connecting.bmp",
+      "kind": "template",
+      "width": 387,
+      "height": 59,
+      "sha256": "2d830f81732e77613ea98295c414c0413606b90056ce23feceaefe0a1a2f83c7",
+      "anchor": "pre_home_data_loading"
+    },
+    {
+      "id": "entry.loading.indicator",
+      "file": "vision/entry_loading_indicator.bmp",
+      "kind": "template",
+      "width": 162,
+      "height": 65,
+      "sha256": "822eef60ab9328bf27f06198338d8979caabfa8477d4dab7dcb3658f07a0cb42",
+      "anchor": "pre_home_data_loading"
+    },
+    {
+      "id": "entry.announcement.header",
+      "file": "vision/entry_announcement_header.bmp",
+      "kind": "template",
+      "width": 1961,
+      "height": 159,
+      "sha256": "c9907283953966d81051c13ee2f225a9f9bf38fbed9f9e1dd469193cc0e739d8",
+      "anchor": "home_announcement"
+    },
+    {
+      "id": "entry.announcement.close",
+      "file": "vision/entry_announcement_close.bmp",
+      "kind": "template",
+      "width": 452,
+      "height": 126,
+      "sha256": "4663383825f2a9166045cfcfa8c9f01167117511354a93593ecdb9b604d25668",
+      "anchor": "home_announcement"
+    },
+    {
+      "id": "entry.home.level",
+      "file": "vision/entry_home_level.bmp",
+      "kind": "template",
+      "width": 99,
+      "height": 35,
+      "sha256": "03f21d8318dfb1ca54a8a0f31c513ac7ed3853d3b387bbbdc2c829867e78d657",
+      "anchor": "home"
+    },
+    {
+      "id": "entry.adventure.header",
+      "file": "vision/entry_adventure_header.bmp",
+      "kind": "template",
+      "width": 420,
+      "height": 115,
+      "sha256": "1d6c10bd52bd3399d46af0f28053be2becda91c7b5fcacff4fff4175824d8ec2",
+      "anchor": "adventure"
+    },
+    {
+      "id": "entry.adventure.header_standard",
+      "file": "vision/entry_adventure_header_standard.bmp",
+      "kind": "template",
+      "width": 294,
+      "height": 110,
+      "sha256": "b2594499978030fd1a5c2aabd67dd074887bf755190bb656b1982e56047c51d5",
+      "anchor": "adventure"
+    },
+    {
+      "id": "entry.adventure.labyrinth",
+      "file": "vision/entry_labyrinth_entry.bmp",
+      "kind": "template",
+      "width": 203,
+      "height": 51,
+      "sha256": "6234df241158075d64b760d51de988e27be6330e01e66608d322a4c955ffa4bc",
+      "anchor": "adventure"
+    },
+    {
+      "id": "entry.dawn.start",
+      "file": "vision/entry_dawn_start.bmp",
+      "kind": "template",
+      "width": 127,
+      "height": 62,
+      "sha256": "6083133a696f26c34470e449fca4ff1af5a684db42b8e5ecb8694ca0e28db601",
+      "anchor": "dawn_realm_home"
+    },
+    {
+      "id": "entry.dawn.start_standard",
+      "file": "vision/entry_dawn_start_standard.bmp",
+      "kind": "template",
+      "width": 130,
+      "height": 58,
+      "sha256": "4634be834050f6198fc2cf18a503ac3bdb5481805632f3fad037de6c0d5cd837",
+      "anchor": "dawn_realm_home"
+    },
+    {
+      "id": "entry.dawn.active",
+      "file": "vision/entry_dawn_active.bmp",
+      "kind": "template",
+      "width": 110,
+      "height": 45,
+      "sha256": "d937d01cf497f56fffbce2a49decb0b820879fb397486717a4d45db5ce914487",
+      "anchor": "dawn_realm_home_active"
+    },
+    {
+      "id": "entry.dawn.active_standard",
+      "file": "vision/entry_dawn_active_standard.bmp",
+      "kind": "template",
+      "width": 126,
+      "height": 45,
+      "sha256": "676bf2f0f7f0bf2a547e55648ee28e2678a4f4e1d13edf8053346f427f85c1bd",
+      "anchor": "dawn_realm_home_active"
+    },
+    {
+      "id": "entry.dawn.ticket_label",
+      "file": "vision/entry_dawn_ticket_label.bmp",
+      "kind": "template",
+      "width": 285,
+      "height": 43,
+      "sha256": "930048cecac3cfe6583381f241bc6071aeb2d09c5f45a98dcba16ef29c9cfa30",
+      "anchor": "dawn_realm_home"
+    },
+    {
+      "id": "entry.dawn.ticket_label_standard",
+      "file": "vision/entry_dawn_ticket_label_standard.bmp",
+      "kind": "template",
+      "width": 266,
+      "height": 45,
+      "sha256": "28539d65711210d1e3f3131b6004f1bcaa18ef6f678c65ba57f6e7b1b311d5fe",
+      "anchor": "dawn_realm_home"
+    },
+    {
+      "id": "entry.selection.header",
+      "file": "vision/entry_selection_header.bmp",
+      "kind": "template",
+      "width": 1956,
+      "height": 75,
+      "sha256": "c8b0e3e6067482bff6d69ec72902a7cef868017fa29dfa38fe412d48d803e8b2",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.selection.header_standard",
+      "file": "vision/entry_selection_header_standard.bmp",
+      "kind": "template",
+      "width": 1820,
+      "height": 65,
+      "sha256": "929bb97f90efe0a284439dee2958c84e429cc1b27cdd4cf0c18489a11dc1ef8e",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.selection.count_none",
+      "file": "vision/entry_selection_count_none.bmp",
+      "kind": "template",
+      "width": 350,
+      "height": 52,
+      "sha256": "2a552912289ecea2ddb3f06d12cbacab111140fff1c058ce0994be5e182a37a7",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.selection.count_none_standard",
+      "file": "vision/entry_selection_count_none_standard.bmp",
+      "kind": "template",
+      "width": 321,
+      "height": 50,
+      "sha256": "96116c47d842e9404f68caaa8bfbe73c7488bca7ce6da75b36f3b301c369ad41",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.selection.count_complete",
+      "file": "vision/entry_selection_count_complete.bmp",
+      "kind": "template",
+      "width": 346,
+      "height": 44,
+      "sha256": "6ba37ccac46b53de16f297d7f2d0baf9d10ef03da9f97aef74a2a556815ec85b",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.selection.count_complete_standard",
+      "file": "vision/entry_selection_count_complete_standard.bmp",
+      "kind": "template",
+      "width": 321,
+      "height": 50,
+      "sha256": "a4976b3b2b2f60f4277e41097041d5bd9df12422364b8eac659193f334c55f85",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.selection.invite_disabled",
+      "file": "vision/entry_invite_disabled.bmp",
+      "kind": "template",
+      "width": 448,
+      "height": 109,
+      "sha256": "7e38b72782b0e12d075c3aa9f7038bd4f3858867f5d4e9fd55b5f0c72876592b",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.selection.invite_disabled_standard",
+      "file": "vision/entry_invite_disabled_standard.bmp",
+      "kind": "template",
+      "width": 415,
+      "height": 95,
+      "sha256": "f09052ef92e25ce4dce5fb5d2be67255795a74e01947f6dafd180adc81a01866",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.selection.invite_enabled",
+      "file": "vision/entry_invite_enabled.bmp",
+      "kind": "template",
+      "width": 445,
+      "height": 113,
+      "sha256": "d7db46accc1394f4f14aa90af3a474d2395c04dd1df0db8ab7ccfc7ecdabc08d",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.selection.invite_enabled_standard",
+      "file": "vision/entry_invite_enabled_standard.bmp",
+      "kind": "template",
+      "width": 415,
+      "height": 95,
+      "sha256": "8cb4c704a8ba48806bd53b2f43fbf923f1f0791285ae273bd1dc0c6224c5c4ed",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.joined.header",
+      "file": "vision/entry_joined_header.bmp",
+      "kind": "template",
+      "width": 197,
+      "height": 58,
+      "sha256": "5c8c7223fd35c796d5ec5f8b4ca7fa07a3d2fc8bc2ff84ad5fb18f0e5b961891",
+      "anchor": "character_joined"
+    },
+    {
+      "id": "entry.joined.header_standard",
+      "file": "vision/entry_joined_header_standard.bmp",
+      "kind": "template",
+      "width": 210,
+      "height": 55,
+      "sha256": "8201a93710ddd0c40dbf4e20c980af7b54de96d68e155ff2827fd1ed4a2bec04",
+      "anchor": "character_joined"
+    },
+    {
+      "id": "entry.joined.close",
+      "file": "vision/entry_joined_close.bmp",
+      "kind": "template",
+      "width": 111,
+      "height": 55,
+      "sha256": "712026e5207fc06b997490b890c767f5c1c9dae8da937eca4f055855855f9f96",
+      "anchor": "character_joined"
+    },
+    {
+      "id": "entry.joined.close_standard",
+      "file": "vision/entry_joined_close_standard.bmp",
+      "kind": "template",
+      "width": 120,
+      "height": 60,
+      "sha256": "1dc328212ba46a681ce982e5bb2eadc115dc6442ed450e2226c7e31487c59220",
+      "anchor": "character_joined"
+    },
+    {
+      "id": "entry.node.header",
+      "file": "vision/entry_node_header.bmp",
+      "kind": "template",
+      "width": 366,
+      "height": 68,
+      "sha256": "746be593544863314746419df510694759b048c88ee1ef041665e13dec50868b",
+      "anchor": "node_selection"
+    },
+    {
+      "id": "entry.node.characters",
+      "file": "vision/entry_node_characters.bmp",
+      "kind": "template",
+      "width": 67,
+      "height": 116,
+      "sha256": "1b1af2247143338132ccbc840fa6858a310634a941cbb7d05cfcd2a9d73bfb08",
+      "anchor": "node_selection"
+    },
+    {
+      "id": "entry.node.characters_standard",
+      "file": "vision/entry_node_characters_standard.bmp",
+      "kind": "template",
+      "width": 115,
+      "height": 126,
+      "sha256": "553d5702c8bd72cf7031620125ea319c2339ba095705d3c25d4f5cdfcb831220",
+      "anchor": "node_selection"
+    },
+    {
+      "id": "entry.node.relics",
+      "file": "vision/entry_node_relics.bmp",
+      "kind": "template",
+      "width": 114,
+      "height": 103,
+      "sha256": "b113a8046273086e7e60339e22b0e43c0000f63587c63146ef029c15737425df",
+      "anchor": "node_selection"
+    },
+    {
+      "id": "entry.node.relics_standard",
+      "file": "vision/entry_node_relics_standard.bmp",
+      "kind": "template",
+      "width": 135,
+      "height": 126,
+      "sha256": "1bcb43a7fbe86ced298733e0202540e641a98b16232d27de5d9c89fffd3c81e6",
+      "anchor": "node_selection"
+    },
+    {
+      "id": "entry.node.retreat",
+      "file": "vision/entry_node_retreat.bmp",
+      "kind": "template",
+      "width": 230,
+      "height": 71,
+      "sha256": "61186c9f1bcb30cca627fb409d10e8aa9dcd79e9ff17ae977e35a105d7e10ba5",
+      "anchor": "node_selection"
+    },
+    {
+      "id": "entry.node.retreat_standard",
+      "file": "vision/entry_node_retreat_standard.bmp",
+      "kind": "template",
+      "width": 323,
+      "height": 95,
+      "sha256": "53ca8cc0f84665274b4522e1b68b51405d692f6620ece9d1129491b325b6aa1b",
+      "anchor": "node_selection"
+    },
+    {
+      "id": "entry.node.return",
+      "file": "vision/entry_node_return.bmp",
+      "kind": "template",
+      "width": 225,
+      "height": 78,
+      "sha256": "3f07d3c657dc833d50dadc8ef0813e59cc12f7d0d5fe841cbe6f8ab2063fb306",
+      "anchor": "node_selection"
+    },
+    {
+      "id": "node.event.active",
+      "file": "vision/node_event_active.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "f1565e6864618d53ac6c0d45509d394731022f87053d9b46a26cae41c519ab27",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.event.active.bottom",
+      "file": "vision/node_event_active_bottom.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "0824af12ce7ad1c2cba33948ebc0a37d089f2e2afe5adf3ee38e1c310acb8861",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.event.inactive",
+      "file": "vision/node_event_inactive.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "2b1c2f8da6b775b09dace7b58910607790b601578114379e2a54a0260b592209",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.event.inactive.bottom",
+      "file": "vision/node_event_inactive_bottom.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "6eb1b6726c738b487681db419f51e853b126131f71f5eee940e99a7c58ad10f5",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.ex_battle.inactive",
+      "file": "vision/node_ex_battle_inactive.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "21998206ccaad69fb30be6f9230856396ae7214675727826c81a195497a27770",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.boss.yellow",
+      "file": "vision/node_boss_yellow.png",
+      "kind": "template",
+      "width": 650,
+      "height": 700,
+      "sha256": "958552cb5c310a817a8ccde3b1ce4f166d8c7b3ca45300c24009515f8bd459fe",
+      "anchor": "node_map_special"
+    },
+    {
+      "id": "node.boss.dragon",
+      "file": "vision/node_boss_dragon.png",
+      "kind": "template",
+      "width": 650,
+      "height": 700,
+      "sha256": "4843c005ba6e412c97e715280ed67adf129097c1f8b1be1c2d9353ed70dc8f19",
+      "anchor": "node_map_special"
+    },
+    {
+      "id": "node.boss.platform",
+      "file": "vision/node_boss_platform.png",
+      "kind": "template",
+      "width": 500,
+      "height": 350,
+      "sha256": "b238393526d8b3467d1eb5ec5fefa06eb7d22aeadb4a61da5bbfa5fbb92151eb",
+      "anchor": "node_map_special"
+    },
+    {
+      "id": "node.clear",
+      "file": "vision/node_clear.png",
+      "kind": "template",
+      "width": 500,
+      "height": 500,
+      "sha256": "22c06807f180a21b8d4af541c98ec3d5e62ad570a89743bda4be2880b2d087eb",
+      "anchor": "node_map_special"
+    },
+    {
+      "id": "node.link.active",
+      "file": "vision/node_link_active.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "e7a26e10c8f7e377a9efd0b0159f009387341ae93cd48bff717bd2d3b11e5453",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.link.active.map",
+      "file": "vision/node_link_map.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "f8e145f8494ca044e3f0105d4f1178c420735410c71996e2f4fd774d6f36535e",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.link.inactive",
+      "file": "vision/node_link_inactive.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "745936100157b5e9d81c33645237aee75c6d1d6ca2d5d4fe9d7329e258b57d49",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.normal_battle.active",
+      "file": "vision/node_normal_battle_active.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "1635c4b3cd35408890c0c7ca07d66c95fcafd2a34a4d5310520e5b68d840e502",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.normal_battle.active.bottom",
+      "file": "vision/node_normal_battle_active_bottom.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "83685eb465a55426a12e7518a80a6671466d07d8d5a52a14040de22a390b540d",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.normal_battle.inactive",
+      "file": "vision/node_normal_battle_inactive.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "6fae06f9e23a731a383124e8a56ba06988ea5cf3e445388761ee09133a08545a",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.normal_battle.inactive.bottom",
+      "file": "vision/node_normal_battle_inactive_bottom.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "f6323d08d6b8be597bbdf2b71132a11a977985e4a25bb2248012c5eaad6f4755",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.normal_battle.inactive.video",
+      "file": "vision/node_normal_battle_inactive_video.png",
+      "kind": "template",
+      "width": 300,
+      "height": 350,
+      "sha256": "f74ea7068ea874efdfd74fabb7dbab8e73e648a9b668f6949aa62c4e579fdbd9",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.relic.active",
+      "file": "vision/node_relic_active.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "dd4fa951b84b0381d3cf5db5dc39e27dd6e44200a1f47eb746bd4c8b21b30e41",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.relic.inactive",
+      "file": "vision/node_relic_inactive.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "e41557e330a96f93a043e04429dba5e3944448ff5bb8f47e2a680f3731c032d2",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.relic.map",
+      "file": "vision/node_relic_map.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "dd4fa951b84b0381d3cf5db5dc39e27dd6e44200a1f47eb746bd4c8b21b30e41",
+      "anchor": "node_map"
+    },
+    {
+      "id": "node.shop.active",
+      "file": "vision/node_shop_active.png",
+      "kind": "template",
+      "width": 280,
+      "height": 350,
+      "sha256": "58cc3ae5b86b643dbaa5bd1cf70651bc5b70a8e296a12032e05aea0a43e96c7b",
+      "anchor": "node_map"
+    },
+    {
+      "id": "entry.selection.role_reward.title",
+      "file": "vision/initial_role_reward/initial_role_reward_title.png",
+      "kind": "template",
+      "width": 580,
+      "height": 120,
+      "sha256": "c32f28534c92e18280a464af75a72d615161b7bce9ea17a540ad4e8ed98f27ec",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.selection.role_reward.instruction",
+      "file": "vision/initial_role_reward/initial_role_reward_instruction.png",
+      "kind": "template",
+      "width": 570,
+      "height": 75,
+      "sha256": "9f02a887e28ec571a7f0798528ef76e6f28aadace44dfb50bf9601aeeb4aa216",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.selection.role_reward.select_button",
+      "file": "vision/initial_role_reward/initial_role_reward_select_button.png",
+      "kind": "template",
+      "width": 290,
+      "height": 155,
+      "sha256": "9946c3c337011078798f6c8297cfc73b677d66bd393677b5006634ac76095e30",
+      "anchor": "initial_character_selection"
+    },
+    {
+      "id": "entry.item_reward.title",
+      "file": "vision/item_reward/item_reward_title.png",
+      "kind": "template",
+      "width": 400,
+      "height": 75,
+      "sha256": "b98e862513f4f2e12166d9df23e590ed0c6285381abcda0e7cdb86e88bed6ef0",
+      "anchor": "item_reward"
+    },
+    {
+      "id": "entry.item_reward.instruction",
+      "file": "vision/item_reward/item_reward_instruction.png",
+      "kind": "template",
+      "width": 360,
+      "height": 70,
+      "sha256": "cda4cb07a435a6eb5587f8cae0b5ed29cfe6e41c9e0bdbdea29bd709c87ea784",
+      "anchor": "item_reward"
+    },
+    {
+      "id": "entry.item_reward.close",
+      "file": "vision/item_reward/item_reward_close.png",
+      "kind": "template",
+      "width": 430,
+      "height": 140,
+      "sha256": "0f0d94c29961b5e90086a3a0bca4218ac9a7f9b4eac8770ab6580ad43c6564bb",
+      "anchor": "item_reward"
+    },
+    {
+      "id": "entry.relic_effect_result.title",
+      "file": "vision/item_reward/relic_effect_result_title.png",
+      "kind": "template",
+      "width": 300,
+      "height": 62,
+      "sha256": "24c0d4fcb905d79779eb399a2bb89a5bcba5f71e320ea0427a9768681d4a01c5",
+      "anchor": "item_reward"
+    },
+    {
+      "id": "entry.relic_effect_result.close",
+      "file": "vision/item_reward/relic_effect_result_close.png",
+      "kind": "template",
+      "width": 415,
+      "height": 102,
+      "sha256": "87935aac6e27606e955e13d8e90426d676a676af9b1819dd44a8d2f2aff0af17",
+      "anchor": "item_reward"
+    },
+    {
+      "id": "entry.shop.title",
+      "file": "vision/shop/shop_title.png",
+      "kind": "template",
+      "width": 220,
+      "height": 75,
+      "sha256": "f320d851abb2387a67d685e03c936e1117b6dda8e7d7835fb3eae092bbfe1f6f",
+      "anchor": "shop"
+    },
+    {
+      "id": "entry.shop.instruction",
+      "file": "vision/shop/shop_instruction.png",
+      "kind": "template",
+      "width": 520,
+      "height": 75,
+      "sha256": "98e079c83d8e0c0127036478178f7ec11b30f30a7e4dcc3d5bbce08bb95ba1ae",
+      "anchor": "shop"
+    },
+    {
+      "id": "entry.shop.close",
+      "file": "vision/shop/shop_close_button.png",
+      "kind": "template",
+      "width": 430,
+      "height": 115,
+      "sha256": "42a936f36cd4ded60762acb96380941542275d181e0fc09effd85940cedd6b7c",
+      "anchor": "shop"
+    },
+    {
+      "id": "entry.shop.buy_button",
+      "file": "vision/shop/shop_buy_button.png",
+      "kind": "template",
+      "width": 290,
+      "height": 90,
+      "sha256": "0eee5de9caaa1892b540674b91158531264af0f34190f803343c2aa9aef69b56",
+      "anchor": "shop"
+    },
+    {
+      "id": "entry.shop.refresh_button",
+      "file": "vision/shop/shop_refresh_button.png",
+      "kind": "template",
+      "width": 350,
+      "height": 85,
+      "sha256": "4e9343599d22b253686e071d5a7c610f7736dddbb1da61e4c0a14e719377643a",
+      "anchor": "shop"
+    },
+    {
+      "id": "entry.shop.purchase_confirmation.title",
+      "file": "vision/shop/shop_purchase_confirmation_title.png",
+      "kind": "template",
+      "width": 420,
+      "height": 75,
+      "sha256": "686e83d53fef57ed4d618421145a2ab9de21dc984e202195b037bbb3100b7ef4",
+      "anchor": "shop_purchase_confirmation"
+    },
+    {
+      "id": "entry.shop.purchase_complete.title",
+      "file": "vision/shop/shop_purchase_complete_title.png",
+      "kind": "template",
+      "width": 420,
+      "height": 75,
+      "sha256": "705f3ca1422317415a649dca750a648f974419d0459ff5e4c7f43a5440c2d76e",
+      "anchor": "shop_purchase_complete"
+    },
+    {
+      "id": "entry.shop.exit_confirmation.title",
+      "file": "vision/shop/shop_exit_confirmation_title.png",
+      "kind": "template",
+      "width": 420,
+      "height": 75,
+      "sha256": "5bfb9fe786ba2f0c6d5e007bfc429a82060aa358ebe4b534c28218504d8ef105",
+      "anchor": "shop_exit_confirmation"
+    },
+    {
+      "id": "character_joined.1209.name",
+      "file": "vision/character_joined/characters/character_1209_name.png",
+      "kind": "template",
+      "width": 350,
+      "height": 90,
+      "sha256": "e9a9fe084c3cc69cbebd743cb843221e765689452db607bca3061ae35e8a5d5f",
+      "anchor": "character_joined"
+    },
+    {
+      "id": "character_joined.1257.name",
+      "file": "vision/character_joined/characters/character_1257_name.png",
+      "kind": "template",
+      "width": 430,
+      "height": 90,
+      "sha256": "7b9d573e5d3bef641f3e431409fa6cfa4a5eb34e865d37572b78e60632911db8",
+      "anchor": "character_joined"
+    },
+    {
+      "id": "character_joined.1139.name",
+      "file": "vision/character_joined/characters/character_1139_name.png",
+      "kind": "template",
+      "width": 370,
+      "height": 90,
+      "sha256": "eb083c39e58ae966a133af71e5dcc93cbe4c35fe83750a9e6a0a1f366d27952a",
+      "anchor": "character_joined"
+    },
+    {
+      "id": "entry.node.header_standard",
+      "file": "vision/entry_node_header_standard.bmp",
+      "kind": "template",
+      "width": 295,
+      "height": 70,
+      "sha256": "01ffb0b0fe7a5682fd05b36cc61c6154c5b798fd1081aed99084c32658f845ec",
+      "anchor": "node_selection"
+    },
+    {
+      "id": "entry.node.return_standard",
+      "file": "vision/entry_node_return_standard.bmp",
+      "kind": "template",
+      "width": 320,
+      "height": 95,
+      "sha256": "bfcdeb77c6b43ef26cdf5407e27ed2aee3d7ee3af4df86cc1dbe151a85fe4102",
+      "anchor": "node_selection"
+    },
+    {
+      "id": "session.error.title",
+      "file": "vision/session_error_title.bmp",
+      "kind": "template",
+      "width": 948,
+      "height": 66,
+      "sha256": "6aeb03cf8c4820533c6417aea4a00fa0486e3962775680a1b4e8f0ed031c8f3e",
+      "anchor": "session_error"
+    },
+    {
+      "id": "session.return.title",
+      "file": "vision/session_return_title.bmp",
+      "kind": "template",
+      "width": 410,
+      "height": 94,
+      "sha256": "93e9ac06e68ad8da4636b7bb20981d8e84b015c5aa60c222c27a36193ea66844",
+      "anchor": "session_error"
+    },
+    {
+      "id": "session.date_change.title",
+      "file": "vision/session_date_change_title.png",
+      "kind": "template",
+      "width": 340,
+      "height": 70,
+      "sha256": "470c910a00cb4b85c5f824d7db4f7ad97b02cb9ca4cb1ac4b63cbc80483f1ff5",
+      "anchor": "session_date_change"
+    },
+    {
+      "id": "session.date_change.confirm",
+      "file": "vision/session_date_change_confirm.png",
+      "kind": "template",
+      "width": 415,
+      "height": 102,
+      "sha256": "20cd7ce43ebb99a9044ae3e67e995ed2b83e59c2d0cacd5dea3aab7d19d8b7ba",
+      "anchor": "session_date_change"
+    },
+    {
+      "id": "entry.link_choice.title",
+      "file": "vision/link_choice/link_choice_title.png",
+      "kind": "template",
+      "width": 650,
+      "height": 110,
+      "sha256": "b165c191b5a7ec74acee9a70cbc40f767794b5c398704cb4fba83735c771dd45",
+      "anchor": "link_choice"
+    },
+    {
+      "id": "entry.link_choice.instruction",
+      "file": "vision/link_choice/link_choice_instruction.png",
+      "kind": "template",
+      "width": 620,
+      "height": 90,
+      "sha256": "0accd35ef0120288854923a692ab18d8d3ef62e5b5baa5dc61ec0c849380c513",
+      "anchor": "link_choice"
+    },
+    {
+      "id": "entry.link_choice.remaining",
+      "file": "vision/link_choice/link_choice_remaining.png",
+      "kind": "template",
+      "width": 230,
+      "height": 70,
+      "sha256": "8e812e199da889c12e83cf35aedd8b98ab80879a42b08f76d1b5289490690fef",
+      "anchor": "link_choice"
+    },
+    {
+      "id": "entry.link_choice.card_signature",
+      "file": "vision/link_choice/link_choice_card_signature.png",
+      "kind": "template",
+      "width": 160,
+      "height": 190,
+      "sha256": "10078bc1f94aabaa4e131c7270e1652178488bd2015b14dd8c32b1dae418f9a0",
+      "anchor": "link_choice"
+    },
+    {
+      "id": "entry.relic_choice.instruction",
+      "file": "vision/relic_choice/relic_choice_instruction.png",
+      "kind": "template",
+      "width": 620,
+      "height": 90,
+      "sha256": "f79d4454ea14c529f1251ed484871fdba12c9fe3564a933c0c401aa250b8930f",
+      "anchor": "relic_choice"
+    },
+    {
+      "id": "link_choice.element.fire",
+      "file": "vision/link_choice/element_fire.png",
+      "kind": "template",
+      "width": 90,
+      "height": 90,
+      "sha256": "c2b0538d2e296d063aa87323138dd04e3f5ce5a6af70b386ef471a52c7fa7bb5",
+      "anchor": "link_choice"
+    },
+    {
+      "id": "link_choice.element.dark",
+      "file": "vision/link_choice/element_dark.png",
+      "kind": "template",
+      "width": 90,
+      "height": 90,
+      "sha256": "3e95c6c1afa520dd1ad0d9de57df0fc15fee686dbf15020bf58dbfb5fe8ceef8",
+      "anchor": "link_choice"
+    },
+    {
+      "id": "link_choice.element.light",
+      "file": "vision/link_choice/element_light.png",
+      "kind": "template",
+      "width": 90,
+      "height": 90,
+      "sha256": "04c5b76e8653d56771c7aa1f1db7820cba2109f89e99ff517b53192e38236d5e",
+      "anchor": "link_choice"
+    },
+    {
+      "id": "link_choice.element.wind",
+      "file": "vision/link_choice/element_wind.png",
+      "kind": "template",
+      "width": 90,
+      "height": 90,
+      "sha256": "1513a421e4b86a5861efca059535eeb262d125e6ae856308e97dd163c3da68d9",
+      "anchor": "link_choice"
+    },
+    {
+      "id": "link_choice.element.water",
+      "file": "vision/link_choice/element_water.png",
+      "kind": "template",
+      "width": 90,
+      "height": 90,
+      "sha256": "bc15ca8baf178509fe3f18553288a6793535c43e2cf7de798613a64b034f2515",
+      "anchor": "link_choice"
+    },
+    {
+      "id": "battle.in_progress.menu_button",
+      "file": "vision/battle_in_progress/battle_menu_button.png",
+      "kind": "template",
+      "width": 192,
+      "height": 50,
+      "sha256": "ad9b47b0500b83fef11823a8a33a54884b049fcfe477ff59daf24cb212dc2ded",
+      "anchor": "battle_in_progress"
+    },
+    {
+      "id": "battle.in_progress.auto_button",
+      "file": "vision/battle_in_progress/battle_auto_button.png",
+      "kind": "template",
+      "width": 106,
+      "height": 108,
+      "sha256": "c91b5c54a891935757faf4816f8f172a2b0b1d220c0c970414a3452c453792a9",
+      "anchor": "battle_in_progress"
+    },
+    {
+      "id": "battle.result.reward_banner",
+      "file": "vision/battle_result/battle_result_reward_banner.png",
+      "kind": "template",
+      "width": 540,
+      "height": 82,
+      "sha256": "d2522d20d88627b90214c16219032b30369a647a8fd96698945f7e71adaaa138",
+      "anchor": "battle_result"
+    },
+    {
+      "id": "battle.result.next_button",
+      "file": "vision/battle_result/battle_result_next_button.png",
+      "kind": "template",
+      "width": 388,
+      "height": 92,
+      "sha256": "ed41173b8f8b51dab619b17d92fbca415c976d18b5565f699d05fbd4e14bf83a",
+      "anchor": "battle_result"
+    },
+    {
+      "id": "run.result.logo",
+      "file": "vision/run_result/run_result_logo.png",
+      "kind": "template",
+      "width": 380,
+      "height": 104,
+      "sha256": "454acef36bd8ccf80f33eb1f49ce5151932c4dc31d5dd7fb11a4873d15bf7518",
+      "anchor": "run_result"
+    },
+    {
+      "id": "run.result.close_button",
+      "file": "vision/run_result/run_result_close_button.png",
+      "kind": "template",
+      "width": 416,
+      "height": 92,
+      "sha256": "d861fac920c55c03aa74ec12ffa4519e2e8060090efe9576aa32ec14d95a5719",
+      "anchor": "run_result"
+    },
+    {
+      "id": "entry.shop.exit_confirm_button",
+      "file": "vision/shop/shop_exit_confirm_button.png",
+      "kind": "template",
+      "width": 400,
+      "height": 80,
+      "sha256": "bab2df20c2da33eb72d587da26a25fdf9b498c6b1b2d8318fec6484f66d6f05f",
+      "anchor": "shop"
+    }
   ]
 }

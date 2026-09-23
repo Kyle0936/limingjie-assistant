@@ -126,6 +126,16 @@ object EntryAnchorId {
     /** 主页面板顶部的「迷宫遗物效果」标题（迷宫大师开局赠送遗物弹窗）。 */
     const val RELIC_EFFECT_TITLE = "entry.relic_effect.title"
     const val RELIC_EFFECT_INSTRUCTION = "entry.relic_effect.instruction"
+    /**
+     * 「遗物效果结果」 -- a relic turned a lost battle into a won one.
+     *
+     * A third popup on the same 关闭-button family, but a *small centred dialog* rather than the
+     * full-height 获得道具 / 迷宫遗物效果 shell: its title sits at reference y 252 instead of 50 and
+     * its button at y 700 instead of 895, so neither existing anchor pair can see it. Unrecognised,
+     * it left the map visible behind itself and the run had no rule that could close it.
+     */
+    const val RELIC_EFFECT_RESULT_TITLE = "entry.relic_effect_result.title"
+    const val RELIC_EFFECT_RESULT_CLOSE = "entry.relic_effect_result.close"
 
     val required = setOf(
         TITLE_LOGO,
@@ -169,6 +179,8 @@ object EntryAnchorId {
         ITEM_REWARD_TITLE,
         ITEM_REWARD_INSTRUCTION,
         ITEM_REWARD_CLOSE,
+        RELIC_EFFECT_RESULT_TITLE,
+        RELIC_EFFECT_RESULT_CLOSE,
         SHOP_TITLE,
         SHOP_INSTRUCTION,
         SHOP_CLOSE,
@@ -847,6 +859,9 @@ class LabyrinthEntryFrameProcessor(
             // title and the two-line instruction differ; the close button is shared.
             standard(EntryAnchorId.RELIC_EFFECT_TITLE, 760, 50, 400, 75),
             standard(EntryAnchorId.RELIC_EFFECT_INSTRUCTION, 770, 150, 380, 65),
+            // Centred dialog: both rects are centred on x=960, measured off the 2026-09-22 report.
+            standard(EntryAnchorId.RELIC_EFFECT_RESULT_TITLE, 810, 262, 300, 62),
+            standard(EntryAnchorId.RELIC_EFFECT_RESULT_CLOSE, 750, 690, 415, 102),
         )
         val DEFINITIONS_BY_ID = DEFINITIONS.groupBy(EntryAnchorDefinition::id)
     }

@@ -215,8 +215,10 @@ class LabyrinthEntryPageClassifier(
                 anchorScores[EntryAnchorId.EVENT_ANIMATION_TITLE],
                 anchorScores[EntryAnchorId.EVENT_ANIMATION_SKIP],
             ),
-            // 获得道具 and 迷宫遗物效果 (迷宫大师 opening relic, 2026-09-17) share the modal
-            // shell and the 关闭 button; either title/instruction pair identifies the page.
+            // 获得道具, 迷宫遗物效果 (迷宫大师 opening relic, 2026-09-17) and 遗物效果结果 (a relic
+            // turned a defeat into a victory, 2026-09-22) are all closed by the same 关闭 button;
+            // any one title pair identifies the page. The third is a short centred dialog, so it
+            // carries its own close anchor instead of sharing the full-height one.
             LabyrinthEntryPageState.ITEM_REWARD to maxOf(
                 minimum(
                     anchorScores[EntryAnchorId.ITEM_REWARD_TITLE],
@@ -227,6 +229,10 @@ class LabyrinthEntryPageClassifier(
                     anchorScores[EntryAnchorId.RELIC_EFFECT_TITLE],
                     anchorScores[EntryAnchorId.RELIC_EFFECT_INSTRUCTION],
                     anchorScores[EntryAnchorId.ITEM_REWARD_CLOSE],
+                ),
+                minimum(
+                    anchorScores[EntryAnchorId.RELIC_EFFECT_RESULT_TITLE],
+                    anchorScores[EntryAnchorId.RELIC_EFFECT_RESULT_CLOSE],
                 ),
             ),
             LabyrinthEntryPageState.SHOP to minimum(

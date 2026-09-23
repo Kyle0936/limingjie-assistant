@@ -238,6 +238,43 @@ class LabyrinthEntryFrameProcessorTest {
         )
 
     @Test
+    fun `relic effect result popup is recognized and offers its own close button`() {
+        // 「遗物效果结果」: a relic turned a lost battle into a won one. It is the same 关闭 family
+        // as 获得道具 / 迷宫遗物效果 but a short centred dialog, so neither existing title pair nor
+        // the full-height close anchor can see it. Unrecognised it left the map visible behind
+        // itself with no rule able to close it.
+        val frame = readImage(
+            File(projectRoot, "android/app/src/test/resources/labyrinth/relic-effect-result-20260922.png"),
+        )
+        val result = LabyrinthEntryFrameProcessor(templates = loadShippedTemplates()).process(frame)
+
+        assertEquals(LabyrinthEntryPageState.ITEM_REWARD, result.observation.state)
+        val title = result.observation.anchorScores[EntryAnchorId.RELIC_EFFECT_RESULT_TITLE]
+        val close = result.observation.anchorScores[EntryAnchorId.RELIC_EFFECT_RESULT_CLOSE]
+        assertTrue("title=$title", title >= 0.80)
+        assertTrue("close=$close", close >= 0.80)
+
+        // The tap must land on this dialog's own button, not on the full-height one's position.
+        val rect = requireNotNull(result.anchorMatches[EntryAnchorId.RELIC_EFFECT_RESULT_CLOSE]?.rect)
+        val centerY = rect.top + rect.height / 2
+        assertTrue("close rect=$rect", centerY in 700..800)
+        assertTrue("close rect=$rect", rect.left + rect.width / 2 in 900..1020)
+
+        // It must not be mistaken for the opening 迷宫遗物效果 page, which is a different popup.
+        val openingRelic = result.observation.anchorScores[EntryAnchorId.RELIC_EFFECT_TITLE]
+        assertTrue("opening relic page must not claim this frame: $openingRelic", openingRelic < 0.50)
+
+        // The dangerous failure this popup actually caused upstream: its 关闭 scores 0.81 against
+        // the session date-change 确认 template and its blue bar 0.62 against 错误提示, so the frame
+        // was read as "account session expired". Worse, SESSION_RETURN_TITLE's ROI lies directly on
+        // this button at 0.434 against a 0.45 trigger -- one frame of jitter and the run taps it
+        // and continues believing it is logged out, which throws the whole run away.
+        val block = labyrinthSessionBlockObservation(result)
+        assertEquals("session block=$block", SessionBlockKind.NONE, block.kind)
+        assertTrue("must not offer a return-title tap: $block", block.returnTitleRect == null)
+    }
+
+    @Test
     fun `node scan is skipped while the session cannot consume it and keeps the rest of the frame`() {
         var consumable = false
         val processor = LabyrinthEntryFrameProcessor(

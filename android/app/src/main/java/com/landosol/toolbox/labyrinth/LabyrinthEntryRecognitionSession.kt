@@ -1426,6 +1426,7 @@ class LabyrinthEntryRecognitionSession(
     private val eventFreeRoleSelectedCharacterIds = linkedSetOf<String>()
     @Volatile
     private var eventFreeRoleLastSelectAt = Long.MIN_VALUE
+    private var eventFreeRoleObservedSelectedCount = 0
     /** When the free-role page last had nothing it could act on; bounds the wait. */
     private var eventFreeRoleBlockedSince = Long.MIN_VALUE
     @Volatile
@@ -4188,16 +4189,56 @@ class LabyrinthEntryRecognitionSession(
             return
         }
 
-        val visibleSelected = viewport.visibleCharacters
-            .filter { it.selected && it.trusted && !it.characterId.isNullOrBlank() }
-        // Cards already selected (a user tap, or our own earlier pick) are part of the answer.
-        visibleSelected.forEach { eventFreeRoleSelectedCharacterIds += requireNotNull(it.characterId) }
+        // The roster, not our own dispatch log, decides who is selected: a tap the game ignored
+        // must not pin the page on the confirm branch for ever.
+        val visibleIds = viewport.visibleCharacters
+            .mapNotNull { it.characterId?.takeIf(String::isNotBlank) }
+        val visibleSelectedIds = viewport.visibleCharacters
+            .filter { it.selected && it.trusted }
+            .mapNotNull { it.characterId?.takeIf(String::isNotBlank) }
+        val selectedIds = labyrinthEventFreeRoleReconcileSelection(
+            rememberedIds = eventFreeRoleSelectedCharacterIds,
+            visibleSelectedIds = visibleSelectedIds,
+            visibleIds = visibleIds,
+        )
+        eventFreeRoleSelectedCharacterIds.clear()
+        eventFreeRoleSelectedCharacterIds += selectedIds
+        if (selectedIds.size > eventFreeRoleObservedSelectedCount) {
+            // Observed progress is the only thing allowed to restart the give-up clock.
+            eventFreeRoleObservedSelectedCount = selectedIds.size
+            resetEventFreeRoleProgress()
+        }
 
-        val selectedIds = eventFreeRoleSelectedCharacterIds.toList()
+        val scores = result.observation.anchorScores
+        val inviteState = labyrinthInviteButtonState(
+            enabledScore = maxOf(
+                scores[EntryAnchorId.INVITE_ENABLED],
+                scores[EntryAnchorId.INVITE_ENABLED_STANDARD],
+            ),
+            disabledScore = maxOf(
+                scores[EntryAnchorId.INVITE_DISABLED],
+                scores[EntryAnchorId.INVITE_DISABLED_STANDARD],
+            ),
+        )
         val inviteRect = anchorRect(result, EntryAnchorId.INVITE_ENABLED)
             ?: anchorRect(result, EntryAnchorId.INVITE_ENABLED_STANDARD)
-        if (selectedIds.isNotEmpty() && inviteRect != null) {
+        if (
+            selectedIds.isNotEmpty() &&
+            inviteRect != null &&
+            inviteState != LabyrinthInviteButtonState.DISABLED
+        ) {
             if (timestampMillis - lastPostEntryActionAt < POST_ENTRY_ACTION_INTERVAL_MILLIS) return
+            if (eventFreeRoleBlockedSince == Long.MIN_VALUE) eventFreeRoleBlockedSince = timestampMillis
+            if (
+                labyrinthEventFreeRoleBlockedAction(timestampMillis - eventFreeRoleBlockedSince) ==
+                LabyrinthEventFreeRoleBlockedAction.STOP
+            ) {
+                finishFromPlanner(
+                    sessionId,
+                    "事件自由选角无法继续：已选择 ${selectedIds.size} 名角色但“去邀请”始终未生效",
+                )
+                return
+            }
             dispatchPostEntryTap(
                 sessionId = sessionId,
                 kind = LabyrinthPostEntryActionKind.EVENT_FREE_ROLE_CONFIRM,
@@ -4211,20 +4252,18 @@ class LabyrinthEntryRecognitionSession(
             return
         }
         if (selectedIds.isNotEmpty()) {
-            val scores = result.observation.anchorScores
-            val inviteDisabled = maxOf(
-                scores[EntryAnchorId.INVITE_DISABLED],
-                scores[EntryAnchorId.INVITE_DISABLED_STANDARD],
-            ) >= EVENT_FREE_ROLE_INVITE_DISABLED_MIN_SCORE
             val needsAnother = labyrinthEventFreeRoleNeedsAnotherPick(
                 selectedCount = selectedIds.size,
-                inviteEnabled = false,
-                inviteDisabled = inviteDisabled,
+                inviteEnabled = inviteState == LabyrinthInviteButtonState.ENABLED,
+                inviteDisabled = inviteState == LabyrinthInviteButtonState.DISABLED,
                 millisSinceLastSelect = timestampMillis - eventFreeRoleLastSelectAt,
             )
             if (!needsAnother) {
-                _state.value = _state.value.copy(
-                    message = "事件自由选角：已选择 ${selectedIds.size} 名角色，等待“去邀请”按钮就绪",
+                // Even "the button is not ready yet" is a wait, so it runs on the give-up clock.
+                noteEventFreeRoleBlocked(
+                    sessionId,
+                    timestampMillis,
+                    "事件自由选角：已选择 ${selectedIds.size} 名角色，等待“去邀请”按钮就绪",
                 )
                 return
             }
@@ -4270,7 +4309,6 @@ class LabyrinthEntryRecognitionSession(
                     )
                     return
                 }
-                resetEventFreeRoleProgress()
                 if (timestampMillis - lastPostEntryActionAt < POST_ENTRY_ACTION_INTERVAL_MILLIS) return
                 _state.value = _state.value.copy(
                     message = "事件自由选角建议（第${selectedIds.size + 1}名）：${decision.displayName}；${decision.explanation.take(2).joinToString("；")}",
@@ -4771,7 +4809,12 @@ class LabyrinthEntryRecognitionSession(
                     LabyrinthPostEntryTapPlan(
                         LabyrinthPostEntryActionKind.CLOSE_ITEM_REWARD,
                         "关闭获得道具界面",
-                        anchorRect(result, EntryAnchorId.ITEM_REWARD_CLOSE)
+                        // 遗物效果结果 is a short centred dialog whose 关闭 sits ~190 reference
+                        // pixels above the full-height one, so the generic MODAL_CLOSE fallback
+                        // would miss it entirely. Its own anchor is tried first and only ever
+                        // matches while that dialog is the one on screen.
+                        anchorRect(result, EntryAnchorId.RELIC_EFFECT_RESULT_CLOSE)
+                            ?: anchorRect(result, EntryAnchorId.ITEM_REWARD_CLOSE)
                             ?: LabyrinthFallbackTap.MODAL_CLOSE.rect(frameWidth, frameHeight),
                     )
             }
@@ -5955,6 +5998,7 @@ class LabyrinthEntryRecognitionSession(
         battleWait.reset()
         eventFreeRoleSelectedCharacterIds.clear()
         eventFreeRoleLastSelectAt = Long.MIN_VALUE
+        eventFreeRoleObservedSelectedCount = 0
         resetEventFreeRoleProgress()
         nodeSession = null
         nodeInitStarted.set(false)
@@ -6686,6 +6730,7 @@ class LabyrinthEntryRecognitionSession(
         nodeEntryMismatchFrames = 0
         eventFreeRoleSelectedCharacterIds.clear()
         eventFreeRoleLastSelectAt = Long.MIN_VALUE
+        eventFreeRoleObservedSelectedCount = 0
         resetEventFreeRoleProgress()
         val previousNodeType = activeNodeType
         activeNodeType = blockType

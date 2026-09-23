@@ -168,6 +168,10 @@ class AndroidLabyrinthEntryTemplateLoader(
                 "$ROOT/dawn_home/dawn_home_my_home_tab.png",
             EntryAnchorId.RELIC_EFFECT_TITLE to "$ROOT/item_reward/relic_effect_title.png",
             EntryAnchorId.RELIC_EFFECT_INSTRUCTION to "$ROOT/item_reward/relic_effect_instruction.png",
+            EntryAnchorId.RELIC_EFFECT_RESULT_TITLE to
+                "$ROOT/item_reward/relic_effect_result_title.png",
+            EntryAnchorId.RELIC_EFFECT_RESULT_CLOSE to
+                "$ROOT/item_reward/relic_effect_result_close.png",
             EntryAnchorId.BATTLE_RESULT_BOSS_SUMMARY_NEXT_BUTTON to
                 "$ROOT/battle_result/battle_result_boss_summary_next_button.png",
         )

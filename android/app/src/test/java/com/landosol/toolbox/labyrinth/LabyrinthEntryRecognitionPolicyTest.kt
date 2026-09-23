@@ -162,6 +162,62 @@ class LabyrinthEntryRecognitionPolicyTest {
     }
 
     @Test
+    fun `去邀请 grey button is told from the blue one by the margin between both templates`() {
+        // Real scores from limingjie-debug-20260923-013929 frame 598: nothing was selected, yet
+        // the enabled template still scored 0.925. Only the margin against 0.987 exposes the grey
+        // button, and reading it as blue confirmed an empty invitation until the user killed it.
+        assertEquals(
+            LabyrinthInviteButtonState.DISABLED,
+            labyrinthInviteButtonState(enabledScore = 0.925, disabledScore = 0.987),
+        )
+        assertEquals(
+            LabyrinthInviteButtonState.ENABLED,
+            labyrinthInviteButtonState(enabledScore = 0.981, disabledScore = 0.872),
+        )
+        // A tie decides nothing, and neither does a frame where no template matched at all.
+        assertEquals(
+            LabyrinthInviteButtonState.UNKNOWN,
+            labyrinthInviteButtonState(enabledScore = 0.930, disabledScore = 0.925),
+        )
+        assertEquals(
+            LabyrinthInviteButtonState.UNKNOWN,
+            labyrinthInviteButtonState(enabledScore = 0.310, disabledScore = 0.402),
+        )
+    }
+
+    @Test
+    fun `free role picks are reconciled against the roster instead of the dispatch log`() {
+        // The 2026-09-23 deadlock: the tap on 埃拉 never registered, the card sits on screen
+        // unselected, and the remembered pick has to be dropped so the run picks again.
+        assertEquals(
+            emptyList<String>(),
+            labyrinthEventFreeRoleReconcileSelection(
+                rememberedIds = listOf("ella"),
+                visibleSelectedIds = emptyList(),
+                visibleIds = listOf("ella", "kyle", "yuni"),
+            ),
+        )
+        // A pick that scrolled out of view is still ours; the roster cannot contradict it.
+        assertEquals(
+            listOf("ella"),
+            labyrinthEventFreeRoleReconcileSelection(
+                rememberedIds = listOf("ella"),
+                visibleSelectedIds = emptyList(),
+                visibleIds = listOf("kyle", "yuni"),
+            ),
+        )
+        // Anything the roster shows as selected is adopted, whoever tapped it, without duplicates.
+        assertEquals(
+            listOf("ella", "kyle"),
+            labyrinthEventFreeRoleReconcileSelection(
+                rememberedIds = listOf("ella"),
+                visibleSelectedIds = listOf("ella", "kyle"),
+                visibleIds = listOf("ella", "kyle", "yuni"),
+            ),
+        )
+    }
+
+    @Test
     fun `event full roster one-role selector owns initial-selection-looking frame`() {
         assertTrue(
             labyrinthEventFreeRoleSelectionOwnsFrame(

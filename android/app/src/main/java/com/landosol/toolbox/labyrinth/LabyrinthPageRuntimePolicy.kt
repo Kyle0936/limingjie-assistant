@@ -532,6 +532,23 @@ internal fun labyrinthGenericConfirmDialogRect(
     result: LabyrinthEntryFrameResult,
     minimumButtonScore: Double = 0.85,
 ): EntryPixelRect? {
+    // 「遗物效果结果」 proves its own identity, so it is resolved before any of the guards below
+    // and regardless of which page won the classifier.
+    //
+    // Those guards exist only to separate dialogs whose *sole* evidence is the shared 确认 button
+    // artwork. This popup instead scores 0.81 on that button and 0.62 on 错误提示's blue bar, so
+    // without an identity of its own it was read as an expired account session and the route
+    // stopped (upstream report 2026-09-23, v1.0.9). The same frame put SESSION_RETURN_TITLE's ROI
+    // directly over this 关闭 at 0.434 against a 0.45 trigger: one frame of jitter and the run
+    // taps it and keeps going as though it were logged out, discarding the whole run.
+    val relicEffectResultClose = result.anchorMatches[EntryAnchorId.RELIC_EFFECT_RESULT_CLOSE]
+    if (
+        result.observation.anchorScores[EntryAnchorId.RELIC_EFFECT_RESULT_TITLE] >= 0.80 &&
+        relicEffectResultClose != null &&
+        relicEffectResultClose.score >= minimumButtonScore
+    ) {
+        return relicEffectResultClose.rect
+    }
     // The dialog sits over the map; the map behind it can still win the page classifier
     // (2026-09-18 live: NODE_SELECTION with the dialog open). Pages with their own dialogs
     // (shop, battle, roster) are excluded; the map family and UNKNOWN are eligible.
@@ -561,6 +578,52 @@ private val GENERIC_CONFIRM_DIALOG_PAGES = setOf(
  * still visibly disabled after a pick has settled, pick another, bounded by the shell's three
  * slots.
  */
+/**
+ * Which visual state the 「去邀请」 button is in.
+ *
+ * The enabled and disabled templates share one ROI and differ only in button colour, so both
+ * correlate highly on either state and neither score alone is a verdict. 2026-09-23: on a page
+ * with nothing selected the enabled template still scored 0.925 while disabled scored 0.987, so a
+ * plain threshold read the grey button as blue and the run confirmed an empty invitation for ever.
+ * Only the margin between the two templates separates them reliably.
+ */
+internal enum class LabyrinthInviteButtonState { ENABLED, DISABLED, UNKNOWN }
+
+internal fun labyrinthInviteButtonState(
+    enabledScore: Double,
+    disabledScore: Double,
+    minimumScore: Double = LABYRINTH_INVITE_BUTTON_MIN_SCORE,
+    margin: Double = LABYRINTH_INVITE_BUTTON_MARGIN,
+): LabyrinthInviteButtonState = when {
+    maxOf(enabledScore, disabledScore) < minimumScore -> LabyrinthInviteButtonState.UNKNOWN
+    disabledScore - enabledScore >= margin -> LabyrinthInviteButtonState.DISABLED
+    enabledScore - disabledScore >= margin -> LabyrinthInviteButtonState.ENABLED
+    else -> LabyrinthInviteButtonState.UNKNOWN
+}
+
+internal const val LABYRINTH_INVITE_BUTTON_MIN_SCORE = 0.72
+internal const val LABYRINTH_INVITE_BUTTON_MARGIN = 0.02
+
+/**
+ * Reconcile the remembered free-role picks against what the roster actually shows.
+ *
+ * Picks used to be recorded the moment a tap was dispatched and never revisited. A tap the game
+ * ignored therefore left a phantom selection that pushed every later frame down the confirm
+ * branch, and the run pressed a dead 「去邀请」 until the user killed it. The roster is the
+ * authority: a remembered card that is on screen and unselected is dropped, a card that scrolled
+ * out of view is kept, and anything the roster shows as selected is adopted.
+ */
+internal fun labyrinthEventFreeRoleReconcileSelection(
+    rememberedIds: Collection<String>,
+    visibleSelectedIds: Collection<String>,
+    visibleIds: Collection<String>,
+): List<String> {
+    val visible = visibleIds.toSet()
+    val selected = visibleSelectedIds.toSet()
+    val kept = rememberedIds.filter { it in selected || it !in visible }
+    return (kept + visibleSelectedIds).distinct()
+}
+
 internal fun labyrinthEventFreeRoleNeedsAnotherPick(
     selectedCount: Int,
     inviteEnabled: Boolean,
