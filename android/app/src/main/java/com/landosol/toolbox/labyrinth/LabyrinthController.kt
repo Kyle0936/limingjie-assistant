@@ -31,6 +31,18 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class LabyrinthCurrentOpeningReadStatus {
+    NOT_READ,
+    READING,
+    LOGIN_VERIFICATION_REQUIRED,
+    NO_ACTIVE_OPENING,
+    TARGET,
+    NOT_TARGET,
+    PENDING_VERIFICATION,
+    FAILED,
+    CANCELLED,
+}
+
 data class LabyrinthUiState(
     val selectedAccount: AccountListItem? = null,
     val guildOptions: List<LabyrinthGuildOption> = LabyrinthRerollOptions.guilds,
@@ -58,6 +70,8 @@ data class LabyrinthUiState(
     val checkpointEnterId: Long? = null,
     val currentGuildId: Int? = null,
     val currentDifficulty: Int? = null,
+    val currentOpeningReadStatus: LabyrinthCurrentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.NOT_READ,
+    val currentOpeningReadMessage: String? = null,
     val captcha: AccountCaptchaState? = null,
     val message: String? = null,
 )
@@ -85,6 +99,8 @@ private data class LabyrinthChromeState(
     val checkpointEnterId: Long? = null,
     val currentGuildId: Int? = null,
     val currentDifficulty: Int? = null,
+    val currentOpeningReadStatus: LabyrinthCurrentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.NOT_READ,
+    val currentOpeningReadMessage: String? = null,
     val captcha: AccountCaptchaState? = null,
     val message: String? = null,
 )
@@ -134,6 +150,21 @@ internal fun labyrinthCurrentOpeningCriteria(
         ?.takeIf { checkpoint -> checkpoint.enterId == currentEnterId }
         ?.attempt
         ?: 0,
+)
+
+/**
+ * Batch targets own the guild selection. Saved reroll settings still supply route quality,
+ * difficulty defaults and attempt limits, but their guild must never redirect a batch goal.
+ */
+internal fun labyrinthBatchRerollConfig(
+    base: LabyrinthRerollConfig,
+    batchGuildId: Int,
+    batchDifficulty: Int,
+): LabyrinthRerollConfig = base.copy(
+    guildId = batchGuildId,
+    difficulty = batchDifficulty,
+    retireExisting = true,
+    abandonExisting = true,
 )
 
 class LabyrinthController(
@@ -211,6 +242,8 @@ class LabyrinthController(
             checkpointEnterId = current.checkpointEnterId,
             currentGuildId = current.currentGuildId,
             currentDifficulty = current.currentDifficulty,
+            currentOpeningReadStatus = current.currentOpeningReadStatus,
+            currentOpeningReadMessage = current.currentOpeningReadMessage,
             captcha = current.captcha,
             message = current.message,
         )
@@ -339,7 +372,7 @@ class LabyrinthController(
         val base = parseConfig(account.id) ?: return failure(chrome.value.message ?: "刷开局配置无效")
         // The batch has already recorded the previous run (cleared or lost); whatever the server
         // still holds is that run and must be retired, never resumed as "a matching opening".
-        val config = base.copy(guildId = guildId, difficulty = difficulty, retireExisting = true, abandonExisting = true)
+        val config = labyrinthBatchRerollConfig(base, guildId, difficulty)
         chrome.update { it.copy(isWorking = true, message = null, progress = "批量：正在刷取 $guildId", routeBlockIds = emptyList()) }
         try {
             var sessionResets = 0
@@ -486,11 +519,43 @@ class LabyrinthController(
             return
         }
         if (account.id != settingsAccountId) return
-        chrome.update { it.copy(isWorking = true, message = null, progress = "读取黎明界状态") }
+        chrome.update {
+            it.copy(
+                isWorking = true,
+                message = null,
+                progress = "读取黎明界状态",
+                currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.READING,
+                currentOpeningReadMessage = "正在登录游戏服并读取当前黎明界状态",
+            )
+        }
         runningJob = scope.launch {
-            chrome.update { it.copy(isWorking = true, message = null, progress = "读取黎明界状态") }
+            chrome.update {
+                it.copy(
+                    isWorking = true,
+                    message = null,
+                    progress = "读取黎明界状态",
+                    currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.READING,
+                    currentOpeningReadMessage = "正在登录游戏服并读取当前黎明界状态",
+                )
+            }
             try {
-                var session = ensureGameSession(account, PendingLoginAction.CHECK_STATUS) ?: return@launch
+                var session = ensureGameSession(account, PendingLoginAction.CHECK_STATUS) ?: run {
+                    chrome.update { current ->
+                        if (current.captcha != null) {
+                            current.copy(
+                                currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.LOGIN_VERIFICATION_REQUIRED,
+                                currentOpeningReadMessage = "登录需要验证；完成验证码后会自动继续读取",
+                            )
+                        } else {
+                            val detail = current.message ?: "无法登录游戏服"
+                            current.copy(
+                                currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.FAILED,
+                                currentOpeningReadMessage = detail,
+                            )
+                        }
+                    }
+                    return@launch
+                }
                 var api = BilibiliLabyrinthApi(session)
                 val checkpointStore = RoomLabyrinthRerollCheckpointStore(database)
                 val savedCheckpoint = checkpointStore.load(account.id)
@@ -503,7 +568,23 @@ class LabyrinthController(
                     val detail = rejected.message
                     chrome.update { it.copy(progress = "游戏服会话已失效（$detail），重新登录后重读") }
                     sessionRegistry.delete(account.id)
-                    session = ensureGameSession(account, PendingLoginAction.CHECK_STATUS) ?: return@launch
+                    session = ensureGameSession(account, PendingLoginAction.CHECK_STATUS) ?: run {
+                        chrome.update { current ->
+                            if (current.captcha != null) {
+                                current.copy(
+                                    currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.LOGIN_VERIFICATION_REQUIRED,
+                                    currentOpeningReadMessage = "登录需要验证；完成验证码后会自动继续读取",
+                                )
+                            } else {
+                                val loginFailureDetail = current.message ?: "重新登录游戏服失败"
+                                current.copy(
+                                    currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.FAILED,
+                                    currentOpeningReadMessage = loginFailureDetail,
+                                )
+                            }
+                        }
+                        return@launch
+                    }
                     api = BilibiliLabyrinthApi(session)
                     topResult = api.top()
                 }
@@ -528,11 +609,18 @@ class LabyrinthController(
                             null
                         }
                         val routeBlockIds: List<Long>
+                        var openingReadStatus = LabyrinthCurrentOpeningReadStatus.NO_ACTIVE_OPENING
+                        var openingReadMessage = "读取完成：当前没有进行中的黎明界。自动执行将按批量目标先刷开局。"
                         val message = when (existingRoute) {
                             is ExistingLabyrinthRouteResult.Found -> {
                                 val value = existingRoute.value
                                 val guildId = value.guildId ?: top.guildId ?: targetGuildId
-                                val isTarget = guildId == targetGuildId && value.difficulty == targetDifficulty
+                                // The resolver has already proved that the route matches the saved
+                                // route policy. Guild ownership belongs to the batch goal, so a
+                                // different standalone-reroll guild must not make this route
+                                // unusable. Difficulty remains shared by both workflows.
+                                val isTarget = value.difficulty == targetDifficulty
+                                val matchesStandaloneGuild = guildId == targetGuildId
                                 val criteriaComparison =
                                     "当前公会ID $guildId / 难度 ${value.difficulty}；" +
                                         "所选目标公会ID $targetGuildId / 难度 $targetDifficulty"
@@ -557,8 +645,8 @@ class LabyrinthController(
                                         accountId = account.id,
                                         attempt = attempt,
                                         enterId = value.route.enterId,
-                                        guildId = targetGuildId,
-                                        difficulty = targetDifficulty,
+                                        guildId = guildId,
+                                        difficulty = value.difficulty,
                                         policy = routePolicy,
                                         verdict = if (isTarget) {
                                             LabyrinthRouteVerdict.TARGET
@@ -566,18 +654,36 @@ class LabyrinthController(
                                             LabyrinthRouteVerdict.NOT_TARGET
                                         },
                                         message = if (isTarget) {
-                                            "现有开局符合当前刷取条件"
+                                            if (matchesStandaloneGuild) {
+                                                "现有开局符合当前路线、难度和单独刷开局公会条件"
+                                            } else {
+                                                "现有开局符合路线和难度；批量执行将按批量目标公会决定是否接续"
+                                            }
                                         } else {
-                                            "现有开局的公会或难度与当前页面选项不一致：$criteriaComparison"
+                                            "现有开局难度与当前页面选项不一致：$criteriaComparison"
                                         },
                                         updatedAt = System.currentTimeMillis(),
                                     ),
                                 )
                                 routeBlockIds = if (isTarget) value.route.blockIds else emptyList()
+                                openingReadStatus = if (isTarget) {
+                                    LabyrinthCurrentOpeningReadStatus.TARGET
+                                } else {
+                                    LabyrinthCurrentOpeningReadStatus.NOT_TARGET
+                                }
+                                openingReadMessage = if (isTarget) {
+                                    if (matchesStandaloneGuild) {
+                                        "读取完成：当前开局符合路线、难度和单独刷开局公会设置。"
+                                    } else {
+                                        "读取完成：路线和难度符合要求；当前公会与单独刷开局设置不同，批量首个目标选择当前公会时仍会直接接续。"
+                                    }
+                                } else {
+                                    "读取完成：当前开局难度与刷开局设置不一致。"
+                                }
                                 if (isTarget) {
                                     "当前开局是目标路线，已保存可执行路线（Enter ID 尾号 ${value.route.enterId % 10_000}）"
                                 } else {
-                                    "当前开局可读取，但公会或难度不是当前目标（$criteriaComparison）"
+                                    "当前开局可读取，但难度不是当前目标（$criteriaComparison）"
                                 }
                             }
 
@@ -597,6 +703,8 @@ class LabyrinthController(
                                     ),
                                 )
                                 routeBlockIds = emptyList()
+                                openingReadStatus = LabyrinthCurrentOpeningReadStatus.NOT_TARGET
+                                openingReadMessage = "读取完成：当前开局不符合已保存的路线条件。"
                                 "当前开局不是目标路线"
                             }
 
@@ -616,12 +724,16 @@ class LabyrinthController(
                                     ),
                                 )
                                 routeBlockIds = emptyList()
+                                openingReadStatus = LabyrinthCurrentOpeningReadStatus.PENDING_VERIFICATION
+                                openingReadMessage = "已确认存在开局，但暂时无法完成路线验证：${existingRoute.message}"
                                 "已确认存在开局，但暂时无法读取路线；保持待联网验证：${existingRoute.message}"
                             }
 
                             null -> {
                                 checkpointStore.clear(account.id)
                                 routeBlockIds = emptyList()
+                                openingReadStatus = LabyrinthCurrentOpeningReadStatus.NO_ACTIVE_OPENING
+                                openingReadMessage = "读取完成：当前没有进行中的黎明界。自动执行将按批量目标先刷开局。"
                                 "黎明界状态正常，当前最高可挑战难度为 $maxUnlocked"
                             }
                         }
@@ -632,29 +744,57 @@ class LabyrinthController(
                                 currentGuildId = top.guildId.takeIf { top.enterId != null },
                                 currentDifficulty = top.difficulty.takeIf { top.enterId != null },
                                 routeBlockIds = routeBlockIds,
+                                currentOpeningReadStatus = openingReadStatus,
+                                currentOpeningReadMessage = openingReadMessage,
                                 message = message,
                             )
                         }
                     }
                     is LabyrinthOperationResult.Failure -> {
-                        checkpointStore.load(account.id)?.let { checkpoint ->
+                        val checkpoint = checkpointStore.load(account.id)
+                        checkpoint?.let {
                             checkpointStore.save(
-                                checkpoint.copy(
+                                it.copy(
                                     verdict = LabyrinthRouteVerdict.PENDING_VERIFICATION,
                                     message = result.message,
                                     updatedAt = System.currentTimeMillis(),
                                 ),
                             )
                         }
-                        chrome.update { it.copy(message = result.message) }
+                        chrome.update {
+                            it.copy(
+                                message = result.message,
+                                currentOpeningReadStatus = if (checkpoint == null) {
+                                    LabyrinthCurrentOpeningReadStatus.FAILED
+                                } else {
+                                    LabyrinthCurrentOpeningReadStatus.PENDING_VERIFICATION
+                                },
+                                currentOpeningReadMessage = result.message,
+                            )
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
-                chrome.update { it.copy(message = "状态检查已取消") }
+                chrome.update {
+                    it.copy(
+                        message = "状态检查已取消",
+                        currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.CANCELLED,
+                        currentOpeningReadMessage = "读取已取消",
+                    )
+                }
             } catch (failure: Throwable) {
-                chrome.update { it.copy(message = failure.message.orEmpty().ifBlank { "读取黎明界状态失败" }.take(200)) }
+                val detail = failure.message.orEmpty().ifBlank { "读取黎明界状态失败" }.take(200)
+                chrome.update {
+                    it.copy(
+                        message = detail,
+                        currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.FAILED,
+                        currentOpeningReadMessage = detail,
+                    )
+                }
             } finally {
-                withContext(NonCancellable) { runCatching { refreshCheckpoint(account.id) } }
+                withContext(NonCancellable) {
+                    runCatching { refreshCheckpoint(account.id, preserveExplicitReadOutcome = true) }
+                }
                 chrome.update { it.copy(isWorking = false, progress = null) }
                 runningJob = null
             }
@@ -664,6 +804,7 @@ class LabyrinthController(
     fun submitCaptcha(validate: String) {
         val captcha = chrome.value.captcha ?: return
         if (chrome.value.isWorking) return
+        val loginAction = pendingLoginAction
         chrome.update { it.copy(isWorking = true, message = null) }
         runningJob = scope.launch {
             chrome.update { it.copy(isWorking = true, message = null) }
@@ -693,20 +834,63 @@ class LabyrinthController(
                     is NativeLoginResult.Failure -> {
                         frozenStart = null
                         pendingLoginAction = null
-                        chrome.update { it.copy(isWorking = false, captcha = null, message = result.message) }
+                        chrome.update {
+                            it.copy(
+                                isWorking = false,
+                                captcha = null,
+                                message = result.message,
+                                currentOpeningReadStatus = if (loginAction == PendingLoginAction.CHECK_STATUS) {
+                                    LabyrinthCurrentOpeningReadStatus.FAILED
+                                } else {
+                                    it.currentOpeningReadStatus
+                                },
+                                currentOpeningReadMessage = if (loginAction == PendingLoginAction.CHECK_STATUS) {
+                                    result.message
+                                } else {
+                                    it.currentOpeningReadMessage
+                                },
+                            )
+                        }
                     }
                 }
             } catch (cancelled: CancellationException) {
-                chrome.update { it.copy(isWorking = false, captcha = null, message = "登录验证已取消") }
-                throw cancelled
-            } catch (failure: Throwable) {
-                frozenStart = null
-                pendingLoginAction = null
                 chrome.update {
                     it.copy(
                         isWorking = false,
                         captcha = null,
-                        message = failure.message.orEmpty().ifBlank { "登录验证失败" }.take(200),
+                        message = "登录验证已取消",
+                        currentOpeningReadStatus = if (loginAction == PendingLoginAction.CHECK_STATUS) {
+                            LabyrinthCurrentOpeningReadStatus.CANCELLED
+                        } else {
+                            it.currentOpeningReadStatus
+                        },
+                        currentOpeningReadMessage = if (loginAction == PendingLoginAction.CHECK_STATUS) {
+                            "登录验证已取消，尚未读取当前开局"
+                        } else {
+                            it.currentOpeningReadMessage
+                        },
+                    )
+                }
+                throw cancelled
+            } catch (failure: Throwable) {
+                frozenStart = null
+                pendingLoginAction = null
+                val detail = failure.message.orEmpty().ifBlank { "登录验证失败" }.take(200)
+                chrome.update {
+                    it.copy(
+                        isWorking = false,
+                        captcha = null,
+                        message = detail,
+                        currentOpeningReadStatus = if (loginAction == PendingLoginAction.CHECK_STATUS) {
+                            LabyrinthCurrentOpeningReadStatus.FAILED
+                        } else {
+                            it.currentOpeningReadStatus
+                        },
+                        currentOpeningReadMessage = if (loginAction == PendingLoginAction.CHECK_STATUS) {
+                            detail
+                        } else {
+                            it.currentOpeningReadMessage
+                        },
                     )
                 }
             } finally {
@@ -723,6 +907,7 @@ class LabyrinthController(
 
     fun cancelCaptcha() {
         val accountId = chrome.value.captcha?.accountId ?: return
+        val loginAction = pendingLoginAction
         frozenStart = null
         startRequested = false
         pendingLoginAction = null
@@ -730,7 +915,23 @@ class LabyrinthController(
             loginCoordinator.cancel(accountId)
             if (settingsAccountId == accountId) {
                 pendingLoginAction = null
-                chrome.update { it.copy(captcha = null, isWorking = false, message = "已取消本次登录验证") }
+                chrome.update {
+                    it.copy(
+                        captcha = null,
+                        isWorking = false,
+                        message = "已取消本次登录验证",
+                        currentOpeningReadStatus = if (loginAction == PendingLoginAction.CHECK_STATUS) {
+                            LabyrinthCurrentOpeningReadStatus.CANCELLED
+                        } else {
+                            it.currentOpeningReadStatus
+                        },
+                        currentOpeningReadMessage = if (loginAction == PendingLoginAction.CHECK_STATUS) {
+                            "登录验证已取消，尚未读取当前开局"
+                        } else {
+                            it.currentOpeningReadMessage
+                        },
+                    )
+                }
             }
         }
     }
@@ -772,6 +973,8 @@ class LabyrinthController(
                 currentGuildId = null,
                 currentDifficulty = null,
                 routeBlockIds = emptyList(),
+                currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.NOT_READ,
+                currentOpeningReadMessage = "设置已变化，请重新读取当前开局后再判断是否可接续",
                 message = "刷开局设置已保存；请重新登录并读取当前开局",
             )
         }
@@ -866,13 +1069,32 @@ class LabyrinthController(
         }
     }
 
-    private suspend fun refreshCheckpoint(accountId: Long) {
+    private suspend fun refreshCheckpoint(
+        accountId: Long,
+        preserveExplicitReadOutcome: Boolean = false,
+    ) {
         val checkpoint = RoomLabyrinthRerollCheckpointStore(database).load(accountId)
-        chrome.update {
-            it.copy(
+        chrome.update { current ->
+            val restoredStatus = if (preserveExplicitReadOutcome) {
+                current.currentOpeningReadStatus
+            } else {
+                when (checkpoint?.verdict) {
+                    LabyrinthRouteVerdict.TARGET -> LabyrinthCurrentOpeningReadStatus.TARGET
+                    LabyrinthRouteVerdict.NOT_TARGET -> LabyrinthCurrentOpeningReadStatus.NOT_TARGET
+                    LabyrinthRouteVerdict.PENDING_VERIFICATION -> LabyrinthCurrentOpeningReadStatus.PENDING_VERIFICATION
+                    null -> current.currentOpeningReadStatus
+                }
+            }
+            current.copy(
                 routeVerdict = checkpoint?.verdict,
                 verdictMessage = checkpoint?.message,
                 checkpointEnterId = checkpoint?.enterId,
+                currentOpeningReadStatus = restoredStatus,
+                currentOpeningReadMessage = if (preserveExplicitReadOutcome) {
+                    current.currentOpeningReadMessage
+                } else {
+                    checkpoint?.message ?: current.currentOpeningReadMessage
+                },
             )
         }
     }

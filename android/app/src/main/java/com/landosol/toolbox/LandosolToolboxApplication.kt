@@ -486,6 +486,7 @@ class LandosolToolboxApplication : Application() {
         if (goals.isEmpty()) return false
         val ui = labyrinthController.uiState.value
         val reusableOpening = if (
+            ui.currentOpeningReadStatus == com.landosol.toolbox.labyrinth.LabyrinthCurrentOpeningReadStatus.TARGET &&
             ui.routeVerdict == com.landosol.toolbox.labyrinth.LabyrinthRouteVerdict.TARGET &&
             ui.checkpointEnterId != null &&
             ui.currentGuildId != null &&

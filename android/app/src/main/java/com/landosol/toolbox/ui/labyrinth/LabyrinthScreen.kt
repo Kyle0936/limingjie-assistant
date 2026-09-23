@@ -58,6 +58,7 @@ import com.landosol.toolbox.labyrinth.LabyrinthGuildOption
 import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchHaltReason
 import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage
 import com.landosol.toolbox.labyrinth.LabyrinthBossOption
+import com.landosol.toolbox.labyrinth.LabyrinthCurrentOpeningReadStatus
 import com.landosol.toolbox.labyrinth.LabyrinthEntryRecognitionSessionState
 import com.landosol.toolbox.labyrinth.LabyrinthRerollOptions
 import com.landosol.toolbox.labyrinth.LabyrinthRouteEvaluationMode
@@ -289,7 +290,12 @@ private fun RerollSettingsDialog(
             Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("保存后下次自动恢复；运行中使用开始时的固定配置。")
-                Text("目标公会", style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "公会设置只用于读取当前开局和“单独刷开局”。批量自动执行始终以步骤 2 中填写的目标公会为准，并在每轮运行时覆盖此处公会；不会改写已保存设置。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text("读取 / 单独刷开局的目标公会", style = MaterialTheme.typography.labelLarge)
                 ChoiceRow {
                     state.guildOptions.take(5).forEach { guild ->
                         FilterChip(
@@ -463,17 +469,21 @@ private fun CurrentOpeningStep(
     onStop: () -> Unit,
 ) {
     val verdict = state.routeVerdict
+    val readStatus = state.currentOpeningReadStatus
     val accountLabel = state.selectedAccount?.let { account ->
         "${account.alias}${account.gameUid?.let { " · UID $it" }.orEmpty()}"
     } ?: "尚未选择账号"
     val status = when {
-        state.isWorking -> "正在登录并读取当前开局"
         state.selectedAccount == null -> "请先到账号库选择账号"
-        verdict == LabyrinthRouteVerdict.TARGET -> "当前开局符合条件，自动执行首轮将直接接续"
-        verdict == LabyrinthRouteVerdict.NOT_TARGET -> "当前开局不符合条件，自动执行将先刷开局"
-        verdict == LabyrinthRouteVerdict.PENDING_VERIFICATION -> "读取未完成，需要重新验证"
-        state.selectedAccount.gameUid != null -> "账号已登录，尚未读取当前开局"
-        else -> "尚未完成助手侧登录和开局读取"
+        readStatus == LabyrinthCurrentOpeningReadStatus.NOT_READ -> "尚未读取当前开局"
+        readStatus == LabyrinthCurrentOpeningReadStatus.READING -> "正在登录并读取当前开局"
+        readStatus == LabyrinthCurrentOpeningReadStatus.LOGIN_VERIFICATION_REQUIRED -> "登录需要验证"
+        readStatus == LabyrinthCurrentOpeningReadStatus.NO_ACTIVE_OPENING -> "读取完成：当前没有进行中的黎明界"
+        readStatus == LabyrinthCurrentOpeningReadStatus.TARGET -> "当前路线和难度符合要求；匹配首个批量目标公会时将直接接续"
+        readStatus == LabyrinthCurrentOpeningReadStatus.NOT_TARGET -> "当前开局不符合刷开局设置；批量执行仍按批量目标判断"
+        readStatus == LabyrinthCurrentOpeningReadStatus.PENDING_VERIFICATION -> "读取未完成，需要重新验证"
+        readStatus == LabyrinthCurrentOpeningReadStatus.FAILED -> "读取失败"
+        else -> "读取已取消"
     }
     WorkflowStepHeader(
         number = "1",
@@ -484,15 +494,41 @@ private fun CurrentOpeningStep(
     Text(
         status,
         style = MaterialTheme.typography.bodyMedium,
-        color = if (verdict == LabyrinthRouteVerdict.TARGET) {
+        color = if (readStatus == LabyrinthCurrentOpeningReadStatus.TARGET) {
             MaterialTheme.colorScheme.primary
+        } else if (readStatus == LabyrinthCurrentOpeningReadStatus.FAILED) {
+            MaterialTheme.colorScheme.error
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         },
     )
+    state.currentOpeningReadMessage?.let { detail ->
+        Text(
+            detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (readStatus == LabyrinthCurrentOpeningReadStatus.FAILED) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
+    }
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Button(onClick = onCheckStatus, enabled = !state.isWorking) {
-            Text(if (verdict == LabyrinthRouteVerdict.PENDING_VERIFICATION) "重新验证" else "登录并读取")
+            Text(
+                if (readStatus in setOf(
+                        LabyrinthCurrentOpeningReadStatus.PENDING_VERIFICATION,
+                        LabyrinthCurrentOpeningReadStatus.FAILED,
+                        LabyrinthCurrentOpeningReadStatus.CANCELLED,
+                    )
+                ) {
+                    "重新验证"
+                } else if (readStatus == LabyrinthCurrentOpeningReadStatus.NOT_READ) {
+                    "登录并读取"
+                } else {
+                    "重新读取"
+                },
+            )
         }
         if (state.isWorking) Button(onClick = onStop) { Text("停止") }
     }
@@ -685,6 +721,11 @@ private fun BatchRunCard(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Text(
+            "批量目标公会优先于“刷开局设置”中的公会：执行时按下方列表逐项覆盖，但不会改写已保存设置。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
         // Per-guild target text and mode; the guild list itself is fixed (top five).
         val counts = remember(guildOptions) {
             mutableStateOf(guildOptions.associate { it.guildId to "" })
@@ -777,7 +818,8 @@ private fun BatchRunCard(
                 }
             }
             val firstGoal = goals.firstOrNull()
-            val reusesCurrentOpening = state.routeVerdict == LabyrinthRouteVerdict.TARGET &&
+            val reusesCurrentOpening = state.currentOpeningReadStatus == LabyrinthCurrentOpeningReadStatus.TARGET &&
+                state.routeVerdict == LabyrinthRouteVerdict.TARGET &&
                 state.checkpointEnterId != null &&
                 state.currentGuildId == firstGoal?.guildId &&
                 state.currentDifficulty == selectedDifficulty
@@ -786,7 +828,7 @@ private fun BatchRunCard(
                     if (reusesCurrentOpening) {
                         "首轮将接续步骤 1 已确认的当前开局，不会再次刷开局。"
                     } else {
-                        "首轮没有匹配的已确认开局，将按刷开局设置准备路线。"
+                        "首轮没有匹配的已确认开局，将按首个批量目标公会及已保存的难度、路线要求准备开局。"
                     },
                     style = MaterialTheme.typography.bodySmall,
                     color = if (reusesCurrentOpening) MaterialTheme.colorScheme.primary
