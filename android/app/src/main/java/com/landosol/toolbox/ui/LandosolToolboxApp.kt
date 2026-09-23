@@ -286,6 +286,7 @@ private fun LabyrinthRoute(
 ) {
     val scope = rememberCoroutineScope()
     var notificationAccount by remember { mutableStateOf<Long?>(null) }
+    var notificationGuildId by remember { mutableStateOf<Int?>(null) }
     var showStrategies by rememberSaveable { mutableStateOf(false) }
     var strategySaving by remember { mutableStateOf(false) }
     var strategyMessage by remember { mutableStateOf<String?>(null) }
@@ -319,11 +320,12 @@ private fun LabyrinthRoute(
     }
     val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted && notificationAccount == labyrinthViewModel.uiState.value.selectedAccount?.id) {
-            labyrinthViewModel.start(retreatConfirmed = true)
+            labyrinthViewModel.start(retreatConfirmed = true, guildIdOverride = notificationGuildId)
         } else {
             labyrinthViewModel.reportMessage("未启动刷取：请允许通知权限并确认当前账号后重试")
         }
         notificationAccount = null
+        notificationGuildId = null
     }
     LabyrinthScreen(
         onOpenStrategies = { showStrategies = true; strategyMessage = null },
@@ -334,15 +336,16 @@ private fun LabyrinthRoute(
         onBack = null,
         onCheckStatus = labyrinthViewModel::checkStatus,
         onSaveSettings = labyrinthViewModel::saveSettings,
-        onStart = {
+        onStart = { guildId ->
             if (android.os.Build.VERSION.SDK_INT >= 33 &&
                 androidx.core.content.ContextCompat.checkSelfPermission(application, Manifest.permission.POST_NOTIFICATIONS) !=
                 android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 notificationAccount = state.selectedAccount?.id
+                notificationGuildId = guildId
                 notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
             } else if (!androidx.core.app.NotificationManagerCompat.from(application).areNotificationsEnabled()) {
                 labyrinthViewModel.reportMessage("通知被关闭，请在系统设置中允许通知后再开始后台刷取")
-            } else labyrinthViewModel.start(retreatConfirmed = true)
+            } else labyrinthViewModel.start(retreatConfirmed = true, guildIdOverride = guildId)
         },
         onStop = labyrinthViewModel::stop,
         onDismissMessage = labyrinthViewModel::dismissMessage,

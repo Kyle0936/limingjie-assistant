@@ -80,7 +80,7 @@ fun LabyrinthScreen(
     onBack: (() -> Unit)? = null,
     onSaveSettings: (LabyrinthRerollSettings) -> Unit,
     onCheckStatus: () -> Unit,
-    onStart: () -> Unit,
+    onStart: (Int) -> Unit,
     onStop: () -> Unit,
     onDismissMessage: () -> Unit,
     onStartEntryRecognition: () -> Unit,
@@ -97,12 +97,21 @@ fun LabyrinthScreen(
     var confirmRetreat by remember(state.selectedAccount?.id) { mutableStateOf(false) }
     var showRerollSettings by remember(state.selectedAccount?.id) { mutableStateOf(false) }
     var showAdvancedTools by rememberSaveable { mutableStateOf(false) }
-    val requestStart: () -> Unit = { if (state.retireExisting) confirmRetreat = true else onStart() }
+    var standaloneGuildId by rememberSaveable(state.selectedAccount?.id) {
+        mutableStateOf(LabyrinthRerollOptions.DEFAULT_GUILD_ID)
+    }
+    val requestStart: () -> Unit = {
+        if (state.retireExisting) confirmRetreat = true else onStart(standaloneGuildId)
+    }
     if (confirmRetreat) {
         AlertDialog(onDismissRequest = { confirmRetreat = false },
             title = { Text("允许彻底撤退当前开局？") },
             text = { Text("本次刷取可能放弃当前开局的进度和未领取奖励。只撤退已确认不符合目标的开局；状态不明确时会停止。") },
-            confirmButton = { TextButton(onClick = { confirmRetreat = false; onStart() }) { Text("确认并开始") } },
+            confirmButton = {
+                TextButton(onClick = { confirmRetreat = false; onStart(standaloneGuildId) }) {
+                    Text("确认并开始")
+                }
+            },
             dismissButton = { TextButton(onClick = { confirmRetreat = false }) { Text("取消") } })
     }
     val scrollState = rememberScrollState()
@@ -173,6 +182,8 @@ fun LabyrinthScreen(
             HorizontalDivider()
             AuxiliaryToolsSection(
                 state = state,
+                standaloneGuildId = standaloneGuildId,
+                onStandaloneGuildSelected = { standaloneGuildId = it },
                 onStartReroll = requestStart,
                 onStopReroll = onStop,
                 onTakeOverCurrentRun = onTakeOverCurrentRun,
@@ -291,20 +302,10 @@ private fun RerollSettingsDialog(
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("保存后下次自动恢复；运行中使用开始时的固定配置。")
                 Text(
-                    "公会设置只用于读取当前开局和“单独刷开局”。批量自动执行始终以步骤 2 中填写的目标公会为准，并在每轮运行时覆盖此处公会；不会改写已保存设置。",
+                    "这里保存难度、路线、Boss、尝试次数和撤退规则。公会不属于全局设置：批量公会在步骤 2 选择，单独刷开局的公会在辅助工具中按次选择。",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
                 )
-                Text("读取 / 单独刷开局的目标公会", style = MaterialTheme.typography.labelLarge)
-                ChoiceRow {
-                    state.guildOptions.take(5).forEach { guild ->
-                        FilterChip(
-                            selected = draft.guildId == guild.guildId,
-                            onClick = { draft = draft.copy(guildId = guild.guildId) },
-                            label = { Text(guild.name) },
-                        )
-                    }
-                }
                 TextButton(onClick = { draft = LabyrinthRerollSettings(guildId = state.selectedGuildId,
                     difficulty = LabyrinthRerollOptions.DEFAULT_DIFFICULTY.coerceAtMost(state.availableDifficulties.last()));
                     error = null }) { Text("恢复默认（保存后生效）") }
@@ -480,7 +481,7 @@ private fun CurrentOpeningStep(
         readStatus == LabyrinthCurrentOpeningReadStatus.LOGIN_VERIFICATION_REQUIRED -> "登录需要验证"
         readStatus == LabyrinthCurrentOpeningReadStatus.NO_ACTIVE_OPENING -> "读取完成：当前没有进行中的黎明界"
         readStatus == LabyrinthCurrentOpeningReadStatus.TARGET -> "当前路线和难度符合要求；匹配首个批量目标公会时将直接接续"
-        readStatus == LabyrinthCurrentOpeningReadStatus.NOT_TARGET -> "当前开局不符合刷开局设置；批量执行仍按批量目标判断"
+        readStatus == LabyrinthCurrentOpeningReadStatus.NOT_TARGET -> "当前开局不符合已保存的路线或难度条件"
         readStatus == LabyrinthCurrentOpeningReadStatus.PENDING_VERIFICATION -> "读取未完成，需要重新验证"
         readStatus == LabyrinthCurrentOpeningReadStatus.FAILED -> "读取失败"
         else -> "读取已取消"
@@ -558,6 +559,8 @@ private fun CurrentOpeningStep(
 @Composable
 private fun AuxiliaryToolsSection(
     state: LabyrinthUiState,
+    standaloneGuildId: Int,
+    onStandaloneGuildSelected: (Int) -> Unit,
     onStartReroll: () -> Unit,
     onStopReroll: () -> Unit,
     onTakeOverCurrentRun: () -> Unit,
@@ -579,6 +582,22 @@ private fun AuxiliaryToolsSection(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        Text("单独刷开局 · 本次公会", style = MaterialTheme.typography.labelLarge)
+        ChoiceRow {
+            state.guildOptions.take(5).forEach { guild ->
+                FilterChip(
+                    selected = standaloneGuildId == guild.guildId,
+                    onClick = { onStandaloneGuildSelected(guild.guildId) },
+                    label = { Text(guild.name) },
+                    enabled = !state.isWorking,
+                )
+            }
+        }
+        Text(
+            "只作用于这一次单独刷取，不保存到账号设置，也不会影响读取当前开局或批量目标。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -587,7 +606,7 @@ private fun AuxiliaryToolsSection(
             Column(modifier = Modifier.weight(1f)) {
                 Text("单独刷开局", style = MaterialTheme.typography.titleSmall)
                 Text(
-                    "按右上角刷开局设置准备一条目标路线。",
+                    "使用上方本次公会和右上角保存的路线条件准备开局。",
                     style = MaterialTheme.typography.bodySmall,
                 )
             }
@@ -722,7 +741,7 @@ private fun BatchRunCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            "批量目标公会优先于“刷开局设置”中的公会：执行时按下方列表逐项覆盖，但不会改写已保存设置。",
+            "下方批量目标是批量运行的唯一公会来源；当前开局也只和首个批量目标公会比较，与单独刷开局的临时选择无关。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
         )

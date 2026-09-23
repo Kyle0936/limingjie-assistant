@@ -92,6 +92,22 @@ class LabyrinthRerollSettingsTest {
     }
 
     @Test
+    fun `standalone guild is a one launch override and does not mutate saved settings`() {
+        val saved = LabyrinthRerollSettings(
+            guildId = 1,
+            difficulty = 4,
+            valueAllowance = 2,
+        ).toConfig(accountId = 99)
+
+        val effective = labyrinthStandaloneRerollConfig(saved, launchGuildId = 5)
+
+        assertEquals(5, effective.guildId)
+        assertEquals(saved.difficulty, effective.difficulty)
+        assertEquals(saved.routePolicy, effective.routePolicy)
+        assertEquals(1, saved.guildId)
+    }
+
+    @Test
     fun `notification reports progress elapsed captcha and completion without credentials`() {
         val running = LabyrinthUiState(isWorking = true, progress = "28/不限 · 检查路线", startedAtMillis = 1000)
         val text = labyrinthRerollStatusText(running, 62000)

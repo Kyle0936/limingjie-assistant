@@ -118,7 +118,6 @@ private enum class PendingLoginAction {
  * Only its attempt counter is safe to retain when it belongs to the same server run.
  */
 internal data class LabyrinthCurrentOpeningCriteria(
-    val guildId: Int,
     val difficulty: Int,
     val routePolicy: LabyrinthRoutePolicy,
     val attempt: Int,
@@ -137,13 +136,11 @@ internal fun labyrinthReadRetriesWithFreshLogin(
 ): Boolean = kind == LabyrinthFailureKind.REJECTED && sessionResets < maxSessionResets
 
 internal fun labyrinthCurrentOpeningCriteria(
-    selectedGuildId: Int,
     selectedDifficulty: Int,
     selectedRoutePolicy: LabyrinthRoutePolicy,
     savedCheckpoint: LabyrinthRerollCheckpoint?,
     currentEnterId: Long?,
 ): LabyrinthCurrentOpeningCriteria = LabyrinthCurrentOpeningCriteria(
-    guildId = selectedGuildId,
     difficulty = selectedDifficulty,
     routePolicy = selectedRoutePolicy,
     attempt = savedCheckpoint
@@ -166,6 +163,15 @@ internal fun labyrinthBatchRerollConfig(
     retireExisting = true,
     abandonExisting = true,
 )
+
+/**
+ * The guild chosen beside "单独刷开局" belongs only to that launch. It deliberately replaces
+ * the legacy persisted guild in the frozen config without writing the choice back to settings.
+ */
+internal fun labyrinthStandaloneRerollConfig(
+    base: LabyrinthRerollConfig,
+    launchGuildId: Int,
+): LabyrinthRerollConfig = base.copy(guildId = launchGuildId)
 
 class LabyrinthController(
     private val accountRepository: AccountRepository,
@@ -290,7 +296,7 @@ class LabyrinthController(
         updateConfig { copy(retireExisting = value) }
     }
 
-    fun start(retreatConfirmed: Boolean = false) {
+    fun start(retreatConfirmed: Boolean = false, guildIdOverride: Int? = null) {
         if (chrome.value.isWorking || chrome.value.captcha != null || !chrome.value.settingsReady) return
         val account = uiState.value.selectedAccount
         if (account == null) {
@@ -298,7 +304,13 @@ class LabyrinthController(
             return
         }
         if (account.id != settingsAccountId) return
-        val config = parseConfig(account.id) ?: return
+        val baseConfig = parseConfig(account.id) ?: return
+        val launchGuildId = guildIdOverride ?: baseConfig.guildId
+        if (LabyrinthRerollOptions.guilds.none { it.guildId == launchGuildId }) {
+            reportMessage("请选择本次单独刷开局的公会")
+            return
+        }
+        val config = labyrinthStandaloneRerollConfig(baseConfig, launchGuildId)
         if (config.retireExisting && !retreatConfirmed) {
             reportMessage("开始前请确认允许彻底撤退现有开局")
             return
@@ -593,14 +605,12 @@ class LabyrinthController(
                         val top = result.value
                         val maxUnlocked = LabyrinthRerollOptions.maxUnlockedDifficulty(top.clearedDifficulties)
                         val criteria = labyrinthCurrentOpeningCriteria(
-                            selectedGuildId = chrome.value.selectedGuildId,
                             selectedDifficulty = chrome.value.selectedDifficulty,
                             selectedRoutePolicy = currentRoutePolicy(),
                             savedCheckpoint = savedCheckpoint,
                             currentEnterId = top.enterId,
                         )
                         val routePolicy = criteria.routePolicy
-                        val targetGuildId = criteria.guildId
                         val targetDifficulty = criteria.difficulty
                         val attempt = criteria.attempt
                         val existingRoute = if (top.enterId != null) {
@@ -609,21 +619,22 @@ class LabyrinthController(
                             null
                         }
                         val routeBlockIds: List<Long>
+                        var observedCurrentGuildId = top.guildId
                         var openingReadStatus = LabyrinthCurrentOpeningReadStatus.NO_ACTIVE_OPENING
                         var openingReadMessage = "读取完成：当前没有进行中的黎明界。自动执行将按批量目标先刷开局。"
                         val message = when (existingRoute) {
                             is ExistingLabyrinthRouteResult.Found -> {
                                 val value = existingRoute.value
-                                val guildId = value.guildId ?: top.guildId ?: targetGuildId
+                                observedCurrentGuildId = value.guildId ?: top.guildId
+                                val guildId = observedCurrentGuildId ?: LabyrinthRerollOptions.DEFAULT_GUILD_ID
                                 // The resolver has already proved that the route matches the saved
                                 // route policy. Guild ownership belongs to the batch goal, so a
-                                // different standalone-reroll guild must not make this route
-                                // unusable. Difficulty remains shared by both workflows.
+                                // a one-time standalone-reroll guild must not make this route
+                                // unusable. Batch reuse compares this actual guild with its first
+                                // goal later, after the user has supplied the batch targets.
                                 val isTarget = value.difficulty == targetDifficulty
-                                val matchesStandaloneGuild = guildId == targetGuildId
                                 val criteriaComparison =
-                                    "当前公会ID $guildId / 难度 ${value.difficulty}；" +
-                                        "所选目标公会ID $targetGuildId / 难度 $targetDifficulty"
+                                    "当前难度 ${value.difficulty}；已保存目标难度 $targetDifficulty"
                                 if (isTarget) {
                                     RoomLabyrinthRouteStore(database).save(
                                         config = LabyrinthRerollConfig(
@@ -654,11 +665,7 @@ class LabyrinthController(
                                             LabyrinthRouteVerdict.NOT_TARGET
                                         },
                                         message = if (isTarget) {
-                                            if (matchesStandaloneGuild) {
-                                                "现有开局符合当前路线、难度和单独刷开局公会条件"
-                                            } else {
-                                                "现有开局符合路线和难度；批量执行将按批量目标公会决定是否接续"
-                                            }
+                                            "现有开局符合路线和难度；批量执行将按首个批量目标公会决定是否接续"
                                         } else {
                                             "现有开局难度与当前页面选项不一致：$criteriaComparison"
                                         },
@@ -672,11 +679,7 @@ class LabyrinthController(
                                     LabyrinthCurrentOpeningReadStatus.NOT_TARGET
                                 }
                                 openingReadMessage = if (isTarget) {
-                                    if (matchesStandaloneGuild) {
-                                        "读取完成：当前开局符合路线、难度和单独刷开局公会设置。"
-                                    } else {
-                                        "读取完成：路线和难度符合要求；当前公会与单独刷开局设置不同，批量首个目标选择当前公会时仍会直接接续。"
-                                    }
+                                    "读取完成：路线和难度符合要求；仅当实际公会与首个批量目标公会一致时才会直接接续。"
                                 } else {
                                     "读取完成：当前开局难度与刷开局设置不一致。"
                                 }
@@ -694,8 +697,8 @@ class LabyrinthController(
                                         accountId = account.id,
                                         attempt = attempt,
                                         enterId = enterId,
-                                        guildId = targetGuildId,
-                                        difficulty = targetDifficulty,
+                                        guildId = top.guildId ?: LabyrinthRerollOptions.DEFAULT_GUILD_ID,
+                                        difficulty = top.difficulty ?: targetDifficulty,
                                         policy = routePolicy,
                                         verdict = LabyrinthRouteVerdict.NOT_TARGET,
                                         message = "现有开局不符合当前页面选择的路线条件",
@@ -715,8 +718,8 @@ class LabyrinthController(
                                         accountId = account.id,
                                         attempt = attempt,
                                         enterId = enterId,
-                                        guildId = targetGuildId,
-                                        difficulty = targetDifficulty,
+                                        guildId = top.guildId ?: LabyrinthRerollOptions.DEFAULT_GUILD_ID,
+                                        difficulty = top.difficulty ?: targetDifficulty,
                                         policy = routePolicy,
                                         verdict = LabyrinthRouteVerdict.PENDING_VERIFICATION,
                                         message = existingRoute.message,
@@ -741,7 +744,7 @@ class LabyrinthController(
                             it.copy(
                                 maxUnlockedDifficulty = maxUnlocked,
                                 selectedDifficulty = it.selectedDifficulty.coerceAtMost(maxUnlocked),
-                                currentGuildId = top.guildId.takeIf { top.enterId != null },
+                                currentGuildId = observedCurrentGuildId.takeIf { top.enterId != null },
                                 currentDifficulty = top.difficulty.takeIf { top.enterId != null },
                                 routeBlockIds = routeBlockIds,
                                 currentOpeningReadStatus = openingReadStatus,
@@ -963,7 +966,7 @@ class LabyrinthController(
         }
         settingsStore.save(accountId, settings)
         applySettings(settings)
-        // A prior TARGET verdict was evaluated against the old guild/difficulty/route policy.
+        // A prior TARGET verdict was evaluated against the old difficulty/route policy.
         // Require an explicit fresh read before the batch may reuse the current opening.
         chrome.update {
             it.copy(
