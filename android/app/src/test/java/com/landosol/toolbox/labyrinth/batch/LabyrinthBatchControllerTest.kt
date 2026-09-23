@@ -298,4 +298,56 @@ class LabyrinthBatchControllerTest {
         assertTrue(ports.log.isEmpty())
         assertNull(batch.haltReason.value)
     }
+
+    @Test
+    fun `verified matching opening skips first reroll and invalidation`() = runTest {
+        val ports = FakePorts()
+        val batch = controller(ports)
+
+        assertTrue(
+            batch.start(
+                batchId = "b1",
+                accountId = 7L,
+                goals = listOf(goal(guild = 2, count = 2)),
+                difficulty = 5,
+                reusableOpening = LabyrinthBatchReusableOpening(
+                    enterId = 9876L,
+                    guildId = 2,
+                    difficulty = 5,
+                ),
+            ),
+        )
+
+        assertEquals(listOf("start:b1-run001"), ports.log)
+        assertEquals(9876L, batch.state.value?.currentEnterId)
+        assertTrue(batch.state.value?.reusedVerifiedOpeningForFirstRun == true)
+
+        batch.onRunTerminal(LabyrinthRunTerminalEvent.Cleared(currentRunId(batch)))
+
+        assertEquals(
+            listOf("start:b1-run001", "reroll:2", "invalidate", "start:b1-run002"),
+            ports.log,
+        )
+    }
+
+    @Test
+    fun `verified opening with different first goal uses normal reroll`() = runTest {
+        val ports = FakePorts()
+        val batch = controller(ports)
+
+        batch.start(
+            batchId = "b1",
+            accountId = 7L,
+            goals = listOf(goal(guild = 3, count = 1)),
+            difficulty = 5,
+            reusableOpening = LabyrinthBatchReusableOpening(
+                enterId = 9876L,
+                guildId = 2,
+                difficulty = 5,
+            ),
+        )
+
+        assertEquals(listOf("reroll:3", "invalidate", "start:b1-run001"), ports.log)
+        assertFalse(batch.state.value?.reusedVerifiedOpeningForFirstRun == true)
+    }
 }

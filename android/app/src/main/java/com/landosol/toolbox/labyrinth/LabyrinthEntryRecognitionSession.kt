@@ -663,6 +663,23 @@ internal fun labyrinthNodeEntryMatchesExpectedType(
     else -> false
 }
 
+/** Only a stable, actionable destination may override stale route node metadata. */
+internal fun labyrinthObservedDestinationType(state: LabyrinthEntryPageState): Int? = when (state) {
+    LabyrinthEntryPageState.SHOP,
+    LabyrinthEntryPageState.SHOP_PURCHASE_CONFIRMATION,
+    LabyrinthEntryPageState.SHOP_PURCHASE_COMPLETE,
+    LabyrinthEntryPageState.SHOP_EXIT_CONFIRMATION -> LabyrinthNodeTypes.SHOP
+    LabyrinthEntryPageState.EVENT_CHOICE,
+    LabyrinthEntryPageState.EVENT_ANIMATION -> LabyrinthNodeTypes.EVENT
+    LabyrinthEntryPageState.LINK_CHOICE -> LabyrinthNodeTypes.LINK
+    LabyrinthEntryPageState.RELIC_CHOICE -> LabyrinthNodeTypes.RELIC
+    LabyrinthEntryPageState.BATTLE_CHALLENGE,
+    LabyrinthEntryPageState.BATTLE_TEAM_SELECTION,
+    LabyrinthEntryPageState.BATTLE_IN_PROGRESS -> LabyrinthNodeTypes.NORMAL_BATTLE
+    // Generic reward/transition screens do not identify the node that produced them.
+    else -> null
+}
+
 /** Coarse signature used to detect that a map swipe produced no viewport movement. */
 internal fun labyrinthNodeViewportSignature(classifications: List<NodeClassification>): String =
     classifications
@@ -1317,6 +1334,7 @@ class LabyrinthEntryRecognitionSession(
     private var lastNodeMoveConfirmationRect: EntryPixelRect? = null
     @Volatile
     private var nodeEntryMismatchFrames = 0
+    private var nodeEntryMismatchPage: LabyrinthEntryPageState? = null
     @Volatile
     private var orphanMoveConfirmationStableFrames = 0
     @Volatile
@@ -1441,6 +1459,9 @@ class LabyrinthEntryRecognitionSession(
     private var activeNodeType: Int? = null
     @Volatile
     private var activeNodeArea: Int? = null
+    private var takeoverCurrentRunPending = false
+    private var takeoverPage: LabyrinthEntryPageState? = null
+    private var takeoverStableFrames = 0
     @Volatile
     private var eventActionAttempts = 0
     @Volatile
@@ -1455,6 +1476,7 @@ class LabyrinthEntryRecognitionSession(
     suspend fun start(
         dryRun: Boolean = true,
         accountId: Long? = null,
+        takeoverCurrentRun: Boolean = false,
     ): LabyrinthEntryRecognitionStartResult = mutex.withLock {
         activeSessionId?.let { return LabyrinthEntryRecognitionStartResult.AlreadyRunning(it) }
         if (!dryRun && (actionExecutor == null || !actionsAvailable())) {
@@ -1572,6 +1594,9 @@ class LabyrinthEntryRecognitionSession(
         lease = (registration as CaptureFrameRegistrationResult.Registered).lease
         activeSessionId = session.id
         activeRunAccountId = accountId
+        takeoverCurrentRunPending = !dryRun && takeoverCurrentRun
+        takeoverPage = null
+        takeoverStableFrames = 0
         shopImprintRewardConfirmedAt = Long.MIN_VALUE
         confirmedNodeEntryReceipt = null
         validatedRoute = executionRoute
@@ -1625,7 +1650,8 @@ class LabyrinthEntryRecognitionSession(
             } else {
                 listOfNotNull(
                     executionGateMessage,
-                    "半自动流程已启动，等待游戏切到前台",
+                    if (takeoverCurrentRun) "等待切回已打开的黎明界挑战；识别稳定后接管，不重启游戏或刷开局"
+                    else "半自动流程已启动，等待游戏切到前台",
                 ).joinToString("；")
             },
         )
@@ -1655,7 +1681,7 @@ class LabyrinthEntryRecognitionSession(
             return LabyrinthEntryRecognitionStartResult.Blocked(reason)
         }
         armFirstFrameWatchdog(session.id)
-        if (!dryRun && !gameLauncher()) {
+        if (!dryRun && !takeoverCurrentRun && !gameLauncher()) {
             firstFrameWatchdog?.cancel()
             firstFrameWatchdog = null
             lease?.let(CaptureFrameBus::unregister)
@@ -1680,8 +1706,9 @@ class LabyrinthEntryRecognitionSession(
     suspend fun startAutomation(
         accountId: Long? = null,
         runId: String? = null,
+        takeoverCurrentRun: Boolean = false,
     ): LabyrinthEntryRecognitionStartResult {
-        val result = start(dryRun = false, accountId = accountId)
+        val result = start(dryRun = false, accountId = accountId, takeoverCurrentRun = takeoverCurrentRun)
         if (result is LabyrinthEntryRecognitionStartResult.Started) {
             currentRunId = runId
             pendingTerminalOutcome = null
@@ -1957,6 +1984,34 @@ class LabyrinthEntryRecognitionSession(
             return
         }
         val pageState = result.observation.state
+        if (takeoverCurrentRunPending) {
+            // The user starts this mode in the assistant, then switches to the already-open
+            // game. Never run the ordinary title/home/UNKNOWN click loop against that interval.
+            // A saved route was validated at start(); two consecutive route-owned frames are
+            // required before the existing route executor may touch the current challenge.
+            val routePage = shouldHandOffToRouteExecution(pageState) ||
+                (pageState == LabyrinthEntryPageState.INITIAL_CHARACTER_SELECTION &&
+                    labyrinthIsRoleRewardPage(result)) ||
+                pageState == LabyrinthEntryPageState.CHARACTER_JOINED
+            if (!routePage) {
+                takeoverPage = null
+                takeoverStableFrames = 0
+                _state.value = _state.value.copy(message =
+                    "接管等待中：请切到已打开的黎明界挑战页面（当前 ${pageState.name}）")
+                return
+            }
+            takeoverStableFrames = if (takeoverPage == pageState) takeoverStableFrames + 1 else 1
+            takeoverPage = pageState
+            if (takeoverStableFrames < 2) {
+                _state.value = _state.value.copy(message = "接管前正在确认 ${pageState.name} 页面")
+                return
+            }
+            takeoverCurrentRunPending = false
+            entryPhaseComplete = true
+            existingRunResumeHandoffArmed = true
+            nodeLog("manual-current-run-takeover page=${pageState.name}")
+            _state.value = _state.value.copy(message = "已接管当前挑战：${pageState.name}；继续已保存路线")
+        }
         if (skipRoleRewardJoinedRecognition &&
             !labyrinthKeepsRoleRewardBatchOnPage(pageState, labyrinthIsRoleRewardPage(result))
         ) skipRoleRewardJoinedRecognition = false
@@ -2458,6 +2513,7 @@ class LabyrinthEntryRecognitionSession(
         pendingNodeTransition = null
         nodeTapAttempts = 0
         nodeEntryMismatchFrames = 0
+        nodeEntryMismatchPage = null
         resetNodeMoveConfirmationTracking()
         resetOrphanMoveConfirmationTracking()
         nodeScrollAttempts = 0
@@ -2600,6 +2656,16 @@ class LabyrinthEntryRecognitionSession(
             if (cacheKey == roleRewardDecisionCacheKey &&
                 _state.value.roleRewardChoiceDecision is LabyrinthRoleRewardChoiceDecision.Select
             ) return
+            if (cacheKey != roleRewardDecisionCacheKey) {
+                val collision = result.characterMatches.mapNotNull { it.characterId }
+                    .map(::canonicalLabyrinthRoleId)
+                    .filter(acquiredIds::contains)
+                    .distinct()
+                if (collision.isNotEmpty()) {
+                    nodeLog("role-reward-roster-conflict candidateIds=${collision.joinToString()} " +
+                        "action=rank-visible-candidates", warning = true)
+                }
+            }
             roleRewardDecisionCacheKey = cacheKey
             val decisionStarted = System.nanoTime()
             planner.decide(
@@ -6037,6 +6103,8 @@ class LabyrinthEntryRecognitionSession(
         resetPendingNodeClickStability()
         resetStrongRouteTargetBinding()
         pendingNodeTransition = null
+        nodeEntryMismatchFrames = 0
+        nodeEntryMismatchPage = null
         confirmedNodeEntryReceipt = null
         nodeTapAttempts = 0
         resetNodeMoveConfirmationTracking()
@@ -6757,6 +6825,7 @@ class LabyrinthEntryRecognitionSession(
     private fun prepareNodeTransitionContext(blockType: Int, area: Int?) {
         resetNodeMoveConfirmationTracking()
         nodeEntryMismatchFrames = 0
+        nodeEntryMismatchPage = null
         eventFreeRoleSelectedCharacterIds.clear()
         eventFreeRoleLastSelectAt = Long.MIN_VALUE
         resetEventFreeRoleProgress()
@@ -7112,7 +7181,12 @@ class LabyrinthEntryRecognitionSession(
             // one frame, then LINK_CHOICE). Stopping on that frame left the route cursor behind
             // and the restarted session hunted the already-cleared node. Require agreement
             // across frames before treating a mismatch as real.
-            nodeEntryMismatchFrames++
+            nodeEntryMismatchFrames = if (nodeEntryMismatchPage == pageState) {
+                nodeEntryMismatchFrames + 1
+            } else {
+                1
+            }
+            nodeEntryMismatchPage = pageState
             nodeLog(
                 "node-entry-mismatch target=${pending.label} expected=" +
                     "${LabyrinthNodeTypes.labelOf(pending.blockType)} actual=${pageState.name} " +
@@ -7127,13 +7201,31 @@ class LabyrinthEntryRecognitionSession(
                 }
                 return
             }
-            finishFromPlanner(
-                sessionId,
-                "节点${pending.label}进入页面不匹配：识别为${pageState.name}，已停止并保留诊断状态",
+            val observedType = labyrinthObservedDestinationType(pageState)
+            if (observedType == null) {
+                // A generic reward or transition may belong to the previous node. Keep
+                // observing instead of either advancing an unproven cursor or ending the run.
+                _state.value = _state.value.copy(
+                    message = "节点${pending.label}与${pageState.name}不符；等待可确认的实际页面",
+                )
+                return
+            }
+            nodeLog(
+                "node-entry-reconciled target=${pending.label} expected=" +
+                    "${LabyrinthNodeTypes.labelOf(pending.blockType)} actual=${pageState.name} " +
+                    "observedType=${LabyrinthNodeTypes.labelOf(observedType)}",
+                warning = true,
             )
-            return
+            // The accepted tap proves progression, while the visible page owns the subsequent
+            // shop/event/battle handler. Do not keep using the predicted type as runtime state.
+            prepareNodeTransitionContext(observedType, activeNodeArea)
+            _state.value = _state.value.copy(
+                combatContext = combatContext,
+                message = "路线预期${pending.label}，实际进入${pageState.name}；已记录差异并按实际页面继续",
+            )
         }
         nodeEntryMismatchFrames = 0
+        nodeEntryMismatchPage = null
         nodeLog(
             "node-entry-confirmed target=${pending.label} page=${pageState.name} " +
                 "confirmationAttempts=${pending.confirmationAttempts} tapAttempts=$nodeTapAttempts",
@@ -7142,6 +7234,7 @@ class LabyrinthEntryRecognitionSession(
         confirmedNodeEntryReceipt = null
         persistNodeRouteProgress(sessionId, session.getState())
         if (!_state.value.dryRun && session.getState().isComplete &&
+            activeNodeType in setOf(LabyrinthNodeTypes.BOSS, LabyrinthNodeTypes.EX_BATTLE) &&
             postBossStage == LabyrinthPostBossStage.NONE
         ) {
             // The final node is normally a Boss/EX page, so completion is observed here when

@@ -778,6 +778,19 @@ class LabyrinthEntryRecognitionPolicyTest {
     }
 
     @Test
+    fun `stable unexpected shop has an actionable actual destination type`() {
+        assertTrue(!labyrinthNodeEntryMatchesExpectedType(
+            LabyrinthNodeTypes.EVENT, LabyrinthEntryPageState.SHOP,
+        ))
+        assertEquals(LabyrinthNodeTypes.SHOP,
+            labyrinthObservedDestinationType(LabyrinthEntryPageState.SHOP))
+        assertEquals(null,
+            labyrinthObservedDestinationType(LabyrinthEntryPageState.ITEM_REWARD))
+        assertEquals(null,
+            labyrinthObservedDestinationType(LabyrinthEntryPageState.UNKNOWN))
+    }
+
+    @Test
     fun `link node entry is confirmed anywhere along its reward chain`() {
         // LINK_CHOICE can be gone before the next sampled frame; the three-character
         // ITEM_REWARD and the role reward pages that follow still prove the link node was entered.

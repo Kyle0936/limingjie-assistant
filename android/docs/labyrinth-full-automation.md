@@ -1,6 +1,6 @@
 # 黎明界最终全自动流程设计与当前项目状态
 
-> 目标：在用户一次完成必要授权并设置批量目标后，让助手无人值守地重复执行“刷开局 → 进入黎明界 → 完成整局 → 通关或达到失败上限 → 再刷开局 → 强制回标题 → 下一轮”，直到所有目标轮次完成。
+> 目标：在用户一次完成必要授权并设置批量目标后，让助手无人值守地重复执行“读取并按需复用首轮目标开局 → 进入黎明界 → 完成整局 → 通关或达到失败上限 → 再刷开局 → 强制回标题 → 下一轮”，直到所有目标轮次完成。
 >
 > 本文以当前分支 `feature/approval-shell-recognition-team-plan`、HEAD `6ed2ecc` 及工作区未提交改动为基线。文中严格区分 **已存在/已验证能力** 与 **待实现的最终批处理能力**。
 >
@@ -945,7 +945,8 @@ batch=20260916-001 goal=gourmet run=008 stage=RETURNING_TO_TITLE
 
 - [x] **Capture lifetime 与 Run lifetime 解耦**（`stop(releaseCapture = false)`；reroll 交接路径不再停截图；单测覆盖）。2026-09-17 实机第一次通关后又发现通关路径 `markRunCleared → finishFromPlanner → stop()` 仍用默认 `releaseCapture = true` 关掉了截图，随后会话失效步骤因无截图被拒。已把所有由运行逻辑发起的停止（终态页、被拒点击、规划器停止）统一走 `stopFromRunLogic`，批次拥有该局时不释放截图；只有用户主动停止才释放；
 - [x] BatchController 顶层多局状态机（`labyrinth/batch/`，纯 Kotlin，§16.1 十条 JVM 用例全部通过）；
-- [x] Batch 目标配置与 UI（自动执行页「批量自动执行」卡片：五个公会各一个次数输入框，留空跳过；每行可切换「按通关计 / 按开局计」；按列表顺序执行）；
+- [x] Batch 目标配置与 UI（首页两步主流程：登录并读取当前开局 → 自动执行；五个公会各一个次数输入框，留空跳过；每行可切换「按通关计 / 按开局计」；按列表顺序执行。刷开局与中途继续归入辅助工具）；
+- [x] 已确认开局首轮复用（仅 `TARGET` 且 Enter ID、公会、难度与首个目标一致时跳过首轮 reroll/invalidation；首轮结束后恢复正常批量循环；检查点记录 `reusedVerifiedOpeningForFirstRun`）；
 - [x] Batch checkpoint 持久化（SharedPreferences JSON，`AndroidLabyrinthBatchCheckpointStore`；含 `lastSessionInvalidationAction`）；
 - [x] 单局明确 `Cleared/FailedMaxRetry` 终态事件（`runTerminalListener`；用户停止 → `UserStopped`，其余 → `FatalUnknown`）；
 - [x] 通关后旧会话失效执行器：`AnchorTriggerSessionExpiryTerminator`。**不再有任何固定坐标点击**（2026-09-17 用户指出固定点底栏「主页」在其他页面也会落下去）。触发点由 `SessionExpiryFrameTracker.sessionInvalidationTrigger` 按当前识别页面给出：黎明界主页 → 底栏「我的主页」标签模板 `dawn_home/dawn_home_my_home_tab.png`（锚框 85,945,175,125，得分 ≥0.70 才算命中；最初用的是已选中的「冒险」标签，2026-09-17 实测点它不联网、不触发返回标题）；战斗失败页 → 结束 → 撤退（无报酬） → 确认 三步链，每步按 `LabyrinthBattleEndConfirmationDetector` 识别到的对话框阶段给按钮；其余页面 → null，终止器等待直到超时，一次都不点。录像回归夹具断言该模板在 t10.5 主页 ≥0.90、在结算链其余 9 帧 <0.50。不点「进入黎明界」，符合第 5.1 节。首次实机暴露出 `GameSessionResetWorkflow` 的一个短路：TERMINATING 阶段看到旧黎明界主页就直接 READY，终止器的结果被忽略。已改为 TERMINATING / RELAUNCHING 期间不判 READY，并抽出纯函数 `gameSessionResetReadyDecision` 加测试；

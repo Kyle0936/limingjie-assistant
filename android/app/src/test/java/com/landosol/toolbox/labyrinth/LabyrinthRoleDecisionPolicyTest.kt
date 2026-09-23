@@ -22,6 +22,35 @@ class LabyrinthRoleDecisionPolicyTest {
     private val rolePolicy = LabyrinthRoleChoicePolicy(optimizer)
 
     @Test
+    fun `visible reward collision is logged and all three cards remain eligible`() {
+        val owned = listOf(
+            physical("front", "前卫", position = 1, reliableVanguard = 100.0),
+            physical("ally2", "队友二", position = 2),
+            physical("ally3", "队友三", position = 3),
+            physical("ally4", "队友四", position = 4),
+        )
+        val candidates = listOf(
+            physical("stale", "本地误记角色", position = 5),
+            physical("other1", "候选二", position = 5),
+            physical("other2", "候选三", position = 5),
+        )
+        val profiles = (owned + candidates).associateBy(LabyrinthRoleProfile::characterId)
+        val context = LabyrinthRoleDecisionContext(defenseMarkStacks = 0)
+        val baseline = rolePolicy.chooseOneRole(
+            candidates.map(LabyrinthRoleProfile::characterId),
+            owned.map(LabyrinthRoleProfile::characterId).toSet(), profiles, context,
+        ) as LabyrinthOneRoleDecision.Ready
+        val recovered = rolePolicy.chooseOneRole(
+            candidates.map(LabyrinthRoleProfile::characterId),
+            owned.map(LabyrinthRoleProfile::characterId).toSet() + "stale", profiles, context,
+        ) as LabyrinthOneRoleDecision.Ready
+
+        assertEquals(baseline.chosen.characterId, recovered.chosen.characterId)
+        assertEquals(3, recovered.rankings.size)
+        assertTrue(recovered.reasons.any { it.contains("本地已获得名单冲突") })
+    }
+
+    @Test
     fun `connect attribute remains fixed and ignores all role decision inputs`() {
         val priority = LabyrinthLinkChoicePriority.DEFAULT
 

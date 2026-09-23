@@ -762,7 +762,19 @@ class LabyrinthController(
         }
         settingsStore.save(accountId, settings)
         applySettings(settings)
-        reportMessage("刷开局设置已保存")
+        // A prior TARGET verdict was evaluated against the old guild/difficulty/route policy.
+        // Require an explicit fresh read before the batch may reuse the current opening.
+        chrome.update {
+            it.copy(
+                routeVerdict = null,
+                verdictMessage = null,
+                checkpointEnterId = null,
+                currentGuildId = null,
+                currentDifficulty = null,
+                routeBlockIds = emptyList(),
+                message = "刷开局设置已保存；请重新登录并读取当前开局",
+            )
+        }
     }
 
     private fun applySettings(settings: LabyrinthRerollSettings) {

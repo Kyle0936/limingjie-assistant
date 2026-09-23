@@ -485,6 +485,20 @@ class LandosolToolboxApplication : Application() {
         val id = accountId ?: return false
         if (goals.isEmpty()) return false
         val ui = labyrinthController.uiState.value
+        val reusableOpening = if (
+            ui.routeVerdict == com.landosol.toolbox.labyrinth.LabyrinthRouteVerdict.TARGET &&
+            ui.checkpointEnterId != null &&
+            ui.currentGuildId != null &&
+            ui.currentDifficulty != null
+        ) {
+            com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening(
+                enterId = ui.checkpointEnterId,
+                guildId = ui.currentGuildId,
+                difficulty = ui.currentDifficulty,
+            )
+        } else {
+            null
+        }
         val batchId = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT)
             .format(java.util.Date())
         autoRunJob?.cancel()
@@ -494,6 +508,7 @@ class LandosolToolboxApplication : Application() {
                 accountId = id,
                 goals = goals,
                 difficulty = ui.selectedDifficulty,
+                reusableOpening = reusableOpening,
             )
         }
         return true

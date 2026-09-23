@@ -1740,10 +1740,12 @@ class LabyrinthRoleChoicePolicy(
         if (candidateIds.isEmpty() || candidateIds.distinct().size != candidateIds.size) {
             return LabyrinthOneRoleDecision.Unavailable("候选角色必须稳定识别且互不重复")
         }
-        if (candidateIds.any(acquiredCharacterIds::contains)) {
-            return LabyrinthOneRoleDecision.Unavailable("候选中包含已获得角色，拒绝按错误池状态决策")
-        }
-        val requiredIds = candidateIds.toSet() + acquiredCharacterIds
+        // The game does not offer an already-owned role in a three-card reward. A collision is
+        // therefore stale local roster evidence, not a reason to strand the run. Exclude the
+        // visible candidates from the *scoring* roster so none is counted twice, but still rank
+        // all three visible cards normally. The caller records the discrepancy for diagnosis.
+        val scoringAcquiredIds = acquiredCharacterIds - candidateIds.toSet()
+        val requiredIds = candidateIds.toSet() + scoringAcquiredIds
         val missing = requiredIds.filterNot(profiles::containsKey).sorted()
         if (missing.isNotEmpty()) {
             return LabyrinthOneRoleDecision.Unavailable(
@@ -1758,7 +1760,7 @@ class LabyrinthRoleChoicePolicy(
                 incompleteProfileIds = incomplete,
             )
         }
-        val acquired = acquiredCharacterIds.map(profiles::getValue)
+        val acquired = scoringAcquiredIds.map(profiles::getValue)
         val rankings = candidateIds.map { candidateId ->
             val candidate = profiles.getValue(candidateId)
             val pool = acquired + candidate
@@ -1789,6 +1791,10 @@ class LabyrinthRoleChoicePolicy(
         val best = rankings.first()
         val chosen = profiles.getValue(best.characterId)
         val reasons = buildList {
+            val conflicted = candidateIds.filter(acquiredCharacterIds::contains)
+            if (conflicted.isNotEmpty()) {
+                add("画面候选与本地已获得名单冲突（${conflicted.joinToString()}）；按实际三选一画面重新评分")
+            }
             add("${chosen.displayName}的最佳部署落点为第${best.candidateLayer + 1}队；第一队保持当前池最优组合")
             chosen.attribute?.let { attribute ->
                 val sameAttribute = best.candidateTeam.attributeCounts[attribute]

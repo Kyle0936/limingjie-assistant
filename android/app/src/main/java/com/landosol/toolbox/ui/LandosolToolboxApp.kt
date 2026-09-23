@@ -38,8 +38,6 @@ import com.landosol.toolbox.LandosolToolboxApplication
 import com.landosol.toolbox.account.AccountViewModel
 import com.landosol.toolbox.automation.accessibility.AccessibilityConnectionRegistry
 import com.landosol.toolbox.automation.accessibility.LandosolAccessibilityService
-import com.landosol.toolbox.automation.session.GameSessionResetState
-import com.landosol.toolbox.labyrinth.LabyrinthAutoRunProgress
 import com.landosol.toolbox.labyrinth.LabyrinthEntryRecognitionSessionState
 import com.landosol.toolbox.labyrinth.LabyrinthUiState
 import com.landosol.toolbox.labyrinth.LabyrinthController
@@ -193,8 +191,6 @@ fun LandosolToolboxApp() {
                         labyrinthViewModel = labyrinthViewModel,
                         state = labyrinthState,
                         entryRecognitionState = entryRecognitionState,
-                        sessionResetState = sessionResetState,
-                        autoRunProgress = autoRunProgress,
                         batchCheckpoint = batchCheckpoint,
                         batchHaltReason = batchHaltReason,
                         onRequestCapture = requestCaptureThen,
@@ -284,8 +280,6 @@ private fun LabyrinthRoute(
     labyrinthViewModel: LabyrinthController,
     state: LabyrinthUiState,
     entryRecognitionState: LabyrinthEntryRecognitionSessionState,
-    sessionResetState: GameSessionResetState,
-    autoRunProgress: LabyrinthAutoRunProgress,
     batchCheckpoint: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchCheckpoint?,
     batchHaltReason: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchHaltReason?,
     onRequestCapture: ((() -> Unit) -> Unit),
@@ -335,20 +329,9 @@ private fun LabyrinthRoute(
         onOpenStrategies = { showStrategies = true; strategyMessage = null },
         state = state,
         entryRecognitionState = entryRecognitionState,
-        sessionResetState = sessionResetState,
-        autoRunProgress = autoRunProgress,
         batchCheckpoint = batchCheckpoint,
         batchHaltReason = batchHaltReason,
         onBack = null,
-        onGuildSelected = labyrinthViewModel::selectGuild,
-        onDifficultySelected = labyrinthViewModel::selectDifficulty,
-        onPerfectStartChange = labyrinthViewModel::setPerfectStart,
-        onThirdBlockChoiceSelected = labyrinthViewModel::selectThirdBlockChoice,
-        onArea3BossToggle = labyrinthViewModel::toggleArea3Boss,
-        onArea5BossToggle = labyrinthViewModel::toggleArea5Boss,
-        onMaxAttemptsChange = labyrinthViewModel::setMaxAttempts,
-        onRerollUntilFoundChange = labyrinthViewModel::setRerollUntilFound,
-        onRetireExistingChange = labyrinthViewModel::setRetireExisting,
         onCheckStatus = labyrinthViewModel::checkStatus,
         onSaveSettings = labyrinthViewModel::saveSettings,
         onStart = {
@@ -391,16 +374,22 @@ private fun LabyrinthRoute(
                 }
             }
         },
-        onStopEntryRecognition = {
-            scope.launch { application.labyrinthEntryRecognitionSession.stop() }
-        },
-        onStartSessionReset = {
-            onRequestCapture {
-                scope.launch { application.gameSessionResetWorkflow.start() }
+        onTakeOverCurrentRun = {
+            if (!LandosolAccessibilityService.isConnected()) {
+                labyrinthViewModel.reportMessage("无障碍服务未连接；请重新开启后再接管当前挑战")
+            } else {
+                onRequestCapture {
+                    scope.launch {
+                        application.labyrinthEntryRecognitionSession.startAutomation(
+                            accountId = state.selectedAccount?.id,
+                            takeoverCurrentRun = true,
+                        )
+                    }
+                }
             }
         },
-        onStopSessionReset = {
-            scope.launch { application.gameSessionResetWorkflow.stop("用户停止会话失效重置") }
+        onStopEntryRecognition = {
+            scope.launch { application.labyrinthEntryRecognitionSession.stop() }
         },
         onStartAutoRun = { goals ->
             if (!LandosolAccessibilityService.isConnected()) {

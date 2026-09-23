@@ -237,6 +237,25 @@ class LabyrinthEntryRecognitionSessionTest {
     }
 
     @Test
+    fun `manual current run takeover leaves the already open game untouched`() = runTest {
+        var launchCalls = 0
+        val manager = AutomationSessionManager()
+        val session = LabyrinthEntryRecognitionSession(
+            sessionManager = manager,
+            captureActive = { true },
+            processorFactory = { { error("test does not dispatch frames") } },
+            actionExecutor = SessionBoundActionExecutor(manager) { AutomationBackendResult.Completed },
+            actionsAvailable = { true },
+            gameLauncher = { launchCalls++; true },
+        )
+
+        assertTrue(session.startAutomation(takeoverCurrentRun = true) is LabyrinthEntryRecognitionStartResult.Started)
+        assertTrue(session.state.value.message?.contains("不重启游戏或刷开局") == true)
+        assertTrue(launchCalls == 0)
+        assertTrue(session.stop())
+    }
+
+    @Test
     fun `failed game launch releases capture and shared session`() = runTest {
         val manager = AutomationSessionManager()
         var captureStopCalls = 0
