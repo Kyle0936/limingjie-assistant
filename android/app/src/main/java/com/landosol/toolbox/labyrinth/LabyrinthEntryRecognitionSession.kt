@@ -1471,6 +1471,17 @@ class LabyrinthEntryRecognitionSession(
     private var lastSessionBlockKind = SessionBlockKind.NONE
     @Volatile
     private var sessionBlockStableFrames = 0
+
+    /**
+     * Consecutive frames that actually resolved a 返回标题 rect, not merely frames spent blocked.
+     *
+     * [sessionBlockStableFrames] counts every blocked frame, including the stretches where the
+     * button is not recognised at all and the run sits on 等待识别“返回标题”按钮. That primes it past
+     * the stability floor, so the first frame whose score happens to clear the trigger taps at once,
+     * unconfirmed. See [labyrinthSessionReturnTitleStreak].
+     */
+    @Volatile
+    private var sessionReturnTitleStableFrames = 0
     @Volatile
     private var sessionReturnTitleAttempts = 0
     @Volatile
@@ -2385,16 +2396,21 @@ class LabyrinthEntryRecognitionSession(
         if (lastSessionBlockKind != block.kind) {
             lastSessionBlockKind = block.kind
             sessionBlockStableFrames = 0
+            sessionReturnTitleStableFrames = 0
             sessionReturnTitleAttempts = 0
             lastSessionReturnTitleActionAt = Long.MIN_VALUE
         }
         sessionBlockStableFrames++
+        sessionReturnTitleStableFrames = labyrinthSessionReturnTitleStreak(
+            previousStreak = sessionReturnTitleStableFrames,
+            returnTitleRectPresent = block.returnTitleRect != null,
+        )
 
         val message = when {
             dryRun -> "检测到账号会话失效；只读模式不会点击${block.actionLabel}"
             block.kind == SessionBlockKind.UNKNOWN_PROMPT -> "检测到未知会话弹窗，已暂停普通点击"
             block.returnTitleRect == null -> "检测到账号会话失效，等待识别“${block.actionLabel}”按钮"
-            sessionBlockStableFrames < SESSION_BLOCK_STABLE_FRAMES ->
+            sessionReturnTitleStableFrames < SESSION_BLOCK_STABLE_FRAMES ->
                 "检测到账号会话失效，正在确认“${block.actionLabel}”按钮"
             sessionReturnTitleAttempts >= MAX_SESSION_RETURN_TITLE_ATTEMPTS ->
                 "${block.actionLabel}多次无响应，请手动点击；自动会话仍保持运行"
@@ -2558,6 +2574,7 @@ class LabyrinthEntryRecognitionSession(
     private fun resetSessionRecoveryTracking() {
         lastSessionBlockKind = SessionBlockKind.NONE
         sessionBlockStableFrames = 0
+        sessionReturnTitleStableFrames = 0
         sessionReturnTitleAttempts = 0
         lastSessionReturnTitleActionAt = Long.MIN_VALUE
     }
