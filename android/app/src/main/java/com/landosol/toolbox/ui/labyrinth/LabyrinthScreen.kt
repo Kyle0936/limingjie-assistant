@@ -2,6 +2,8 @@ package com.landosol.toolbox.ui.labyrinth
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -9,7 +11,9 @@ import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -22,16 +26,16 @@ import com.landosol.toolbox.labyrinth.labyrinthRerollStatusText
 import kotlinx.coroutines.delay
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Tab
-import androidx.compose.material3.TabRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -44,10 +48,12 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import com.landosol.toolbox.labyrinth.LabyrinthAutoRunProgress
 import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchCheckpoint
 import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchGoal
 import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchGoalMode
@@ -55,6 +61,7 @@ import com.landosol.toolbox.labyrinth.LabyrinthGuildOption
 import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchHaltReason
 import com.landosol.toolbox.labyrinth.batch.LabyrinthBatchStage
 import com.landosol.toolbox.labyrinth.LabyrinthBossOption
+import com.landosol.toolbox.labyrinth.LabyrinthCurrentOpeningReadStatus
 import com.landosol.toolbox.labyrinth.LabyrinthEntryRecognitionSessionState
 import com.landosol.toolbox.labyrinth.LabyrinthRerollOptions
 import com.landosol.toolbox.labyrinth.LabyrinthRouteEvaluationMode
@@ -63,47 +70,25 @@ import com.landosol.toolbox.labyrinth.LabyrinthRouteVerdict
 import com.landosol.toolbox.labyrinth.LabyrinthThirdBlockChoice
 import com.landosol.toolbox.labyrinth.LabyrinthUiState
 import com.landosol.toolbox.labyrinth.node.LabyrinthNodeTypes
-import com.landosol.toolbox.automation.session.GameSessionResetState
-import com.landosol.toolbox.automation.session.GameSessionResetStatus
 import com.landosol.toolbox.ui.account.GeetestCaptchaDialog
 import kotlinx.coroutines.launch
 
-private enum class LabyrinthTab(val label: String) {
-    REROLL("刷开局"),
-    CURRENT("当前开局"),
-    AUTOMATION("自动执行"),
-}
-
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
-@Suppress("UNUSED_PARAMETER")
 fun LabyrinthScreen(
     state: LabyrinthUiState,
     entryRecognitionState: LabyrinthEntryRecognitionSessionState,
-    sessionResetState: GameSessionResetState,
-    autoRunProgress: LabyrinthAutoRunProgress,
     batchCheckpoint: LabyrinthBatchCheckpoint? = null,
     batchHaltReason: LabyrinthBatchHaltReason? = null,
     onBack: (() -> Unit)? = null,
-    onGuildSelected: (Int) -> Unit,
-    onDifficultySelected: (Int) -> Unit,
-    onPerfectStartChange: (Boolean) -> Unit,
-    onThirdBlockChoiceSelected: (LabyrinthThirdBlockChoice) -> Unit,
-    onArea3BossToggle: (Int) -> Unit,
-    onArea5BossToggle: (Int) -> Unit,
-    onMaxAttemptsChange: (String) -> Unit,
-    onRerollUntilFoundChange: (Boolean) -> Unit,
-    onRetireExistingChange: (Boolean) -> Unit,
     onSaveSettings: (LabyrinthRerollSettings) -> Unit,
     onCheckStatus: () -> Unit,
-    onStart: () -> Unit,
+    onStart: (Int) -> Unit,
     onStop: () -> Unit,
     onDismissMessage: () -> Unit,
     onStartEntryRecognition: () -> Unit,
     onStartEntryAutomation: () -> Unit,
     onStopEntryRecognition: () -> Unit,
-    onStartSessionReset: () -> Unit,
-    onStopSessionReset: () -> Unit,
     onStartAutoRun: (List<LabyrinthBatchGoal>) -> Unit,
     onStopAutoRun: () -> Unit,
     onCaptchaSolved: (String) -> Unit,
@@ -111,20 +96,36 @@ fun LabyrinthScreen(
     onCancelCaptcha: () -> Unit,
     onOpenStrategies: () -> Unit = {},
 ) {
-    var selectedTabName by rememberSaveable { mutableStateOf(LabyrinthTab.REROLL.name) }
-    val selectedTab = LabyrinthTab.valueOf(selectedTabName)
+    val compactWidth = LocalConfiguration.current.screenWidthDp < 600
     var confirmRetreat by remember(state.selectedAccount?.id) { mutableStateOf(false) }
-    val requestStart: () -> Unit = { if (state.retireExisting) confirmRetreat = true else onStart() }
+    var showRerollSettings by remember(state.selectedAccount?.id) { mutableStateOf(false) }
+    var showAdvancedTools by rememberSaveable { mutableStateOf(false) }
+    var standaloneGuildId by rememberSaveable(state.selectedAccount?.id) {
+        mutableStateOf(LabyrinthRerollOptions.DEFAULT_GUILD_ID)
+    }
+    val requestStart: () -> Unit = {
+        if (state.retireExisting) confirmRetreat = true else onStart(standaloneGuildId)
+    }
     if (confirmRetreat) {
         AlertDialog(onDismissRequest = { confirmRetreat = false },
             title = { Text("允许彻底撤退当前开局？") },
             text = { Text("本次刷取可能放弃当前开局的进度和未领取奖励。只撤退已确认不符合目标的开局；状态不明确时会停止。") },
-            confirmButton = { TextButton(onClick = { confirmRetreat = false; onStart() }) { Text("确认并开始") } },
+            confirmButton = {
+                TextButton(onClick = { confirmRetreat = false; onStart(standaloneGuildId) }) {
+                    Text("确认并开始")
+                }
+            },
             dismissButton = { TextButton(onClick = { confirmRetreat = false }) { Text("取消") } })
     }
     val scrollState = rememberScrollState()
     val scope = rememberCoroutineScope()
     val uriHandler = LocalUriHandler.current
+    val batchActive = batchCheckpoint?.stage in setOf(
+        LabyrinthBatchStage.REROLLING,
+        LabyrinthBatchStage.INVALIDATING_OLD_CLIENT_SESSION,
+        LabyrinthBatchStage.RUNNING_LABYRINTH,
+        LabyrinthBatchStage.RECORDING_RESULT,
+    )
     Scaffold(
         topBar = {
             TopAppBar(
@@ -140,7 +141,15 @@ fun LabyrinthScreen(
                 navigationIcon = {
                     onBack?.let { back -> TextButton(onClick = back) { Text("返回") } }
                 },
-                actions = { TextButton(onClick = onOpenStrategies) { Text("策略设置") } },
+                actions = {
+                    TextButton(
+                        onClick = { showRerollSettings = true },
+                        enabled = state.settingsReady && !state.isWorking && state.captcha == null,
+                    ) { Text(if (compactWidth) "刷取" else "刷开局设置") }
+                    TextButton(onClick = onOpenStrategies) {
+                        Text(if (compactWidth) "策略" else "策略设置")
+                    }
+                },
             )
         },
         floatingActionButton = {
@@ -155,13 +164,6 @@ fun LabyrinthScreen(
                         Text("回到顶部")
                     }
                 }
-                if (selectedTab == LabyrinthTab.REROLL) {
-                    ExtendedFloatingActionButton(
-                        onClick = { if (state.isWorking) onStop() else if (state.settingsReady && state.captcha == null) requestStart() },
-                    ) {
-                        Text(if (state.isWorking) "停止刷取" else "开始刷开局")
-                    }
-                }
             }
         },
     ) { padding ->
@@ -173,97 +175,47 @@ fun LabyrinthScreen(
                 .padding(start = 16.dp, top = 16.dp, end = 16.dp, bottom = 152.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Card(modifier = Modifier.fillMaxWidth()) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    Text(
-                        text = "黎明界助手 · 作者 wbero",
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    Text(
-                        text = "交流群：1065226139",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Text(
-                        text = "测试版本，有较多 bug，可能会卡在某些流程。",
-                        style = MaterialTheme.typography.bodyMedium,
-                    )
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        TextButton(
-                            onClick = { uriHandler.openUri("http://127.0.0.1:8765/") },
-                        ) {
-                            Text("打开实时日志控制台")
-                        }
-                        TextButton(
-                            onClick = { uriHandler.openUri("http://127.0.0.1:8765/logs.zip") },
-                        ) {
-                            Text("下载日志 ZIP")
-                        }
-                    }
-                }
-            }
-            AccountCard(state)
-            TabRow(selectedTabIndex = selectedTab.ordinal) {
-                LabyrinthTab.entries.forEach { tab ->
-                    Tab(
-                        selected = selectedTab == tab,
-                        onClick = {
-                            selectedTabName = tab.name
-                            scope.launch { scrollState.scrollTo(0) }
-                        },
-                        text = { Text(tab.label) },
-                    )
-                }
-            }
-
-            when (selectedTab) {
-                LabyrinthTab.REROLL -> RerollContent(
-                    state = state,
-                    onGuildSelected = onGuildSelected,
-                    onSaveSettings = onSaveSettings,
-                    onDifficultySelected = onDifficultySelected,
-                    onPerfectStartChange = onPerfectStartChange,
-                    onThirdBlockChoiceSelected = onThirdBlockChoiceSelected,
-                    onArea3BossToggle = onArea3BossToggle,
-                    onArea5BossToggle = onArea5BossToggle,
-                    onMaxAttemptsChange = onMaxAttemptsChange,
-                    onRerollUntilFoundChange = onRerollUntilFoundChange,
-                    onRetireExistingChange = onRetireExistingChange,
+            WorkflowHeader()
+            CurrentOpeningStep(
+                state = state,
+                externalTaskActive = batchActive || entryRecognitionState.running,
+                onCheckStatus = onCheckStatus,
+                onStop = onStop,
+            )
+            HorizontalDivider()
+            BatchRunCard(
+                state = state,
+                checkpoint = batchCheckpoint,
+                haltReason = batchHaltReason,
+                routeProgress = entryRecognitionState.routeProgress,
+                entryRecognitionRunning = entryRecognitionState.running,
+                onStart = onStartAutoRun,
+                onStop = onStopAutoRun,
+            )
+            HorizontalDivider()
+            AuxiliaryToolsSection(
+                state = state,
+                entryRecognitionState = entryRecognitionState,
+                batchActive = batchActive,
+                standaloneGuildId = standaloneGuildId,
+                onStandaloneGuildSelected = { standaloneGuildId = it },
+                onStartReroll = requestStart,
+                onStopReroll = onStop,
+                showAdvanced = showAdvancedTools,
+                onToggleAdvanced = { showAdvancedTools = !showAdvancedTools },
+            )
+            if (showAdvancedTools) {
+                EntryRecognitionCard(
+                    state = entryRecognitionState,
+                    startEnabled = !batchActive && !state.isWorking && state.captcha == null,
+                    onStart = onStartEntryRecognition,
+                    onStartAutomation = onStartEntryAutomation,
+                    onStop = onStopEntryRecognition,
                 )
-
-                LabyrinthTab.CURRENT -> CurrentRunContent(
-                    state = state,
-                    onCheckStatus = onCheckStatus,
-                    onStop = onStop,
-                )
-
-                LabyrinthTab.AUTOMATION -> {
-                    EntryRecognitionCard(
-                        state = entryRecognitionState,
-                        onStart = onStartEntryRecognition,
-                        onStartAutomation = onStartEntryAutomation,
-                        onStop = onStopEntryRecognition,
-                    )
-                    BatchRunCard(
-                        checkpoint = batchCheckpoint,
-                        haltReason = batchHaltReason,
-                        routeProgress = entryRecognitionState.routeProgress,
-                        guildOptions = state.guildOptions.take(5),
-                        selectedDifficulty = state.selectedDifficulty,
-                        enabled = state.selectedAccount != null && state.settingsReady && !state.isWorking,
-                        onStart = onStartAutoRun,
-                        onStop = onStopAutoRun,
-                    )
-                }
             }
 
-            if (selectedTab != LabyrinthTab.REROLL) state.progress?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
-            if (selectedTab != LabyrinthTab.REROLL) state.message?.let { message ->
+            state.progress?.let { Text(it, style = MaterialTheme.typography.titleSmall) }
+            state.message?.let { message ->
                 Card(modifier = Modifier.fillMaxWidth()) {
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(12.dp),
@@ -274,7 +226,20 @@ fun LabyrinthScreen(
                     }
                 }
             }
+
+            SupportFooter(uriHandler = uriHandler)
         }
+    }
+
+    if (showRerollSettings) {
+        RerollSettingsDialog(
+            state = state,
+            onDismiss = { showRerollSettings = false },
+            onSave = {
+                onSaveSettings(it)
+                showRerollSettings = false
+            },
+        )
     }
 
     state.captcha?.let { captcha ->
@@ -289,49 +254,51 @@ fun LabyrinthScreen(
 }
 
 @Composable
-@Suppress("UNUSED_PARAMETER")
-private fun RerollContent(
-    state: LabyrinthUiState,
-    onGuildSelected: (Int) -> Unit,
-    onSaveSettings: (LabyrinthRerollSettings) -> Unit,
-    onDifficultySelected: (Int) -> Unit,
-    onPerfectStartChange: (Boolean) -> Unit,
-    onThirdBlockChoiceSelected: (LabyrinthThirdBlockChoice) -> Unit,
-    onArea3BossToggle: (Int) -> Unit,
-    onArea5BossToggle: (Int) -> Unit,
-    onMaxAttemptsChange: (String) -> Unit,
-    onRerollUntilFoundChange: (Boolean) -> Unit,
-    onRetireExistingChange: (Boolean) -> Unit,
-) {
-    var showSettings by remember(state.selectedAccount?.id) { mutableStateOf(false) }
-    var now by remember { mutableStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(state.isWorking) {
-        while (state.isWorking) { now = System.currentTimeMillis(); delay(1_000) }
-        now = System.currentTimeMillis()
+private fun WorkflowHeader() {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("自动执行", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        Text(
+            "先登录并确认当前开局，再按批量目标连续执行。自动执行仍会准备新的目标开局。",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
-    SelectionCard("刷取状态", "切换到后台后可在通知栏查看进度和停止任务") {
-        Text(labyrinthRerollStatusText(state, now), style = MaterialTheme.typography.titleSmall)
-        if (state.isWorking && state.message != null) Text(state.message)
-        val routeSummary = when (state.routeEvaluationMode) {
-            LabyrinthRouteEvaluationMode.VALUE_ROUTE -> "价值路线v2·每区允许少${state.valueAllowance}格"
-            LabyrinthRouteEvaluationMode.LEGACY_TEMPLATE -> if (state.perfectStart) "旧版完美模板" else "旧版自定义路线"
+}
+
+@Composable
+private fun WorkflowStepHeader(number: String, title: String, summary: String) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Surface(
+            modifier = Modifier.size(36.dp),
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.primaryContainer,
+        ) {
+            Box(contentAlignment = Alignment.Center) {
+                Text(number, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+            }
         }
-        Text("当前条件：难度${state.selectedDifficulty} · $routeSummary · " +
-            if (state.rerollUntilFound) "刷到出" else "最多${state.maxAttempts}次")
-        Text("区域3 Boss：${state.area3BossOptions.filter { it.unitId in state.selectedArea3BossIds }.joinToString { it.name }.ifEmpty { "不限" }}")
-        Text("区域5 Boss：${state.area5BossOptions.filter { it.unitId in state.selectedArea5BossIds }.joinToString { it.name }.ifEmpty { "不限" }}")
-    }
-    SelectionCard("公会", "选择进入黎明界时使用的公会") {
-        state.guildOptions.take(5).forEach { guild ->
-            RadioOption(label = guild.name, selected = guild.guildId == state.selectedGuildId,
-                enabled = state.settingsReady && !state.isWorking && state.captcha == null,
-                onClick = { onGuildSelected(guild.guildId) })
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+            Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        TextButton(onClick = { showSettings = true },
-            enabled = state.settingsReady && !state.isWorking && state.captcha == null) { Text("刷开局设置") }
     }
-    if (showSettings) RerollSettingsDialog(state, onDismiss = { showSettings = false },
-        onSave = { onSaveSettings(it); showSettings = false })
+}
+
+@Composable
+private fun SupportFooter(uriHandler: androidx.compose.ui.platform.UriHandler) {
+    HorizontalDivider(modifier = Modifier.padding(top = 12.dp))
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("黎明界助手 · 作者 wbero · 交流群 1065226139", style = MaterialTheme.typography.bodySmall)
+        Text("测试版本，遇到异常请附上日志和复现步骤。", style = MaterialTheme.typography.bodySmall)
+        ChoiceRow {
+            TextButton(onClick = { uriHandler.openUri("http://127.0.0.1:8765/") }) { Text("实时日志") }
+            TextButton(onClick = { uriHandler.openUri("http://127.0.0.1:8765/logs.zip") }) { Text("下载日志 ZIP") }
+        }
+    }
 }
 
 @Composable
@@ -349,6 +316,11 @@ private fun RerollSettingsDialog(
             Column(Modifier.heightIn(max = 440.dp).verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("保存后下次自动恢复；运行中使用开始时的固定配置。")
+                Text(
+                    "这里保存难度、路线、Boss、尝试次数和撤退规则。公会不属于全局设置：批量公会在步骤 2 选择，单独刷开局的公会在辅助工具中按次选择。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
                 TextButton(onClick = { draft = LabyrinthRerollSettings(guildId = state.selectedGuildId,
                     difficulty = LabyrinthRerollOptions.DEFAULT_DIFFICULTY.coerceAtMost(state.availableDifficulties.last()));
                     error = null }) { Text("恢复默认（保存后生效）") }
@@ -507,37 +479,90 @@ private fun RerollSettingsFields(
 }
 
 @Composable
-private fun CurrentRunContent(
+private fun CurrentOpeningStep(
     state: LabyrinthUiState,
+    externalTaskActive: Boolean,
     onCheckStatus: () -> Unit,
     onStop: () -> Unit,
 ) {
-    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Button(onClick = onCheckStatus, enabled = !state.isWorking) {
-            Text(if (state.routeVerdict == LabyrinthRouteVerdict.PENDING_VERIFICATION) "重新验证" else "读取当前开局")
-        }
-        if (state.isWorking) Button(onClick = onStop) { Text("停止") }
+    val verdict = state.routeVerdict
+    val readStatus = state.currentOpeningReadStatus
+    val accountLabel = state.selectedAccount?.let { account ->
+        "${account.alias}${account.gameUid?.let { " · UID $it" }.orEmpty()}"
+    } ?: "尚未选择账号"
+    val status = when {
+        state.selectedAccount == null -> "请先到账号库选择账号"
+        readStatus == LabyrinthCurrentOpeningReadStatus.NOT_READ -> "尚未读取当前开局"
+        readStatus == LabyrinthCurrentOpeningReadStatus.READING -> "正在登录并读取当前开局"
+        readStatus == LabyrinthCurrentOpeningReadStatus.LOGIN_VERIFICATION_REQUIRED -> "登录需要验证"
+        readStatus == LabyrinthCurrentOpeningReadStatus.NO_ACTIVE_OPENING -> "读取完成：当前没有进行中的黎明界"
+        readStatus == LabyrinthCurrentOpeningReadStatus.TARGET -> "当前路线和难度符合要求（仅用于状态确认）"
+        readStatus == LabyrinthCurrentOpeningReadStatus.NOT_TARGET -> "当前开局不符合已保存的路线或难度条件"
+        readStatus == LabyrinthCurrentOpeningReadStatus.PENDING_VERIFICATION -> "读取未完成，需要重新验证"
+        readStatus == LabyrinthCurrentOpeningReadStatus.FAILED -> "读取失败"
+        else -> "读取已取消"
     }
-    SelectionCard(
-        title = "路线判定",
-        description = "联网读取 top 与 resume，并使用当前页面选择的公会、难度和路线条件重新验证开局。",
-    ) {
-        val verdict = state.routeVerdict
+    WorkflowStepHeader(
+        number = "1",
+        title = "登录账号并读取当前开局",
+        summary = "使用账号库凭据登录游戏服，读取并验证现有路线。",
+    )
+    Text(accountLabel, style = MaterialTheme.typography.titleSmall)
+    Text(
+        status,
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (readStatus == LabyrinthCurrentOpeningReadStatus.TARGET) {
+            MaterialTheme.colorScheme.primary
+        } else if (readStatus == LabyrinthCurrentOpeningReadStatus.FAILED) {
+            MaterialTheme.colorScheme.error
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        },
+    )
+    state.currentOpeningReadMessage?.let { detail ->
+        Text(
+            detail,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (readStatus == LabyrinthCurrentOpeningReadStatus.FAILED) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
+    }
+    val readInProgress = state.isWorking && readStatus == LabyrinthCurrentOpeningReadStatus.READING
+    ChoiceRow {
+        Button(onClick = onCheckStatus, enabled = !state.isWorking && !externalTaskActive) {
+            Text(
+                if (readStatus in setOf(
+                        LabyrinthCurrentOpeningReadStatus.PENDING_VERIFICATION,
+                        LabyrinthCurrentOpeningReadStatus.FAILED,
+                        LabyrinthCurrentOpeningReadStatus.CANCELLED,
+                    )
+                ) {
+                    "重新验证"
+                } else if (readStatus == LabyrinthCurrentOpeningReadStatus.NOT_READ) {
+                    "登录并读取"
+                } else {
+                    "重新读取"
+                },
+            )
+        }
+        if (readInProgress && !externalTaskActive) Button(onClick = onStop) { Text("停止") }
+    }
+    if (externalTaskActive) {
+        Text("其他黎明界任务运行中，结束后才能重新读取。", style = MaterialTheme.typography.bodySmall)
+    }
+    if (verdict != null || state.currentGuildId != null) {
         val currentGuildName = state.currentGuildId?.let { guildId ->
             state.guildOptions.firstOrNull { it.guildId == guildId }?.name ?: "ID $guildId"
         }
+        Text("判定：${verdict?.label ?: "尚未记录"}", style = MaterialTheme.typography.bodySmall)
         Text(
-            verdict?.label ?: "尚未记录开局",
-            style = MaterialTheme.typography.titleLarge,
-            color = when (verdict) {
-                LabyrinthRouteVerdict.TARGET -> MaterialTheme.colorScheme.primary
-                LabyrinthRouteVerdict.NOT_TARGET -> MaterialTheme.colorScheme.error
-                LabyrinthRouteVerdict.PENDING_VERIFICATION, null -> MaterialTheme.colorScheme.onSurface
-            },
+            "${currentGuildName ?: "未读取公会"} · 难度 ${state.currentDifficulty ?: "-"}" +
+                (state.checkpointEnterId?.let { " · Enter ID 尾号 ${it % 10_000}" } ?: ""),
+            style = MaterialTheme.typography.bodySmall,
         )
-        state.checkpointEnterId?.let { Text("Enter ID 尾号：${it % 10_000}") }
-        Text("当前公会：${currentGuildName ?: "点击上方按钮读取"}")
-        Text("当前难度：${state.currentDifficulty?.toString() ?: "点击上方按钮读取"}")
         state.verdictMessage?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         if (verdict == LabyrinthRouteVerdict.PENDING_VERIFICATION) {
             Text(
@@ -546,9 +571,74 @@ private fun CurrentRunContent(
             )
         }
     }
-    if (state.routeBlockIds.isNotEmpty()) {
-        SelectionCard("已保存执行路线") {
-            Text("共 ${state.routeBlockIds.size} 格，自动执行可以继续使用这份结构化路线。")
+    state.routeBlockIds.takeIf { it.isNotEmpty() }?.let {
+        Text("已保存 ${it.size} 个路线节点", style = MaterialTheme.typography.bodySmall)
+    }
+}
+
+@Composable
+private fun AuxiliaryToolsSection(
+    state: LabyrinthUiState,
+    entryRecognitionState: LabyrinthEntryRecognitionSessionState,
+    batchActive: Boolean,
+    standaloneGuildId: Int,
+    onStandaloneGuildSelected: (Int) -> Unit,
+    onStartReroll: () -> Unit,
+    onStopReroll: () -> Unit,
+    showAdvanced: Boolean,
+    onToggleAdvanced: () -> Unit,
+) {
+    var now by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(state.isWorking) {
+        while (state.isWorking) {
+            now = System.currentTimeMillis()
+            delay(1_000)
+        }
+        now = System.currentTimeMillis()
+    }
+    val standaloneWorking = state.isWorking && !batchActive && !entryRecognitionState.running
+    val standaloneEnabled = state.selectedAccount != null &&
+        state.settingsReady &&
+        state.captcha == null &&
+        !batchActive &&
+        !entryRecognitionState.running
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text("辅助工具", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Text(
+            "这些操作不属于日常两步流程，用于单独准备开局或诊断识别。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text("单独刷开局 · 本次公会", style = MaterialTheme.typography.labelLarge)
+        ChoiceRow {
+            state.guildOptions.take(5).forEach { guild ->
+                FilterChip(
+                    selected = standaloneGuildId == guild.guildId,
+                    onClick = { onStandaloneGuildSelected(guild.guildId) },
+                    label = { Text(guild.name) },
+                    enabled = !state.isWorking && !batchActive && !entryRecognitionState.running,
+                )
+            }
+        }
+        Text(
+            "只作用于这一次单独刷取，不保存到账号设置，也不会影响读取当前开局或批量目标。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        ResponsiveActionLine(
+            title = "单独刷开局",
+            description = "使用上方本次公会和右上角保存的路线条件准备开局。",
+        ) {
+            Button(
+                onClick = if (standaloneWorking) onStopReroll else onStartReroll,
+                enabled = standaloneWorking || (!state.isWorking && standaloneEnabled),
+            ) { Text(if (standaloneWorking) "停止" else "开始") }
+        }
+        if (standaloneWorking) {
+            Text(labyrinthRerollStatusText(state, now), style = MaterialTheme.typography.bodySmall)
+        }
+        TextButton(onClick = onToggleAdvanced) {
+            Text(if (showAdvanced) "收起识别工具" else "展开识别工具")
         }
     }
 }
@@ -556,6 +646,7 @@ private fun CurrentRunContent(
 @Composable
 private fun EntryRecognitionCard(
     state: LabyrinthEntryRecognitionSessionState,
+    startEnabled: Boolean,
     onStart: () -> Unit,
     onStartAutomation: () -> Unit,
     onStop: () -> Unit,
@@ -618,9 +709,9 @@ private fun EntryRecognitionCard(
         if (state.running) {
             Button(onClick = onStop) { Text(if (state.dryRun) "停止识别" else "停止入口流程") }
         } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TextButton(onClick = onStart) { Text("只读识别") }
-                Button(onClick = onStartAutomation) { Text("执行入口流程") }
+            ChoiceRow {
+                TextButton(onClick = onStart, enabled = startEnabled) { Text("只读识别") }
+                Button(onClick = onStartAutomation, enabled = startEnabled) { Text("执行入口流程") }
             }
         }
     }
@@ -628,27 +719,43 @@ private fun EntryRecognitionCard(
 
 @Composable
 private fun BatchRunCard(
+    state: LabyrinthUiState,
     checkpoint: LabyrinthBatchCheckpoint?,
     haltReason: LabyrinthBatchHaltReason?,
     routeProgress: LabyrinthRouteProgress?,
-    guildOptions: List<LabyrinthGuildOption>,
-    selectedDifficulty: Int,
-    enabled: Boolean,
+    entryRecognitionRunning: Boolean,
     onStart: (List<LabyrinthBatchGoal>) -> Unit,
     onStop: () -> Unit,
 ) {
+    val guildOptions = state.guildOptions.take(5)
+    val selectedDifficulty = state.selectedDifficulty
+    val enabled = state.selectedAccount != null &&
+        state.settingsReady &&
+        !state.isWorking &&
+        state.captcha == null &&
+        !entryRecognitionRunning
     val active = checkpoint?.stage in setOf(
         LabyrinthBatchStage.REROLLING,
         LabyrinthBatchStage.INVALIDATING_OLD_CLIENT_SESSION,
         LabyrinthBatchStage.RUNNING_LABYRINTH,
         LabyrinthBatchStage.RECORDING_RESULT,
     )
-    SelectionCard(
-        title = "批量自动执行",
-        description = "一次屏幕授权跑完全部目标，按列表顺序逐个公会执行：刷开局 → 底栏主页触发旧会话失效 → " +
-            "进入并通关 → 记录 → 下一轮。难度沿用上方设置（$selectedDifficulty）；" +
-            "战斗连续失败按策略设置放弃本局并重刷。",
-    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        WorkflowStepHeader(
+            number = "2",
+            title = "自动执行",
+            summary = "设置目标后连续执行；每轮均按批量目标准备新开局。",
+        )
+        Text(
+            "难度 $selectedDifficulty · 后续轮次自动刷开局、重置客户端会话、执行并记录结果。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            "下方批量目标是批量运行的唯一公会来源，与单独刷开局的临时选择无关。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.primary,
+        )
         // Per-guild target text and mode; the guild list itself is fixed (top five).
         val counts = remember(guildOptions) {
             mutableStateOf(guildOptions.associate { it.guildId to "" })
@@ -696,137 +803,88 @@ private fun BatchRunCard(
 
         if (active) {
             Button(onClick = onStop) { Text("停止批量执行") }
-            return@SelectionCard
-        }
-
-        Text("目标（留空 = 跳过该公会）", style = MaterialTheme.typography.titleSmall)
-        guildOptions.forEach { guild ->
-            val text = counts.value[guild.guildId].orEmpty()
-            val mode = modes.value[guild.guildId] ?: LabyrinthBatchGoalMode.CLEARS
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedTextField(
-                    value = text,
-                    onValueChange = { value ->
-                        counts.value = counts.value + (guild.guildId to value.filter(Char::isDigit).take(2))
-                    },
-                    label = { Text(guild.name) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f),
-                )
-                FilterChip(
-                    selected = mode == LabyrinthBatchGoalMode.CLEARS,
-                    onClick = {
-                        modes.value = modes.value + (
-                            guild.guildId to if (mode == LabyrinthBatchGoalMode.CLEARS) {
-                                LabyrinthBatchGoalMode.ATTEMPTS
-                            } else {
-                                LabyrinthBatchGoalMode.CLEARS
-                            }
-                            )
-                    },
-                    label = { Text(if (mode == LabyrinthBatchGoalMode.CLEARS) "按通关计" else "按开局计") },
-                )
-            }
-        }
-        val goals = guildOptions.mapNotNull { guild ->
-            counts.value[guild.guildId]?.toIntOrNull()?.takeIf { it >= 1 }?.let { count ->
-                LabyrinthBatchGoal(
-                    guildId = guild.guildId,
-                    targetCount = count,
-                    mode = modes.value[guild.guildId] ?: LabyrinthBatchGoalMode.CLEARS,
-                )
-            }
-        }
-        val total = goals.sumOf { it.targetCount }
-        Button(
-            onClick = { onStart(goals) },
-            enabled = enabled && goals.isNotEmpty(),
-        ) { Text(if (goals.isEmpty()) "开始批量执行" else "开始批量执行（${goals.size} 个公会 · 共 $total 轮）") }
-        if (!enabled) {
-            Text("需要已选账号且刷开局设置就绪、无进行中的刷取任务。", style = MaterialTheme.typography.bodySmall)
-        }
-    }
-}
-
-@Composable
-private fun AutoRunCard(
-    progress: LabyrinthAutoRunProgress,
-    routeProgress: LabyrinthRouteProgress?,
-    onStart: (Int) -> Unit,
-    onStop: () -> Unit,
-) {
-    SelectionCard(
-        title = "自动执行循环",
-        description = "按已保存路线自动完成节点、事件与结算，达到刷取次数后停止；轮间自动重置会话",
-    ) {
-        var targetRunsText by remember { mutableStateOf("1") }
-        if (progress.targetRuns > 0 || progress.stage.isNotEmpty()) {
-            Text(
-                "进度：${progress.completedRuns}/${progress.targetRuns} 轮 · ${progress.stage}",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        routeProgress?.let { route ->
-            Text(
-                "本轮路线：区域${route.currentArea} · 已走 ${route.visitedCount}/${route.routeNodeCount}" +
-                    (route.nextNodeLabel?.let { " · 下一节点 $it" } ?: "") +
-                    if (route.complete) " · 已完成" else "",
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        if (progress.running) {
-            Button(onClick = onStop) { Text("停止自动执行") }
         } else {
-            OutlinedTextField(
-                value = targetRunsText,
-                onValueChange = { value -> targetRunsText = value.filter(Char::isDigit).take(2) },
-                label = { Text("刷取次数（完整通关次数）") },
-                singleLine = true,
-            )
+            Text("执行目标（留空 = 跳过该公会）", style = MaterialTheme.typography.titleSmall)
+            guildOptions.forEach { guild ->
+                val text = counts.value[guild.guildId].orEmpty()
+                val mode = modes.value[guild.guildId] ?: LabyrinthBatchGoalMode.CLEARS
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val compact = maxWidth < 480.dp
+                    @Composable fun CountField(modifier: Modifier) {
+                        OutlinedTextField(
+                            value = text,
+                            onValueChange = { value ->
+                                counts.value = counts.value + (guild.guildId to value.filter(Char::isDigit).take(2))
+                            },
+                            label = { Text(guild.name) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = modifier,
+                        )
+                    }
+                    @Composable fun ModeChip() {
+                        FilterChip(
+                            selected = mode == LabyrinthBatchGoalMode.CLEARS,
+                            onClick = {
+                                modes.value = modes.value + (
+                                    guild.guildId to if (mode == LabyrinthBatchGoalMode.CLEARS) {
+                                        LabyrinthBatchGoalMode.ATTEMPTS
+                                    } else {
+                                        LabyrinthBatchGoalMode.CLEARS
+                                    }
+                                    )
+                            },
+                            label = { Text(if (mode == LabyrinthBatchGoalMode.CLEARS) "按通关计" else "按开局计") },
+                        )
+                    }
+                    if (compact) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            CountField(Modifier.fillMaxWidth())
+                            ModeChip()
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            CountField(Modifier.weight(1f))
+                            ModeChip()
+                        }
+                    }
+                }
+            }
+            val goals = guildOptions.mapNotNull { guild ->
+                counts.value[guild.guildId]?.toIntOrNull()?.takeIf { it >= 1 }?.let { count ->
+                    LabyrinthBatchGoal(
+                        guildId = guild.guildId,
+                        targetCount = count,
+                        mode = modes.value[guild.guildId] ?: LabyrinthBatchGoalMode.CLEARS,
+                    )
+                }
+            }
+            if (goals.isNotEmpty()) {
+                Text(
+                    "启动后将按首个批量目标公会及已保存的难度、路线要求准备新开局。读取当前开局不会跳过刷取。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            val total = goals.sumOf { it.targetCount }
             Button(
-                onClick = { targetRunsText.toIntOrNull()?.let(onStart) },
-                enabled = targetRunsText.toIntOrNull()?.let { it >= 1 } == true,
-            ) { Text("开始自动执行") }
-        }
-    }
-}
-
-@Composable
-private fun SessionResetCard(
-    state: GameSessionResetState,
-    onStart: () -> Unit,
-    onStop: () -> Unit,
-) {
-    SelectionCard("会话失效重置", "不杀进程：触发「会话失效」弹窗并返回标题页，等待重新进入黎明界") {
-        Text("状态：${state.status}", style = MaterialTheme.typography.bodyMedium)
-        if (state.status == GameSessionResetStatus.RUNNING) {
-            Text("阶段：${state.stage}", style = MaterialTheme.typography.bodySmall)
-            Text("识别帧：${state.frameCount}", style = MaterialTheme.typography.bodySmall)
-        }
-        state.message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-        if (state.running) {
-            Button(onClick = onStop) { Text("停止重置") }
-        } else {
-            Button(onClick = onStart) { Text("触发会话失效重置") }
-        }
-    }
-}
-
-@Composable
-private fun AccountCard(state: LabyrinthUiState) {
-    Card(modifier = Modifier.fillMaxWidth()) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text("当前账号", style = MaterialTheme.typography.titleMedium)
-            Text(state.selectedAccount?.alias ?: "未选择账号")
-            Text(
-                if (state.selectedAccount?.gameUid != null) "已绑定游戏 UID" else "请先完成原生登录",
-                style = MaterialTheme.typography.bodySmall,
-            )
+                onClick = { onStart(goals) },
+                enabled = enabled && goals.isNotEmpty(),
+            ) {
+                Text(
+                    when {
+                        goals.isEmpty() -> "开始自动执行"
+                        else -> "开始自动执行（${goals.size} 个公会 · 共 $total 轮）"
+                    },
+                )
+            }
+            if (!enabled) {
+                Text("需要已选账号且刷开局设置就绪、无进行中的刷取任务。", style = MaterialTheme.typography.bodySmall)
+            }
         }
     }
 }
@@ -837,12 +895,18 @@ private fun SelectionCard(
     description: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Card(modifier = Modifier.fillMaxWidth()) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = androidx.compose.foundation.shape.RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
+        ),
+    ) {
         Column(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             description?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             content()
         }
@@ -850,31 +914,46 @@ private fun SelectionCard(
 }
 
 @Composable
-private fun RadioOption(
-    label: String,
-    selected: Boolean,
-    enabled: Boolean,
-    onClick: () -> Unit,
-) {
+private fun ChoiceRow(content: @Composable RowScope.() -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(enabled = enabled, onClick = onClick)
-            .padding(vertical = 2.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(selected = selected, onClick = null, enabled = enabled)
-        Text(label)
-    }
-}
-
-@Composable
-private fun ChoiceRow(content: @Composable RowScope.() -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
+            .horizontalScroll(rememberScrollState()),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         content = content,
     )
+}
+
+/** Keeps descriptive text and its action usable in narrow emulator and split-screen windows. */
+@Composable
+private fun ResponsiveActionLine(
+    title: String,
+    description: String,
+    action: @Composable () -> Unit,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val text: @Composable () -> Unit = {
+            Column {
+                Text(title, style = MaterialTheme.typography.titleSmall)
+                Text(description, style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (maxWidth < 480.dp) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                text()
+                action()
+            }
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Box(modifier = Modifier.weight(1f)) { text() }
+                action()
+            }
+        }
+    }
 }
 
 @Composable

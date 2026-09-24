@@ -34,14 +34,12 @@ class LabyrinthCurrentOpeningCriteriaTest {
         )
 
         val criteria = labyrinthCurrentOpeningCriteria(
-            selectedGuildId = 4,
             selectedDifficulty = 5,
             selectedRoutePolicy = selectedPolicy,
             savedCheckpoint = checkpoint,
             currentEnterId = 88001,
         )
 
-        assertEquals(4, criteria.guildId)
         assertEquals(5, criteria.difficulty)
         assertEquals(selectedPolicy, criteria.routePolicy)
         assertEquals(19, criteria.attempt)
@@ -62,7 +60,6 @@ class LabyrinthCurrentOpeningCriteriaTest {
         )
 
         val criteria = labyrinthCurrentOpeningCriteria(
-            selectedGuildId = 2,
             selectedDifficulty = 3,
             selectedRoutePolicy = LabyrinthRoutePolicy(),
             savedCheckpoint = checkpoint,

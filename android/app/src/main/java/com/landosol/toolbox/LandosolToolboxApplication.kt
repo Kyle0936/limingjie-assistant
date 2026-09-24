@@ -264,8 +264,8 @@ class LandosolToolboxApplication : Application() {
             ?: return LabyrinthExecutionGateResult.Blocked("未选择账号，已禁止执行保存路线")
         val route = labyrinthRouteStore.loadLatest(id)
         val checkpoint = com.landosol.toolbox.labyrinth.RoomLabyrinthRerollCheckpointStore(database).load(id)
-        // 执行入口复用上次刷开局/“当前开局”成功后保存的 TARGET 检查点。
-        // 这里不能再次调用 top：应用进程重启后内存游戏会话不存在，也不应因此要求用户重新登录。
+        // Batch runs always prepare a fresh opening and synchronize the client first. The route
+        // gate only needs to verify that the persisted route/checkpoint pair is internally sound.
         return validateLabyrinthExecution(route, checkpoint, top = null)
     }
 
