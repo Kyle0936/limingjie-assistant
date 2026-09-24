@@ -922,15 +922,39 @@ class GradientTemplateMatcher(
 ) {
     private data class TemplateStats(
         val points: IntArray,
-        val gradients: DoubleArray,
-        val mean: Double,
+        /**
+         * Template gradients with the mean already subtracted, and template luminances with
+         * `luminanceMean` already subtracted.
+         *
+         * The correlation below multiplies every sample by `template - mean`, so that subtraction
+         * used to be redone for each of the ~2 000 samples of every window. Hoisting it is a pure
+         * move of the same IEEE operation, so the score keeps its exact bits, and it replaces the
+         * raw arrays rather than adding to them, so the resident template cache does not grow.
+         */
+        val centeredGradients: DoubleArray,
         val denominator: Double,
-        val luminances: DoubleArray,
-        val luminanceMean: Double,
+        val centeredLuminances: DoubleArray,
         val luminanceDenominator: Double,
     )
 
     private val cache = IdentityHashMap<PixelImage, TemplateStats>()
+
+    /**
+     * `map()` results for one (source size, target size) pair.
+     *
+     * Both sizes come from a handful of template and window dimensions, so these tables are tiny
+     * and are reused by every sample of every window in a sweep. The values are identical to
+     * calling [map] inline, including the clamp that keeps a sample inside the window. Both sizes
+     * stay far below 2^20, so packing a pair into one key cannot collide.
+     *
+     * [HashMap] on purpose: the sweep is single-threaded today — one coroutine samples the anchors
+     * of a frame — so a plain map is enough and the threading question stays separate from the
+     * arithmetic one. Unlike [cache] these two are deliberately not `@Synchronized`, because they
+     * are only ever touched from inside [score]. If node scanning is ever parallelised, they must
+     * become concurrent structures or be filled once per frame in [prepareFrame].
+     */
+    private val mappedOffsetCache = HashMap<Long, IntArray>()
+    private val rowScaledOffsetCache = HashMap<Long, IntArray>()
     private data class FrameStats(val frame: PixelImage, val lights: ByteArray, val gradients: ShortArray)
     private var preparedFrame: FrameStats? = null
     /**
@@ -978,30 +1002,48 @@ class GradientTemplateMatcher(
         val stats = stats(template)
         if (stats.points.isEmpty()) return 0.0
         val features = preparedFrame?.takeIf { it.frame === frame }
+        // The template-to-frame coordinate mapping depends only on the two sizes, and those sizes
+        // repeat across the whole sweep, so the per-sample `map()` call, its long multiply, its
+        // integer division and its clamp are all hoisted out of the inner loop.
+        val xTable = mappedOffsets(template.width, rect.width)
+        val yTable = mappedOffsets(template.height, rect.height)
+        val yRowTable = rowScaledOffsets(template.height, rect.height, frame.width)
+        val rectBase = rect.top * frame.width + rect.left
+        val points = stats.points
+        val centeredGradients = stats.centeredGradients
+        val centeredLuminances = stats.centeredLuminances
         var observedSum = 0.0
         var observedSquares = 0.0
         var gradientProduct = 0.0
         var luminanceSum = 0.0
         var luminanceSquares = 0.0
         var luminanceProduct = 0.0
-        stats.points.indices.forEach { index ->
-            val packed = stats.points[index]
+        val count = points.size
+        var index = 0
+        while (index < count) {
+            val packed = points[index]
             val templateX = packed ushr 16
             val templateY = packed and 0xffff
-            val frameX = rect.left + map(templateX, template.width, rect.width)
-            val frameY = rect.top + map(templateY, template.height, rect.height)
-            val at = frameY * frame.width + frameX
-            val gradient = features?.gradients?.get(at)?.toDouble() ?: gradient(frame, frameX, frameY, rect)
-            val light = if (features != null) (features.lights[at].toInt() and 255).toDouble()
-                else luminance(frame[frameX, frameY]).toDouble()
+            val at = rectBase + yRowTable[templateY] + xTable[templateX]
+            val gradient: Double
+            val light: Double
+            if (features != null) {
+                gradient = features.gradients[at].toDouble()
+                light = (features.lights[at].toInt() and 255).toDouble()
+            } else {
+                val frameX = rect.left + xTable[templateX]
+                val frameY = rect.top + yTable[templateY]
+                gradient = gradient(frame, frameX, frameY, rect)
+                light = luminance(frame[frameX, frameY]).toDouble()
+            }
             observedSum += gradient
             observedSquares += gradient * gradient
-            gradientProduct += gradient * (stats.gradients[index] - stats.mean)
+            gradientProduct += gradient * centeredGradients[index]
             luminanceSum += light
             luminanceSquares += light * light
-            luminanceProduct += light * (stats.luminances[index] - stats.luminanceMean)
+            luminanceProduct += light * centeredLuminances[index]
+            index++
         }
-        val count = stats.points.size
         fun normalized(product: Double, sum: Double, squares: Double, denominator: Double): Double {
             val variance = squares - sum * sum / count
             return if (variance <= 0.0 || denominator <= 0.0) 0.0 else product / sqrt(variance * denominator)
@@ -1011,6 +1053,20 @@ class GradientTemplateMatcher(
         if (minOf(gradientScore, luminanceScore) < minimumChannelScore) return 0.0
         return maxOf(gradientScore, luminanceScore).coerceIn(0.0, 1.0)
     }
+
+    /** [mappedOffsets] for rows, pre-multiplied by the frame width so the inner loop only adds. */
+    private fun rowScaledOffsets(sourceSize: Int, targetSize: Int, frameWidth: Int): IntArray =
+        rowScaledOffsetCache.getOrPut(
+            (sourceSize.toLong() shl 40) or (targetSize.toLong() shl 20) or frameWidth.toLong(),
+        ) {
+            val rows = mappedOffsets(sourceSize, targetSize)
+            IntArray(rows.size) { index -> rows[index] * frameWidth }
+        }
+
+    private fun mappedOffsets(sourceSize: Int, targetSize: Int): IntArray =
+        mappedOffsetCache.getOrPut((sourceSize.toLong() shl 20) or targetSize.toLong()) {
+            IntArray(sourceSize) { value -> map(value, sourceSize, targetSize) }
+        }
 
     @Synchronized
     private fun stats(template: PixelImage): TemplateStats = cache[template] ?: run {
@@ -1045,11 +1101,14 @@ class GradientTemplateMatcher(
         }
         TemplateStats(
             points = points.toIntArray(),
-            gradients = values,
-            mean = mean,
+            // Same subtraction the correlation used to repeat per sample, applied once per point.
+            // `mean` and `denominator` above are still computed exactly as before, including the
+            // sequential summation order, because changing either would change the score.
+            centeredGradients = DoubleArray(values.size) { index -> values[index] - mean },
             denominator = denominator,
-            luminances = luminanceValues,
-            luminanceMean = luminanceMean,
+            centeredLuminances = DoubleArray(luminanceValues.size) { index ->
+                luminanceValues[index] - luminanceMean
+            },
             luminanceDenominator = luminanceDenominator,
         ).also { cache[template] = it }
     }
