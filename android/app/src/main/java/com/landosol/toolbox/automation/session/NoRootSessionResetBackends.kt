@@ -164,6 +164,7 @@ class AnchorTriggerSessionExpiryTerminator(
     private val returnTitlePoint: ScreenPoint,
     private val popupVisible: suspend () -> Boolean,
     private val titleReached: suspend () -> Boolean,
+    private val synchronizedWithoutExpiry: suspend () -> Boolean = { false },
     private val frameSize: () -> Pair<Int, Int>,
     private val coordinateMapper: CoordinateMapper = CoordinateMapper(),
     private val available: () -> Boolean = { true },
@@ -214,13 +215,19 @@ class AnchorTriggerSessionExpiryTerminator(
             var trigger: ScreenPoint? = null
             val recognised = await(perAttemptTimeout) {
                 trigger = triggerPoint()
-                trigger != null || popupVisible()
+                trigger != null || popupVisible() || synchronizedWithoutExpiry()
             }
             if (!recognised) {
                 step("trigger-not-recognised-after-$taps-taps")
                 return ClientTerminationResult.TIMEOUT
             }
-            val target = trigger ?: break // popup appeared without our tap
+            popup = popupVisible()
+            if (!popup && synchronizedWithoutExpiry()) {
+                step("client-already-synchronized")
+                return ClientTerminationResult.ALREADY_GONE
+            }
+            if (popup) break
+            val target = trigger ?: continue
             step("tap-trigger#${taps + 1}@${target.x.toInt()},${target.y.toInt()}")
             if (!onTap(target)) {
                 step("trigger-tap-rejected")
@@ -228,7 +235,15 @@ class AnchorTriggerSessionExpiryTerminator(
             }
             taps++
             delay(triggerTapDelayMillis)
-            popup = await(popupAfterTapTimeoutMillis) { popupVisible() }
+            val responseObserved = await(popupAfterTapTimeoutMillis) {
+                popupVisible() || synchronizedWithoutExpiry()
+            }
+            popup = popupVisible()
+            if (!responseObserved) continue
+            if (!popup && synchronizedWithoutExpiry()) {
+                step("client-already-synchronized")
+                return ClientTerminationResult.ALREADY_GONE
+            }
         }
         if (!popup && !popupVisible()) {
             step("popup-timeout-after-$taps-taps")

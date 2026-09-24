@@ -17,6 +17,7 @@ class LabyrinthBatchControllerTest {
         var rerollFails = false
         var invalidationFails = false
         var runStartFails = false
+        var reusableOpeningCheck: LabyrinthBatchReusableOpeningCheck = LabyrinthBatchReusableOpeningCheck.Valid
         val startedRuns = mutableListOf<Triple<Long, Int, String>>()
         val stoppedRuns = mutableListOf<String>()
 
@@ -33,6 +34,14 @@ class LabyrinthBatchControllerTest {
             } else {
                 LabyrinthBatchInvalidationResult.Success("tap-home-tab")
             }
+        }
+
+        override suspend fun verifyReusableOpening(
+            accountId: Long,
+            opening: LabyrinthBatchReusableOpening,
+        ): LabyrinthBatchReusableOpeningCheck {
+            log += "verify:${opening.enterId}"
+            return reusableOpeningCheck
         }
 
         override suspend fun startRun(accountId: Long, guildId: Int, runId: String): Boolean {
@@ -297,5 +306,124 @@ class LabyrinthBatchControllerTest {
         assertEquals(LabyrinthBatchStage.COMPLETED, batch.state.value?.stage)
         assertTrue(ports.log.isEmpty())
         assertNull(batch.haltReason.value)
+    }
+
+    @Test
+    fun `verified matching opening skips reroll but still synchronizes the client`() = runTest {
+        val ports = FakePorts()
+        val batch = controller(ports)
+
+        assertTrue(
+            batch.start(
+                batchId = "b1",
+                accountId = 7L,
+                goals = listOf(goal(guild = 2, count = 2)),
+                difficulty = 5,
+                reusableOpening = LabyrinthBatchReusableOpening(
+                    enterId = 9876L,
+                    guildId = 2,
+                    difficulty = 5,
+                ),
+            ),
+        )
+
+        assertEquals(listOf("verify:9876", "invalidate", "start:b1-run001"), ports.log)
+        assertEquals(9876L, batch.state.value?.currentEnterId)
+        assertTrue(batch.state.value?.reusedVerifiedOpeningForFirstRun == true)
+
+        batch.onRunTerminal(LabyrinthRunTerminalEvent.Cleared(currentRunId(batch)))
+
+        assertEquals(
+            listOf(
+                "verify:9876", "invalidate", "start:b1-run001",
+                "reroll:2", "invalidate", "start:b1-run002",
+            ),
+            ports.log,
+        )
+    }
+
+    @Test
+    fun `failed reused first run rerolls and never checks reuse again`() = runTest {
+        val ports = FakePorts()
+        val batch = controller(ports)
+        batch.start(
+            batchId = "b1",
+            accountId = 7L,
+            goals = listOf(goal(guild = 2, count = 1, mode = LabyrinthBatchGoalMode.CLEARS)),
+            difficulty = 5,
+            reusableOpening = LabyrinthBatchReusableOpening(9876L, 2, 5),
+        )
+
+        batch.onRunTerminal(LabyrinthRunTerminalEvent.FailedMaxRetry(currentRunId(batch)))
+
+        assertEquals(
+            listOf(
+                "verify:9876", "invalidate", "start:b1-run001",
+                "reroll:2", "invalidate", "start:b1-run002",
+            ),
+            ports.log,
+        )
+        assertEquals(1, ports.log.count { it.startsWith("verify:") })
+        assertEquals(LabyrinthBatchStage.RUNNING_LABYRINTH, batch.state.value?.stage)
+    }
+
+    @Test
+    fun `stale reusable opening falls back to a fresh reroll`() = runTest {
+        val ports = FakePorts().apply {
+            reusableOpeningCheck = LabyrinthBatchReusableOpeningCheck.Stale("already consumed")
+        }
+        val batch = controller(ports)
+
+        batch.start(
+            batchId = "b1",
+            accountId = 7L,
+            goals = listOf(goal(guild = 2, count = 1)),
+            difficulty = 5,
+            reusableOpening = LabyrinthBatchReusableOpening(9876L, 2, 5),
+        )
+
+        assertEquals(listOf("verify:9876", "reroll:2", "invalidate", "start:b1-run001"), ports.log)
+        assertFalse(batch.state.value?.reusedVerifiedOpeningForFirstRun == true)
+    }
+
+    @Test
+    fun `reusable opening verification failure stops before touching the client`() = runTest {
+        val ports = FakePorts().apply {
+            reusableOpeningCheck = LabyrinthBatchReusableOpeningCheck.Failure("network unavailable")
+        }
+        val batch = controller(ports)
+
+        batch.start(
+            batchId = "b1",
+            accountId = 7L,
+            goals = listOf(goal(guild = 2, count = 1)),
+            difficulty = 5,
+            reusableOpening = LabyrinthBatchReusableOpening(9876L, 2, 5),
+        )
+
+        assertEquals(listOf("verify:9876"), ports.log)
+        assertEquals(LabyrinthBatchHaltReason.REUSABLE_OPENING_VALIDATION_FAILED, batch.haltReason.value)
+        assertTrue(ports.startedRuns.isEmpty())
+    }
+
+    @Test
+    fun `verified opening with different first goal uses normal reroll`() = runTest {
+        val ports = FakePorts()
+        val batch = controller(ports)
+
+        batch.start(
+            batchId = "b1",
+            accountId = 7L,
+            goals = listOf(goal(guild = 3, count = 1)),
+            difficulty = 5,
+            reusableOpening = LabyrinthBatchReusableOpening(
+                enterId = 9876L,
+                guildId = 2,
+                difficulty = 5,
+            ),
+        )
+
+        assertEquals(listOf("reroll:3", "invalidate", "start:b1-run001"), ports.log)
+        assertFalse(batch.state.value?.reusedVerifiedOpeningForFirstRun == true)
     }
 }

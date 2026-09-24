@@ -294,6 +294,7 @@ class LandosolToolboxApplication : Application() {
             returnTitlePoint = SESSION_RETURN_TITLE_POINT,
             popupVisible = { frameTracker.popupVisible },
             titleReached = { frameTracker.titleReached },
+            synchronizedWithoutExpiry = { frameTracker.clientSynchronizedWithoutExpiry },
             frameSize = { frameTracker.frameSize },
             available = LandosolAccessibilityService::isConnected,
             returnTitleAnchorPoint = { frameTracker.anchorCenter(EntryAnchorId.SESSION_RETURN_TITLE) },
@@ -373,6 +374,11 @@ class LandosolToolboxApplication : Application() {
             ports = object : com.landosol.toolbox.labyrinth.batch.LabyrinthBatchPorts {
                 override suspend fun reroll(accountId: Long, guildId: Int, difficulty: Int) =
                     labyrinthController.rerollForBatch(accountId, guildId, difficulty)
+
+                override suspend fun verifyReusableOpening(
+                    accountId: Long,
+                    opening: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening,
+                ) = labyrinthController.verifyReusableOpeningForBatch(accountId, opening)
 
                 override suspend fun invalidateClientSessionAndReturn():
                     com.landosol.toolbox.labyrinth.batch.LabyrinthBatchInvalidationResult {
@@ -484,16 +490,31 @@ class LandosolToolboxApplication : Application() {
     ): Boolean {
         val id = accountId ?: return false
         if (goals.isEmpty()) return false
+        if (autoRunJob?.isActive == true) return false
+        // The launch job ends after start() hands control to the recognition session. The batch
+        // stage remains the authoritative lock for the rest of that run.
+        if (labyrinthBatchController.state.value?.stage in ACTIVE_BATCH_STAGES) return false
         val ui = labyrinthController.uiState.value
+        if (ui.isWorking || ui.captcha != null || labyrinthEntryRecognitionSession.state.value.running) {
+            return false
+        }
+        // This one-shot candidate is consumed only at the external batch start boundary. Later
+        // cycles, including FAILED_MAX_RETRY recovery, never return here and therefore always
+        // use the normal forced-retire reroll path.
+        val firstGoal = goals.first()
+        val reusableOpening = labyrinthController.consumeReusableOpeningForBatch(
+            expectedGuildId = firstGoal.guildId,
+            expectedDifficulty = ui.selectedDifficulty,
+        )
         val batchId = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.ROOT)
             .format(java.util.Date())
-        autoRunJob?.cancel()
         autoRunJob = autoRunScope.launch {
             labyrinthBatchController.start(
                 batchId = batchId,
                 accountId = id,
                 goals = goals,
                 difficulty = ui.selectedDifficulty,
+                reusableOpening = reusableOpening,
             )
         }
         return true
