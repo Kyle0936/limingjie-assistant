@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.Intent
 import android.util.Log
 import com.landosol.toolbox.account.AccountRepository
+import com.landosol.toolbox.account.SelectedAccountServer
 import com.landosol.toolbox.automation.AutomationAction
 import com.landosol.toolbox.automation.AutomationSessionManager
 import com.landosol.toolbox.automation.GameClientLaunchGate
@@ -107,15 +108,17 @@ class LandosolToolboxApplication : Application() {
 
     /** 渠道识别结果写进日志，便于用 logcat 直接验证多渠道适配是否生效。 */
     private fun logGameClient() {
-        val server = selectedServer
+        val selected = selectedServer
         Log.i(
             APP_LOG_TAG,
-            "游戏客户端：${gameClientResolution}；选中账号服务器=${server?.storageId ?: "无"}；" +
+            "游戏客户端：${gameClientResolution}；选中账号服务器=$selected；" +
                 "APP-VER=${gameClientVersionName ?: "未知"}；登录模式=" +
-                when {
-                    server == null -> "未选账号"
-                    server.isChannelServer -> "渠道服凭据直通（账号=uid，密码=access_key）"
-                    else -> "B 服 SDK 登录"
+                when (selected) {
+                    SelectedAccountServer.NoAccount -> "未选账号"
+                    is SelectedAccountServer.Unknown -> "服务器未知，不登录"
+                    is SelectedAccountServer.Known ->
+                        if (selected.server.isChannelServer) "渠道服凭据直通（账号=uid，密码=access_key）"
+                        else "B 服 SDK 登录"
                 },
         )
     }
@@ -124,9 +127,9 @@ class LandosolToolboxApplication : Application() {
     val automationOverlayCoordinator by lazy {
         AutomationOverlayCoordinator(AndroidAutomationNotificationHost(this))
     }
-    /** 选中账号所属的服务器，随账号切换更新；在账号库读出之前为 null。 */
+    /** 选中账号所属的服务器，随账号切换更新；在账号库读出之前按「没有选中账号」处理。 */
     @Volatile
-    private var selectedServer: GameServer? = null
+    private var selectedServer: SelectedAccountServer = SelectedAccountServer.NoAccount
 
     /**
      * 已安装的游戏客户端。首次取用时查询一次，构造 Application 时不查包；
@@ -657,8 +660,6 @@ class LandosolToolboxApplication : Application() {
         )
         const val APP_LOG_TAG = "LandosolToolbox"
         const val DATABASE_UPDATE_LOG_TAG = "LabyrinthCnDatabase"
-        @Suppress("unused")
-        const val GAME_PACKAGE_NAME = "com.bilibili.priconne"
 
         /**
          * 渠道解析失败（零安装 / 双安装歧义）时的占位包名。

@@ -290,18 +290,19 @@ class LandosolAccessibilityService : AccessibilityService() {
 }
 
 class AndroidAccessibilityActionBackend(
-    /** 每次动作时取值：切换到另一渠道的账号后，校验目标随之改变。null 表示不校验前台包。 */
-    private val expectedPackageName: () -> String?,
+    /**
+     * 每次动作时取值：切换到另一渠道的账号后，校验目标随之改变。
+     * 不可为 null——前台包校验没有「关闭」这一档；解析不出目标时由调用方传永不匹配的占位包名。
+     */
+    private val expectedPackageName: () -> String,
 ) : AutomationActionBackend {
-    constructor(expectedPackageName: String? = GAME_PACKAGE_NAME) : this({ expectedPackageName })
 
     override suspend fun execute(action: AutomationAction): AutomationBackendResult {
         if (!action.hasValidCoordinates()) return AutomationBackendResult.Rejected("动作坐标无效")
         val service = LandosolAccessibilityService.current()
             ?: return AutomationBackendResult.Rejected("无障碍服务未连接")
         val foregroundPackage = LandosolAccessibilityService.foregroundPackage()
-        val expected = expectedPackageName()
-        if (expected != null && foregroundPackage != expected) {
+        if (foregroundPackage != expectedPackageName()) {
             return AutomationBackendResult.Rejected(GAME_NOT_FOREGROUND_REASON)
         }
         return service.perform(
@@ -314,9 +315,5 @@ class AndroidAccessibilityActionBackend(
         is AutomationAction.Tap -> point.x >= 0f && point.y >= 0f
         is AutomationAction.Swipe -> start.x >= 0f && start.y >= 0f && end.x >= 0f && end.y >= 0f
         AutomationAction.Back -> true
-    }
-
-    private companion object {
-        const val GAME_PACKAGE_NAME = "com.bilibili.priconne"
     }
 }

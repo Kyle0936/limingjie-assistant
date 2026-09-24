@@ -70,7 +70,7 @@ class AccountLoginMaterial(
     val credentialKey: String,
     val loginId: String,
     val password: String,
-    val server: GameServer = GameServer.CN_BILIBILI,
+    val server: GameServer,
 ) {
     override fun toString(): String =
         "AccountLoginMaterial(accountId=$accountId, server=${server.storageId}, REDACTED)"

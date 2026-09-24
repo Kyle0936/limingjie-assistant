@@ -18,14 +18,16 @@ data class AccountEditorState(
     val loginId: String = "",
     val password: String = "",
     val gameUid: String = "",
-    val server: GameServer = GameServer.CN_BILIBILI,
-    /** 编辑时账号原本所属的服务器；新增时为 null。 */
-    val savedServer: GameServer? = null,
+    /** 必须由用户选择：新增账号没有默认服务器，读不懂原值的账号也要重新选。 */
+    val server: GameServer? = null,
+    /** 编辑时账号表里原样存着的服务器值；新增时为 null。 */
+    val savedServerId: String? = null,
 ) {
     val isEditing: Boolean get() = id != null
 
-    /** 换服务器后凭据含义随之改变（B 服密码 / 渠道服 access_key），必须重填密码。 */
-    val serverChanged: Boolean get() = savedServer != null && server != savedServer
+    /** 与仓库写入共用同一个判定：换服务器（含从读不懂的旧值改成任何服务器）必须重填密码。 */
+    val serverChanged: Boolean
+        get() = server != null && accountServerChangeRequiresPassword(savedServerId, server)
 }
 
 data class AccountUiState(
@@ -85,7 +87,7 @@ class AccountViewModel(
                         password = "",
                         gameUid = value.gameUid,
                         server = value.server,
-                        savedServer = value.server,
+                        savedServerId = value.savedServerId,
                     ),
                 )
             }
@@ -102,6 +104,10 @@ class AccountViewModel(
 
     fun saveEditor() {
         val editor = chrome.value.editor ?: return
+        val server = editor.server ?: run {
+            chrome.update { it.copy(message = "请选择服务器") }
+            return
+        }
         when (
             val validation = AccountInputValidator.validate(
                 alias = editor.alias,
@@ -109,7 +115,7 @@ class AccountViewModel(
                 password = editor.password,
                 gameUid = editor.gameUid,
                 passwordRequired = !editor.isEditing || editor.serverChanged,
-                server = editor.server,
+                server = server,
             )
         ) {
             is AccountValidationResult.Invalid -> chrome.update { it.copy(message = validation.message) }

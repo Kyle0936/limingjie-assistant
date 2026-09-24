@@ -7,8 +7,16 @@ data class NormalizedAccountInput(
     val loginId: String,
     val password: String,
     val gameUid: String?,
-    val server: GameServer = GameServer.CN_BILIBILI,
+    val server: GameServer,
 )
+
+/**
+ * 账号的凭据含义随服务器而变（B 服密码 / 渠道服 access_key），所以换服务器必须重填密码。
+ * [savedStorageId] 是账号表里原样存着的值（可能是读不懂的旧值），新建账号时为 null。
+ * 编辑界面和仓库写入都用这一个判定，避免两处各写一遍。
+ */
+fun accountServerChangeRequiresPassword(savedStorageId: String?, selected: GameServer): Boolean =
+    savedStorageId != null && savedStorageId != selected.storageId
 
 sealed interface AccountValidationResult {
     data class Valid(val value: NormalizedAccountInput) : AccountValidationResult
@@ -22,7 +30,7 @@ object AccountInputValidator {
         password: String,
         gameUid: String,
         passwordRequired: Boolean,
-        server: GameServer = GameServer.CN_BILIBILI,
+        server: GameServer,
     ): AccountValidationResult {
         val normalizedAlias = alias.trim()
         val normalizedLoginId = loginId.trim()

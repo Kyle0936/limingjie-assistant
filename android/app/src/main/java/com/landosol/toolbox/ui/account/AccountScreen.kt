@@ -218,7 +218,7 @@ private fun AccountEditorDialog(
                 OutlinedTextField(
                     value = editor.loginId,
                     onValueChange = { value -> onChange { it.copy(loginId = value) } },
-                    label = { Text(if (editor.server.isChannelServer) "登录账号（uid）" else "登录账号") },
+                    label = { Text(if (editor.server?.isChannelServer == true) "登录账号（uid）" else "登录账号") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -226,7 +226,7 @@ private fun AccountEditorDialog(
                     value = editor.password,
                     onValueChange = { value -> onChange { it.copy(password = value) } },
                     label = {
-                        val name = if (editor.server.isChannelServer) "密码（access_key）" else "密码"
+                        val name = if (editor.server?.isChannelServer == true) "密码（access_key）" else "密码"
                         Text(
                             when {
                                 editor.serverChanged -> "新$name（更换服务器必填）"
@@ -265,7 +265,7 @@ private fun AccountEditorDialog(
 
 @Composable
 private fun ServerField(
-    server: GameServer,
+    server: GameServer?,
     serverChanged: Boolean,
     changeable: Boolean,
     onSelect: (GameServer) -> Unit,
@@ -273,7 +273,7 @@ private fun ServerField(
     var expanded by remember { mutableStateOf(false) }
     Box(modifier = Modifier.fillMaxWidth()) {
         OutlinedTextField(
-            value = server.displayName,
+            value = server?.displayName ?: "请选择",
             onValueChange = {},
             readOnly = true,
             label = { Text("服务器") },
@@ -285,6 +285,9 @@ private fun ServerField(
             supportingText = when {
                 serverChanged -> {
                     { Text("更换服务器后需重新填写密码，该账号已有的登录会话会失效") }
+                }
+                server == null -> {
+                    { Text("选择账号所属的服务器：国服 B 服，或所用客户端对应的渠道服") }
                 }
                 server.isChannelServer -> {
                     { Text("渠道服不走 B 站账号登录：登录账号填 uid，密码填 access_key") }

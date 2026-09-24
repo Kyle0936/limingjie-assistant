@@ -7,7 +7,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class BilibiliNativeLoginCoordinatorTest {
-    private val material = AccountLoginMaterial(7L, "credential-key", "login-id", "password")
+    private val material = AccountLoginMaterial(7L, "credential-key", "login-id", "password", GameServer.CN_BILIBILI)
 
     @Test
     fun `expired cached SDK session is refreshed once`() = runTest {
@@ -26,11 +26,11 @@ class BilibiliNativeLoginCoordinatorTest {
             ),
         )
         val coordinator = BilibiliNativeLoginCoordinator(
-            BilibiliLoginCoordinator(sdkGateway, store),
-            sdkGateway,
-            store,
-            gameGateway,
-            InMemoryGameSessionRegistry(),
+            sdkCoordinatorProvider = { BilibiliLoginCoordinator(sdkGateway, store) },
+            sdkGatewayProvider = { sdkGateway },
+            sessionStore = store,
+            gameGatewayFor = { gameGateway },
+            gameSessionRegistry = InMemoryGameSessionRegistry(),
         )
 
         val result = coordinator.start(material)
@@ -59,11 +59,11 @@ class BilibiliNativeLoginCoordinatorTest {
             ),
         )
         val coordinator = BilibiliNativeLoginCoordinator(
-            BilibiliLoginCoordinator(sdkGateway, store),
-            sdkGateway,
-            store,
-            gameGateway,
-            InMemoryGameSessionRegistry(),
+            sdkCoordinatorProvider = { BilibiliLoginCoordinator(sdkGateway, store) },
+            sdkGatewayProvider = { sdkGateway },
+            sessionStore = store,
+            gameGatewayFor = { gameGateway },
+            gameSessionRegistry = InMemoryGameSessionRegistry(),
         )
 
         val first = coordinator.start(material)

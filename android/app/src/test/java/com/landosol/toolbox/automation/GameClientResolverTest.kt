@@ -1,9 +1,11 @@
 package com.landosol.toolbox.automation
 
+import com.landosol.toolbox.account.SelectedAccountServer
 import com.landosol.toolbox.protocol.bilibili.GameServer
 import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -15,7 +17,7 @@ class GameClientResolverTest {
     fun `selected account decides the client even when several are installed`() {
         assertEquals(
             GameClientResolution.Available(GameServer.CN_XIAOMI),
-            GameClientResolver.resolve(GameServer.CN_XIAOMI, setOf(bilibili, xiaomi)),
+            GameClientResolver.resolve(SelectedAccountServer.Known(GameServer.CN_XIAOMI), setOf(bilibili, xiaomi)),
         )
     }
 
@@ -23,7 +25,7 @@ class GameClientResolverTest {
     fun `missing client of the selected account is reported, never swapped for another channel`() {
         assertEquals(
             GameClientResolution.NotInstalled(GameServer.CN_HUAWEI),
-            GameClientResolver.resolve(GameServer.CN_HUAWEI, setOf(xiaomi)),
+            GameClientResolver.resolve(SelectedAccountServer.Known(GameServer.CN_HUAWEI), setOf(xiaomi)),
         )
     }
 
@@ -31,22 +33,22 @@ class GameClientResolverTest {
     fun `without a selected account a single install is used`() {
         assertEquals(
             GameClientResolution.Available(GameServer.CN_XIAOMI),
-            GameClientResolver.resolve(null, setOf(xiaomi)),
+            GameClientResolver.resolve(SelectedAccountServer.NoAccount, setOf(xiaomi)),
         )
         assertEquals(
             GameClientResolution.Available(GameServer.CN_BILIBILI),
-            GameClientResolver.resolve(null, setOf(bilibili)),
+            GameClientResolver.resolve(SelectedAccountServer.NoAccount, setOf(bilibili)),
         )
     }
 
     @Test
     fun `without a selected account nothing installed is unavailable`() {
-        assertEquals(GameClientResolution.Unavailable, GameClientResolver.resolve(null, emptySet()))
+        assertEquals(GameClientResolution.Unavailable, GameClientResolver.resolve(SelectedAccountServer.NoAccount, emptySet()))
     }
 
     @Test
     fun `without a selected account several installs are ambiguous`() {
-        val resolution = GameClientResolver.resolve(null, setOf(bilibili, xiaomi))
+        val resolution = GameClientResolver.resolve(SelectedAccountServer.NoAccount, setOf(bilibili, xiaomi))
         assertTrue(resolution is GameClientResolution.Ambiguous)
         assertEquals(2, (resolution as GameClientResolution.Ambiguous).servers.size)
     }
@@ -73,10 +75,18 @@ class GameClientResolverTest {
     }
 
     @Test
-    fun `unknown storage id falls back to Bilibili`() {
+    fun `unknown storage id is never read as Bilibili`() {
         assertEquals(GameServer.CN_BILIBILI, GameServer.fromStorageId("cn-bilibili"))
         assertEquals(GameServer.CN_XIAOMI, GameServer.fromStorageId("cn-xiaomi"))
-        assertEquals(GameServer.CN_BILIBILI, GameServer.fromStorageId("cn-unknown"))
-        assertEquals(GameServer.CN_BILIBILI, GameServer.fromStorageId(null))
+        assertNull(GameServer.fromStorageId("cn-unknown"))
+        assertNull(GameServer.fromStorageId(null))
+    }
+
+    @Test
+    fun `selected account with an unreadable server is not guessed from the installed clients`() {
+        assertEquals(
+            GameClientResolution.UnknownServer("cn-unknown"),
+            GameClientResolver.resolve(SelectedAccountServer.Unknown("cn-unknown"), setOf(xiaomi)),
+        )
     }
 }

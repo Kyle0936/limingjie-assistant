@@ -11,21 +11,6 @@ class BilibiliNativeLoginCoordinator(
     private val gameGatewayFor: (GameServer) -> BilibiliGameGateway,
     private val gameSessionRegistry: GameSessionRegistry,
 ) {
-    /** 保持旧调用点与既有测试可用；所有账号都走同一个网关。 */
-    constructor(
-        sdkCoordinator: BilibiliLoginCoordinator,
-        sdkGateway: BilibiliSdkGateway,
-        sessionStore: SdkSessionStore,
-        gameGateway: BilibiliGameGateway,
-        gameSessionRegistry: GameSessionRegistry,
-    ) : this(
-        { sdkCoordinator },
-        { sdkGateway },
-        sessionStore,
-        { gameGateway },
-        gameSessionRegistry,
-    )
-
     // B 服 SDK 依赖按需求值：只有渠道服账号时绝不触发，否则会查询本机未安装的国服包。
     private val sdkCoordinatorLazy = lazy(sdkCoordinatorProvider)
     private val sdkCoordinator by sdkCoordinatorLazy

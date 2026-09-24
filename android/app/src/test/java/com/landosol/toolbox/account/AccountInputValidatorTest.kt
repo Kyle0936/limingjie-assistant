@@ -14,6 +14,7 @@ class AccountInputValidatorTest {
             password = "secret",
             gameUid = " 123456 ",
             passwordRequired = true,
+            server = GameServer.CN_BILIBILI,
         )
 
         assertTrue(result is AccountValidationResult.Valid)
@@ -31,6 +32,7 @@ class AccountInputValidatorTest {
             password = "",
             gameUid = "",
             passwordRequired = true,
+            server = GameServer.CN_BILIBILI,
         )
 
         assertEquals(AccountValidationResult.Invalid("请输入密码"), result)
@@ -44,6 +46,7 @@ class AccountInputValidatorTest {
             password = "secret",
             gameUid = "",
             passwordRequired = true,
+            server = GameServer.CN_BILIBILI,
         )
 
         assertTrue(result is AccountValidationResult.Valid)
@@ -65,6 +68,7 @@ class AccountInputValidatorTest {
             password = " pass word ",
             gameUid = "",
             passwordRequired = true,
+            server = GameServer.CN_BILIBILI,
         ) as AccountValidationResult.Valid
 
         assertEquals("12345678", channel.value.loginId)
@@ -72,5 +76,13 @@ class AccountInputValidatorTest {
         assertEquals(GameServer.CN_XIAOMI, channel.value.server)
         assertEquals(" pass word ", bilibili.value.password)
         assertEquals(GameServer.CN_BILIBILI, bilibili.value.server)
+    }
+
+    @Test
+    fun `changing the server requires a new password, including away from an unreadable stored value`() {
+        assertTrue(accountServerChangeRequiresPassword("cn-bilibili", GameServer.CN_XIAOMI))
+        assertTrue(accountServerChangeRequiresPassword("cn-from-a-newer-build", GameServer.CN_BILIBILI))
+        assertEquals(false, accountServerChangeRequiresPassword("cn-xiaomi", GameServer.CN_XIAOMI))
+        assertEquals(false, accountServerChangeRequiresPassword(null, GameServer.CN_XIAOMI))
     }
 }

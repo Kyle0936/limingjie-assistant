@@ -35,7 +35,7 @@ object BilibiliGameGatewayFactory {
     fun create(
         context: Context,
         gamePackageName: String,
-        endpoint: ChannelEndpoint = ChannelEndpoint.BILIBILI,
+        endpoint: ChannelEndpoint,
     ): BilibiliGameGateway {
         val client = OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)

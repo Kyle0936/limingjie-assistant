@@ -29,8 +29,12 @@ enum class GameServer(
     ;
 
     companion object {
-        /** 未知值（例如更新版本写入、旧版本读取）按 B 服处理，与此前所有账号的取值一致。 */
-        fun fromStorageId(value: String?): GameServer =
-            entries.firstOrNull { it.storageId == value } ?: CN_BILIBILI
+        /**
+         * 读不懂的值（更新版本写入、手工改库、旧版本残留）返回 null，由调用方按「服务器未知」处理：
+         * 不显示成任何已知服务器、不登录、不自动化，编辑时必须重新选择服务器并重填密码。
+         * 绝不兜底成 B 服——那会把「读不懂」变成「悄悄改写成国服」。
+         */
+        fun fromStorageId(value: String?): GameServer? =
+            entries.firstOrNull { it.storageId == value }
     }
 }
