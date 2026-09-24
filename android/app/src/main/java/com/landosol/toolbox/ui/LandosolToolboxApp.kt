@@ -38,8 +38,6 @@ import com.landosol.toolbox.LandosolToolboxApplication
 import com.landosol.toolbox.account.AccountViewModel
 import com.landosol.toolbox.automation.accessibility.AccessibilityConnectionRegistry
 import com.landosol.toolbox.automation.accessibility.LandosolAccessibilityService
-import com.landosol.toolbox.automation.session.GameSessionResetState
-import com.landosol.toolbox.labyrinth.LabyrinthAutoRunProgress
 import com.landosol.toolbox.labyrinth.LabyrinthEntryRecognitionSessionState
 import com.landosol.toolbox.labyrinth.LabyrinthUiState
 import com.landosol.toolbox.labyrinth.LabyrinthController
@@ -193,8 +191,6 @@ fun LandosolToolboxApp() {
                         labyrinthViewModel = labyrinthViewModel,
                         state = labyrinthState,
                         entryRecognitionState = entryRecognitionState,
-                        sessionResetState = sessionResetState,
-                        autoRunProgress = autoRunProgress,
                         batchCheckpoint = batchCheckpoint,
                         batchHaltReason = batchHaltReason,
                         onRequestCapture = requestCaptureThen,
@@ -284,14 +280,13 @@ private fun LabyrinthRoute(
     labyrinthViewModel: LabyrinthController,
     state: LabyrinthUiState,
     entryRecognitionState: LabyrinthEntryRecognitionSessionState,
-    sessionResetState: GameSessionResetState,
-    autoRunProgress: LabyrinthAutoRunProgress,
     batchCheckpoint: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchCheckpoint?,
     batchHaltReason: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchHaltReason?,
     onRequestCapture: ((() -> Unit) -> Unit),
 ) {
     val scope = rememberCoroutineScope()
     var notificationAccount by remember { mutableStateOf<Long?>(null) }
+    var notificationGuildId by remember { mutableStateOf<Int?>(null) }
     var showStrategies by rememberSaveable { mutableStateOf(false) }
     var strategySaving by remember { mutableStateOf(false) }
     var strategyMessage by remember { mutableStateOf<String?>(null) }
@@ -325,41 +320,32 @@ private fun LabyrinthRoute(
     }
     val notifications = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted && notificationAccount == labyrinthViewModel.uiState.value.selectedAccount?.id) {
-            labyrinthViewModel.start(retreatConfirmed = true)
+            labyrinthViewModel.start(retreatConfirmed = true, guildIdOverride = notificationGuildId)
         } else {
             labyrinthViewModel.reportMessage("未启动刷取：请允许通知权限并确认当前账号后重试")
         }
         notificationAccount = null
+        notificationGuildId = null
     }
     LabyrinthScreen(
         onOpenStrategies = { showStrategies = true; strategyMessage = null },
         state = state,
         entryRecognitionState = entryRecognitionState,
-        sessionResetState = sessionResetState,
-        autoRunProgress = autoRunProgress,
         batchCheckpoint = batchCheckpoint,
         batchHaltReason = batchHaltReason,
         onBack = null,
-        onGuildSelected = labyrinthViewModel::selectGuild,
-        onDifficultySelected = labyrinthViewModel::selectDifficulty,
-        onPerfectStartChange = labyrinthViewModel::setPerfectStart,
-        onThirdBlockChoiceSelected = labyrinthViewModel::selectThirdBlockChoice,
-        onArea3BossToggle = labyrinthViewModel::toggleArea3Boss,
-        onArea5BossToggle = labyrinthViewModel::toggleArea5Boss,
-        onMaxAttemptsChange = labyrinthViewModel::setMaxAttempts,
-        onRerollUntilFoundChange = labyrinthViewModel::setRerollUntilFound,
-        onRetireExistingChange = labyrinthViewModel::setRetireExisting,
         onCheckStatus = labyrinthViewModel::checkStatus,
         onSaveSettings = labyrinthViewModel::saveSettings,
-        onStart = {
+        onStart = { guildId ->
             if (android.os.Build.VERSION.SDK_INT >= 33 &&
                 androidx.core.content.ContextCompat.checkSelfPermission(application, Manifest.permission.POST_NOTIFICATIONS) !=
                 android.content.pm.PackageManager.PERMISSION_GRANTED) {
                 notificationAccount = state.selectedAccount?.id
+                notificationGuildId = guildId
                 notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
             } else if (!androidx.core.app.NotificationManagerCompat.from(application).areNotificationsEnabled()) {
                 labyrinthViewModel.reportMessage("通知被关闭，请在系统设置中允许通知后再开始后台刷取")
-            } else labyrinthViewModel.start(retreatConfirmed = true)
+            } else labyrinthViewModel.start(retreatConfirmed = true, guildIdOverride = guildId)
         },
         onStop = labyrinthViewModel::stop,
         onDismissMessage = labyrinthViewModel::dismissMessage,
@@ -393,14 +379,6 @@ private fun LabyrinthRoute(
         },
         onStopEntryRecognition = {
             scope.launch { application.labyrinthEntryRecognitionSession.stop() }
-        },
-        onStartSessionReset = {
-            onRequestCapture {
-                scope.launch { application.gameSessionResetWorkflow.start() }
-            }
-        },
-        onStopSessionReset = {
-            scope.launch { application.gameSessionResetWorkflow.stop("用户停止会话失效重置") }
         },
         onStartAutoRun = { goals ->
             if (!LandosolAccessibilityService.isConnected()) {

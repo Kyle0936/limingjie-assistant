@@ -945,7 +945,7 @@ batch=20260916-001 goal=gourmet run=008 stage=RETURNING_TO_TITLE
 
 - [x] **Capture lifetime 与 Run lifetime 解耦**（`stop(releaseCapture = false)`；reroll 交接路径不再停截图；单测覆盖）。2026-09-17 实机第一次通关后又发现通关路径 `markRunCleared → finishFromPlanner → stop()` 仍用默认 `releaseCapture = true` 关掉了截图，随后会话失效步骤因无截图被拒。已把所有由运行逻辑发起的停止（终态页、被拒点击、规划器停止）统一走 `stopFromRunLogic`，批次拥有该局时不释放截图；只有用户主动停止才释放；
 - [x] BatchController 顶层多局状态机（`labyrinth/batch/`，纯 Kotlin，§16.1 十条 JVM 用例全部通过）；
-- [x] Batch 目标配置与 UI（自动执行页「批量自动执行」卡片：五个公会各一个次数输入框，留空跳过；每行可切换「按通关计 / 按开局计」；按列表顺序执行）；
+- [x] Batch 目标配置与 UI（首页两步主流程：登录并读取当前开局 → 自动执行；五个公会各一个次数输入框，留空跳过；每行可切换「按通关计 / 按开局计」；按列表顺序执行。单独刷开局归入辅助工具）；
 - [x] 显式读取且尚未推进的目标开局可作为批量首轮：启动前重新读取 `top`、`resume` 和完整地图，只在 Enter ID、公会、难度、保存路线全部一致且 `currentBlockId == null` 时跳过首轮 reroll；资格只在外部 `start()` 边界消费一次，首轮失败或结束后的批次内部循环永远回到强制撤退并重刷；已推进挑战因无法恢复角色和遗物而拒绝接管；
 - [x] Batch checkpoint 持久化（SharedPreferences JSON，`AndroidLabyrinthBatchCheckpointStore`；含 `lastSessionInvalidationAction`）；
 - [x] 单局明确 `Cleared/FailedMaxRetry` 终态事件（`runTerminalListener`；用户停止 → `UserStopped`，其余 → `FatalUnknown`）；

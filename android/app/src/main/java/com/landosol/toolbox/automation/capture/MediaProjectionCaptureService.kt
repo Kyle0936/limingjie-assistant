@@ -142,6 +142,12 @@ class MediaProjectionCaptureService : Service() {
                 if (projection !== mediaProjection || virtualDisplay != null) return
                 val stableMetrics = stabilityGate.observe(currentDisplayMetrics())
                 if (stableMetrics == null) {
+                    if (stabilityGate.exhausted) {
+                        stopCapture(
+                            "屏幕捕获仍为竖屏；请确认模拟器允许自动旋转，并在横屏的助手或游戏界面重新授权",
+                        )
+                        return
+                    }
                     handler.postDelayed(this, INITIAL_DISPLAY_SAMPLE_INTERVAL_MILLIS)
                     return
                 }
@@ -425,6 +431,9 @@ internal class CaptureDisplayStabilityGate(
     private var stableSampleCount = 0
     private var totalSampleCount = 0
 
+    val exhausted: Boolean
+        get() = totalSampleCount >= maxSamples
+
     init {
         require(requiredStableSamples > 0)
         require(maxSamples >= requiredStableSamples)
@@ -434,8 +443,12 @@ internal class CaptureDisplayStabilityGate(
         totalSampleCount++
         stableSampleCount = if (metrics == previous) stableSampleCount + 1 else 1
         previous = metrics
+        // Every recognizer and action reference is calibrated against a landscape game frame.
+        // A device configured as 1080x1920 is supported by rotating the activity/display to
+        // 1920x1080; accepting the pre-rotation portrait metrics would consume the one-shot
+        // MediaProjection token and strand the run on UNKNOWN after the game rotates.
         return metrics.takeIf {
-            stableSampleCount >= requiredStableSamples || totalSampleCount >= maxSamples
+            metrics.width > metrics.height && stableSampleCount >= requiredStableSamples
         }
     }
 }

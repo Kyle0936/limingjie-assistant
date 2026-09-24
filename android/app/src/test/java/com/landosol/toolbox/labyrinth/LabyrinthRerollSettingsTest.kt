@@ -67,6 +67,47 @@ class LabyrinthRerollSettingsTest {
     }
 
     @Test
+    fun `batch target guild overrides saved reroll guild without changing route policy`() {
+        val saved = LabyrinthRerollSettings(
+            guildId = 1,
+            difficulty = 2,
+            valueAllowance = 1,
+            maxAttempts = "17",
+            retireExisting = false,
+        ).toConfig(accountId = 99)
+
+        val effective = labyrinthBatchRerollConfig(
+            base = saved,
+            batchGuildId = 4,
+            batchDifficulty = 5,
+        )
+
+        assertEquals(4, effective.guildId)
+        assertEquals(5, effective.difficulty)
+        assertEquals(saved.routePolicy, effective.routePolicy)
+        assertEquals(saved.maxAttempts, effective.maxAttempts)
+        assertTrue(effective.retireExisting)
+        assertTrue(effective.abandonExisting)
+        assertEquals(1, saved.guildId)
+    }
+
+    @Test
+    fun `standalone guild is a one launch override and does not mutate saved settings`() {
+        val saved = LabyrinthRerollSettings(
+            guildId = 1,
+            difficulty = 4,
+            valueAllowance = 2,
+        ).toConfig(accountId = 99)
+
+        val effective = labyrinthStandaloneRerollConfig(saved, launchGuildId = 5)
+
+        assertEquals(5, effective.guildId)
+        assertEquals(saved.difficulty, effective.difficulty)
+        assertEquals(saved.routePolicy, effective.routePolicy)
+        assertEquals(1, saved.guildId)
+    }
+
+    @Test
     fun `notification reports progress elapsed captcha and completion without credentials`() {
         val running = LabyrinthUiState(isWorking = true, progress = "28/不限 · 检查路线", startedAtMillis = 1000)
         val text = labyrinthRerollStatusText(running, 62000)

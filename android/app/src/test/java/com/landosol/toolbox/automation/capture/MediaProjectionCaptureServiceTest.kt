@@ -32,6 +32,16 @@ class MediaProjectionCaptureServiceTest {
     }
 
     @Test
+    fun `stable portrait metrics never consume the projection token`() {
+        val gate = CaptureDisplayStabilityGate(requiredStableSamples = 3, maxSamples = 5)
+        val portrait = CaptureDisplayMetrics(width = 1080, height = 1920, densityDpi = 480)
+
+        repeat(5) { assertNull(gate.observe(portrait)) }
+
+        assertEquals(true, gate.exhausted)
+    }
+
+    @Test
     fun `rgba plane conversion removes row padding and preserves colors`() {
         val width = 2
         val height = 2
