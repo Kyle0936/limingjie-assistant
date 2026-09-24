@@ -136,6 +136,37 @@ internal fun labyrinthCurrentOpeningCriteria(
         ?: 0,
 )
 
+/**
+ * Revalidates the exact server snapshot immediately before a batch consumes an opening.
+ *
+ * Only an unadvanced opening is reusable. Once [currentBlockId][com.landosol.toolbox.protocol.labyrinth.LabyrinthResume.currentBlockId]
+ * is present, the server no longer exposes enough state to reconstruct the acquired characters
+ * and relics, so the batch must retire/reroll instead of pretending it can resume safely.
+ */
+internal fun labyrinthReusableOpeningSnapshotCheck(
+    opening: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening,
+    top: com.landosol.toolbox.protocol.labyrinth.LabyrinthTop,
+    resume: com.landosol.toolbox.protocol.labyrinth.LabyrinthResume,
+    route: LabyrinthRouteJson?,
+): com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck {
+    val staleReason = when {
+        top.enterId != opening.enterId || resume.enterId != opening.enterId -> "服务端当前 Enter ID 已变化"
+        (resume.guildId ?: top.guildId) != opening.guildId -> "服务端当前公会已变化"
+        top.difficulty != opening.difficulty -> "服务端当前难度已变化"
+        resume.currentBlockId != null -> "当前挑战已经推进，无法恢复已获得角色和遗物"
+        resume.map.isEmpty() -> "服务端未返回完整地图"
+        route == null || route.enterId != opening.enterId -> "本机没有该开局的已保存路线"
+        route.blockIds.isEmpty() || !resume.map.mapTo(hashSetOf()) { it.blockId }.containsAll(route.blockIds) ->
+            "服务端地图与本机保存路线不一致"
+        else -> null
+    }
+    return if (staleReason == null) {
+        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Valid
+    } else {
+        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Stale(staleReason)
+    }
+}
+
 class LabyrinthController(
     private val accountRepository: AccountRepository,
     private val sessionRegistry: GameSessionRegistry,
@@ -154,6 +185,9 @@ class LabyrinthController(
     private val chrome = MutableStateFlow(LabyrinthChromeState())
     private var runningJob: Job? = null
     private var pendingLoginAction: PendingLoginAction? = null
+    @Volatile
+    private var explicitlyReadInitialOpening:
+        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening? = null
 
     init {
         scope.launch {
@@ -166,6 +200,7 @@ class LabyrinthController(
                     frozenStart = null
                     startRequested = false
                     pendingLoginAction = null
+                    explicitlyReadInitialOpening = null
                     settingsAccountId = selectedAccountId
                     chrome.value = LabyrinthChromeState()
                     if (selectedAccountId != null) applySettings(settingsStore.load(selectedAccountId))
@@ -265,6 +300,7 @@ class LabyrinthController(
             return
         }
         if (account.id != settingsAccountId) return
+        explicitlyReadInitialOpening = null
         val config = parseConfig(account.id) ?: return
         if (config.retireExisting && !retreatConfirmed) {
             reportMessage("开始前请确认允许彻底撤退现有开局")
@@ -392,6 +428,56 @@ class LabyrinthController(
         }
     }
 
+    /**
+     * Consumes the last explicit read exactly once at the external batch-start boundary.
+     *
+     * A mismatch also consumes the candidate: changing goals and tapping start must not leave a
+     * stale authorization available for a later batch.
+     */
+    @Synchronized
+    fun consumeReusableOpeningForBatch(
+        expectedGuildId: Int,
+        expectedDifficulty: Int,
+    ): com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening? {
+        val candidate = explicitlyReadInitialOpening
+        explicitlyReadInitialOpening = null
+        return candidate?.takeIf { opening ->
+            opening.guildId == expectedGuildId && opening.difficulty == expectedDifficulty
+        }
+    }
+
+    /** Performs a fresh top + resume comparison before skipping the first reroll. */
+    suspend fun verifyReusableOpeningForBatch(
+        accountId: Long,
+        opening: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening,
+    ): com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck {
+        val account = uiState.value.selectedAccount
+        if (account == null || account.id != accountId || account.id != settingsAccountId) {
+            return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Failure("当前账号已变化")
+        }
+        val session = sessionRegistry.read(accountId)
+            ?: return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Failure(
+                "读取当前开局使用的登录会话已失效，请重新读取",
+            )
+        val api = BilibiliLabyrinthApi(session)
+        val top = when (val result = api.top()) {
+            is LabyrinthOperationResult.Success -> result.value
+            is LabyrinthOperationResult.Failure ->
+                return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Failure(result.message)
+        }
+        val enterId = top.enterId
+            ?: return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Stale(
+                "服务端当前没有进行中的开局",
+            )
+        val resume = when (val result = api.resume(enterId)) {
+            is LabyrinthOperationResult.Success -> result.value
+            is LabyrinthOperationResult.Failure ->
+                return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Failure(result.message)
+        }
+        val route = RoomLabyrinthRouteStore(database).loadLatest(accountId)
+        return labyrinthReusableOpeningSnapshotCheck(opening, top, resume, route)
+    }
+
     /** Only the foreground service may consume this explicitly authorized snapshot. */
     fun startFromService(): Boolean {
         if (!startRequested || runningJob?.isActive == true) return false
@@ -486,6 +572,9 @@ class LabyrinthController(
             return
         }
         if (account.id != settingsAccountId) return
+        // Only this explicit action can mint a reusable-opening authorization. Clear any older
+        // authorization before touching the network so failures cannot leave it reusable.
+        explicitlyReadInitialOpening = null
         chrome.update { it.copy(isWorking = true, message = null, progress = "读取黎明界状态") }
         runningJob = scope.launch {
             chrome.update { it.copy(isWorking = true, message = null, progress = "读取黎明界状态") }
@@ -532,10 +621,12 @@ class LabyrinthController(
                             is ExistingLabyrinthRouteResult.Found -> {
                                 val value = existingRoute.value
                                 val guildId = value.guildId ?: top.guildId ?: targetGuildId
-                                val isTarget = guildId == targetGuildId && value.difficulty == targetDifficulty
+                                // The batch goal owns the guild. This read proves route quality and
+                                // difficulty; consumeReusableOpeningForBatch compares the actual
+                                // guild with the first batch goal at the external start boundary.
+                                val isTarget = value.difficulty == targetDifficulty
                                 val criteriaComparison =
-                                    "当前公会ID $guildId / 难度 ${value.difficulty}；" +
-                                        "所选目标公会ID $targetGuildId / 难度 $targetDifficulty"
+                                    "当前难度 ${value.difficulty}；所选目标难度 $targetDifficulty"
                                 if (isTarget) {
                                     RoomLabyrinthRouteStore(database).save(
                                         config = LabyrinthRerollConfig(
@@ -557,8 +648,8 @@ class LabyrinthController(
                                         accountId = account.id,
                                         attempt = attempt,
                                         enterId = value.route.enterId,
-                                        guildId = targetGuildId,
-                                        difficulty = targetDifficulty,
+                                        guildId = guildId,
+                                        difficulty = value.difficulty,
                                         policy = routePolicy,
                                         verdict = if (isTarget) {
                                             LabyrinthRouteVerdict.TARGET
@@ -566,18 +657,34 @@ class LabyrinthController(
                                             LabyrinthRouteVerdict.NOT_TARGET
                                         },
                                         message = if (isTarget) {
-                                            "现有开局符合当前刷取条件"
+                                            if (value.currentBlockId == null) {
+                                                "现有开局符合路线和难度，且尚未推进"
+                                            } else {
+                                                "现有开局符合路线和难度，但已推进到节点 ${value.currentBlockId}"
+                                            }
                                         } else {
-                                            "现有开局的公会或难度与当前页面选项不一致：$criteriaComparison"
+                                            "现有开局难度与当前页面选项不一致：$criteriaComparison"
                                         },
                                         updatedAt = System.currentTimeMillis(),
                                     ),
                                 )
                                 routeBlockIds = if (isTarget) value.route.blockIds else emptyList()
+                                if (isTarget && value.currentBlockId == null) {
+                                    explicitlyReadInitialOpening =
+                                        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening(
+                                            enterId = value.route.enterId,
+                                            guildId = guildId,
+                                            difficulty = value.difficulty,
+                                        )
+                                }
                                 if (isTarget) {
-                                    "当前开局是目标路线，已保存可执行路线（Enter ID 尾号 ${value.route.enterId % 10_000}）"
+                                    if (value.currentBlockId == null) {
+                                        "当前开局是尚未推进的目标路线；若首个批量目标公会一致，可用于下一次批量首轮（Enter ID 尾号 ${value.route.enterId % 10_000}）"
+                                    } else {
+                                        "当前开局是目标路线但已经推进；角色和遗物状态无法从服务端恢复，批量执行会重新刷取"
+                                    }
                                 } else {
-                                    "当前开局可读取，但公会或难度不是当前目标（$criteriaComparison）"
+                                    "当前开局可读取，但难度不是当前目标（$criteriaComparison）"
                                 }
                             }
 
@@ -739,6 +846,7 @@ class LabyrinthController(
         startRequested = false
         frozenStart = null
         pendingLoginAction = null
+        explicitlyReadInitialOpening = null
         runningJob?.cancel()
         // Cancellation is asynchronous: keep controls locked until the job's finally has finished.
         if (runningJob == null) chrome.update { it.copy(isWorking = false, progress = null) }
@@ -761,6 +869,7 @@ class LabyrinthController(
             reportMessage("所选难度尚未解锁"); return
         }
         settingsStore.save(accountId, settings)
+        explicitlyReadInitialOpening = null
         applySettings(settings)
         reportMessage("刷开局设置已保存")
     }
@@ -867,6 +976,7 @@ class LabyrinthController(
 
     private fun updateConfig(transform: LabyrinthChromeState.() -> LabyrinthChromeState) {
         if (!chrome.value.isWorking && chrome.value.captcha == null && chrome.value.settingsReady) {
+            explicitlyReadInitialOpening = null
             chrome.update { it.transform().copy(message = null) }
             val settings = uiSettings()
             if (settings.validationError() == null) settingsAccountId?.let { settingsStore.save(it, settings) }
