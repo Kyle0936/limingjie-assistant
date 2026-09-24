@@ -5,13 +5,6 @@ import com.landosol.toolbox.automation.AutomationMode
 import com.landosol.toolbox.automation.AutomationBackendResult
 import com.landosol.toolbox.automation.SessionBoundActionExecutor
 import com.landosol.toolbox.automation.capture.CaptureFrameBus
-import com.landosol.toolbox.labyrinth.vision.EntryAnchorId
-import com.landosol.toolbox.labyrinth.vision.EntryAnchorMatch
-import com.landosol.toolbox.labyrinth.vision.EntryPixelRect
-import com.landosol.toolbox.labyrinth.vision.LabyrinthAnchorScores
-import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryFrameResult
-import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageObservation
-import com.landosol.toolbox.labyrinth.vision.LabyrinthEntryPageState
 import com.landosol.toolbox.labyrinth.batch.LabyrinthRunTerminalEvent
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -241,97 +234,6 @@ class LabyrinthEntryRecognitionSessionTest {
         assertFalse(manager.current()!!.dryRun)
         assertTrue(launchCalls == 1)
         assertTrue(session.stop())
-    }
-
-    @Test
-    fun `manual takeover suppresses unknown and return-title actions until route frames are stable`() = runTest {
-        var launchCalls = 0
-        val actions = mutableListOf<com.landosol.toolbox.automation.AutomationAction>()
-        val manager = AutomationSessionManager()
-        val session = LabyrinthEntryRecognitionSession(
-            sessionManager = manager,
-            captureActive = { true },
-            processorFactory = { { error("test does not dispatch frames") } },
-            actionExecutor = SessionBoundActionExecutor(manager) { action ->
-                actions += action
-                AutomationBackendResult.Completed
-            },
-            actionsAvailable = { true },
-            gameLauncher = { launchCalls++; true },
-        )
-
-        assertTrue(session.startAutomation(takeoverCurrentRun = true) is LabyrinthEntryRecognitionStartResult.Started)
-        assertTrue(session.state.value.message?.contains("不重启游戏或刷开局") == true)
-        assertTrue(launchCalls == 0)
-
-        // These are the exact dangerous frames from the review: UNKNOWN and a false-positive
-        // session-expiry popup. Neither may reach the normal action handler while takeover waits.
-        session.processRecognizedFrameForTest(frame(LabyrinthEntryPageState.UNKNOWN), 1_000L)
-        session.processRecognizedFrameForTest(sessionBlockFrame(), 2_000L)
-        session.processRecognizedFrameForTest(sessionBlockFrame(), 3_000L)
-        settle()
-        assertTrue(actions.isEmpty())
-        assertTrue(session.state.value.message?.contains("接管等待中") == true)
-
-        // One route frame is insufficient; two consecutive stable route frames release the gate.
-        session.processRecognizedFrameForTest(frame(LabyrinthEntryPageState.NODE_SELECTION), 4_000L)
-        assertTrue(session.state.value.message?.contains("正在确认") == true)
-        session.processRecognizedFrameForTest(frame(LabyrinthEntryPageState.NODE_SELECTION), 5_000L)
-        assertFalse(session.takeoverPendingForTest())
-        assertTrue(session.stop())
-    }
-
-    private fun frame(state: LabyrinthEntryPageState) = LabyrinthEntryFrameResult(
-        observation = LabyrinthEntryPageObservation(
-            state = state,
-            confidence = if (state == LabyrinthEntryPageState.UNKNOWN) 0.0 else 1.0,
-            stateScores = emptyMap(),
-            anchorScores = LabyrinthAnchorScores(emptyMap()),
-        ),
-        matchedFeatures = emptyList(),
-        elapsedMillis = 0L,
-        frameWidth = 1920,
-        frameHeight = 1080,
-    )
-
-    private fun sessionBlockFrame(): LabyrinthEntryFrameResult {
-        val rect = EntryPixelRect(800, 650, 320, 120)
-        return LabyrinthEntryFrameResult(
-            observation = LabyrinthEntryPageObservation(
-                state = LabyrinthEntryPageState.HOME,
-                confidence = 0.9,
-                stateScores = emptyMap(),
-                anchorScores = LabyrinthAnchorScores(mapOf(EntryAnchorId.SESSION_ERROR_TITLE to 0.99)),
-            ),
-            matchedFeatures = emptyList(),
-            elapsedMillis = 0L,
-            anchorMatches = mapOf(
-                EntryAnchorId.SESSION_RETURN_TITLE to EntryAnchorMatch(0.99, rect),
-            ),
-            frameWidth = 1920,
-            frameHeight = 1080,
-        )
-    }
-
-    @Test
-    fun `manual takeover stops after its bounded wait`() = runTest {
-        val manager = AutomationSessionManager()
-        val session = LabyrinthEntryRecognitionSession(
-            sessionManager = manager,
-            captureActive = { true },
-            processorFactory = { { error("test does not dispatch frames") } },
-            actionExecutor = SessionBoundActionExecutor(manager) { AutomationBackendResult.Completed },
-            actionsAvailable = { true },
-            takeoverWaitTimeoutMillis = 20L,
-        )
-
-        assertTrue(session.startAutomation(takeoverCurrentRun = true) is LabyrinthEntryRecognitionStartResult.Started)
-        withContext(Dispatchers.Default) {
-            withTimeout(2_000L) { while (session.state.value.running) delay(10L) }
-        }
-        assertFalse(session.state.value.running)
-        assertTrue(session.state.value.message?.contains("已安全停止") == true)
-        assertTrue(manager.current() == null)
     }
 
     @Test

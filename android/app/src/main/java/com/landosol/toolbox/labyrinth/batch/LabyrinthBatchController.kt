@@ -19,17 +19,6 @@ sealed interface LabyrinthBatchRerollResult {
     data class Failure(val message: String) : LabyrinthBatchRerollResult
 }
 
-/** Fresh server-side validation of a one-shot opening selected by the UI. */
-sealed interface LabyrinthBatchReusableOpeningCheck {
-    data object Valid : LabyrinthBatchReusableOpeningCheck
-
-    /** The opening was consumed or replaced; the batch may safely fall back to its normal reroll. */
-    data class Stale(val message: String) : LabyrinthBatchReusableOpeningCheck
-
-    /** The server could not be queried, so changing or entering anything would be unsafe. */
-    data class Failure(val message: String) : LabyrinthBatchReusableOpeningCheck
-}
-
 /**
  * Ports the batch controller depends on. Each is a thin, suspendable boundary over an existing
  * component so the sequencing can be tested without capture, recognition or the network.
@@ -37,12 +26,6 @@ sealed interface LabyrinthBatchReusableOpeningCheck {
 interface LabyrinthBatchPorts {
     /** Runs the network reroll for [guildId] / [difficulty] and returns the new enterId. */
     suspend fun reroll(accountId: Long, guildId: Int, difficulty: Int): LabyrinthBatchRerollResult
-
-    /** Re-reads the server immediately before a previously read opening is consumed. */
-    suspend fun verifyReusableOpening(
-        accountId: Long,
-        opening: LabyrinthBatchReusableOpening,
-    ): LabyrinthBatchReusableOpeningCheck
 
     /**
      * Makes the client drop its stale local labyrinth state and navigate back to the labyrinth
@@ -64,7 +47,6 @@ enum class LabyrinthBatchHaltReason {
     CAPTURE_LOST,
     ACCESSIBILITY_LOST,
     REROLL_FAILED,
-    REUSABLE_OPENING_VALIDATION_FAILED,
     CLIENT_INVALIDATION_FAILED,
     RUN_START_FAILED,
     FATAL_RUN,
@@ -96,17 +78,15 @@ class LabyrinthBatchController(
     val haltReason: StateFlow<LabyrinthBatchHaltReason?> = _haltReason.asStateFlow()
 
     /**
-     * Starts a fresh batch. By default the first cycle rerolls immediately. When the caller has
-     * just read and confirmed [reusableOpening], the matching first goal may start from that
-     * opening without another reroll. It is still revalidated and the client is synchronized
-     * before the route executor starts.
+     * Starts a fresh batch. The first cycle rerolls immediately because the client's current
+     * labyrinth state is unknown; a caller wanting to reuse an existing entry should not use
+     * the batch for that run.
      */
     suspend fun start(
         batchId: String,
         accountId: Long,
         goals: List<LabyrinthBatchGoal>,
         difficulty: Int,
-        reusableOpening: LabyrinthBatchReusableOpening? = null,
     ): Boolean = mutex.withLock {
         if (_state.value?.stage in ACTIVE_STAGES) return false
         _haltReason.value = null
@@ -119,27 +99,7 @@ class LabyrinthBatchController(
         ).advanceGoal(clock())
         persist(initial)
         if (initial.stage == LabyrinthBatchStage.COMPLETED) return true
-        val opening = reusableOpening?.takeIf { candidate ->
-            initial.activeGoal?.let { candidate.matches(it, difficulty) } == true
-        }
-        if (opening == null) {
-            runCycle(initial)
-        } else {
-            when (val checked = ports.verifyReusableOpening(accountId, opening)) {
-                LabyrinthBatchReusableOpeningCheck.Valid -> startVerifiedOpening(initial, opening)
-                is LabyrinthBatchReusableOpeningCheck.Stale -> runCycle(
-                    initial.copy(
-                        message = "已读取开局不可再复用（${checked.message}），转入正常刷开局",
-                        updatedAt = clock(),
-                    ),
-                )
-                is LabyrinthBatchReusableOpeningCheck.Failure -> halt(
-                    initial,
-                    LabyrinthBatchHaltReason.REUSABLE_OPENING_VALIDATION_FAILED,
-                    "无法重新确认已读取开局：${checked.message}",
-                )
-            }
-        }
+        runCycle(initial)
         true
     }
 
@@ -307,55 +267,6 @@ class LabyrinthBatchController(
         val started = ports.startRun(checkpoint.accountId, goal.guildId, runId)
         if (!started) {
             halt(checkpoint, LabyrinthBatchHaltReason.RUN_START_FAILED, "无法启动单局识别")
-        }
-    }
-
-    /** Starts the first batch run from the opening explicitly verified by the user in step 1. */
-    private suspend fun startVerifiedOpening(
-        start: LabyrinthBatchCheckpoint,
-        opening: LabyrinthBatchReusableOpening,
-    ) {
-        val goal = start.activeGoal ?: run {
-            halt(start, LabyrinthBatchHaltReason.FATAL_RUN, "没有活动目标")
-            return
-        }
-        var checkpoint = start.copy(
-            stage = LabyrinthBatchStage.INVALIDATING_OLD_CLIENT_SESSION,
-            currentEnterId = opening.enterId,
-            currentGuildId = goal.guildId,
-            currentRunOutcome = null,
-            rerollCompletedForNextRun = false,
-            clientSessionNeedsInvalidation = true,
-            message = "已确认首轮开局，正在同步客户端状态",
-            updatedAt = clock(),
-        )
-        persist(checkpoint)
-        val synchronizationAction = when (val sync = ports.invalidateClientSessionAndReturn()) {
-            is LabyrinthBatchInvalidationResult.Failure -> {
-                halt(
-                    checkpoint,
-                    LabyrinthBatchHaltReason.CLIENT_INVALIDATION_FAILED,
-                    "已读取开局有效，但客户端状态未能同步：${sync.message}",
-                )
-                return
-            }
-            is LabyrinthBatchInvalidationResult.Success -> sync.action
-        }
-        val runId = runIdFactory(checkpoint)
-        checkpoint = checkpoint.copy(
-            stage = LabyrinthBatchStage.RUNNING_LABYRINTH,
-            currentRunId = runId,
-            clientSessionNeedsInvalidation = false,
-            lastSessionInvalidationAction = synchronizationAction,
-            runsStarted = start.runsStarted + 1,
-            reusedVerifiedOpeningForFirstRun = true,
-            message = "首轮已重新确认并同步客户端：${goal.guildId}",
-            updatedAt = clock(),
-        )
-        persist(checkpoint)
-        val started = ports.startRun(checkpoint.accountId, goal.guildId, runId)
-        if (!started) {
-            halt(checkpoint, LabyrinthBatchHaltReason.RUN_START_FAILED, "无法接续已读取的当前开局")
         }
     }
 

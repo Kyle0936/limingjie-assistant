@@ -438,75 +438,6 @@ class LabyrinthController(
         }
     }
 
-    /**
-     * Atomically consumes the UI's explicit read as a one-shot batch authorization.
-     *
-     * The persisted checkpoint remains available to the route executor, but merely loading that
-     * checkpoint must never recreate this authorization after the opening has been played.
-     */
-    @Synchronized
-    fun consumeReusableOpeningForBatch(
-        expectedGuildId: Int,
-        expectedDifficulty: Int,
-    ): com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening? {
-        val current = chrome.value
-        val enterId = current.checkpointEnterId
-        if (
-            current.isWorking || current.captcha != null ||
-            current.currentOpeningReadStatus != LabyrinthCurrentOpeningReadStatus.TARGET ||
-            current.routeVerdict != LabyrinthRouteVerdict.TARGET ||
-            enterId == null || enterId <= 0L ||
-            current.currentGuildId != expectedGuildId ||
-            current.currentDifficulty != expectedDifficulty
-        ) return null
-        chrome.value = current.copy(
-            currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.NOT_READ,
-            currentOpeningReadMessage = "已将本次显式读取交给批量执行；再次执行前需要重新读取",
-        )
-        return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening(
-            enterId = enterId,
-            guildId = expectedGuildId,
-            difficulty = expectedDifficulty,
-        )
-    }
-
-    /** Fresh server comparison performed immediately before the batch reuses an opening. */
-    suspend fun verifyReusableOpeningForBatch(
-        accountId: Long,
-        opening: com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpening,
-    ): com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck {
-        val account = uiState.value.selectedAccount
-        if (account == null || account.id != accountId || account.id != settingsAccountId) {
-            return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Failure("当前账号已变化")
-        }
-        val session = sessionRegistry.read(accountId)
-            ?: return com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Failure(
-                "显式读取使用的登录会话已失效，请重新点击“登录并读取”",
-            )
-        return when (val result = BilibiliLabyrinthApi(session).top()) {
-            is LabyrinthOperationResult.Success -> {
-                val top = result.value
-                when {
-                    top.enterId != opening.enterId ->
-                        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Stale(
-                            "服务端当前 Enter ID 已变化",
-                        )
-                    top.guildId != null && top.guildId != opening.guildId ->
-                        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Stale(
-                            "服务端当前公会已变化",
-                        )
-                    top.difficulty != null && top.difficulty != opening.difficulty ->
-                        com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Stale(
-                            "服务端当前难度已变化",
-                        )
-                    else -> com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Valid
-                }
-            }
-            is LabyrinthOperationResult.Failure ->
-                com.landosol.toolbox.labyrinth.batch.LabyrinthBatchReusableOpeningCheck.Failure(result.message)
-        }
-    }
-
     /** Only the foreground service may consume this explicitly authorized snapshot. */
     fun startFromService(): Boolean {
         if (!startRequested || runningJob?.isActive == true) return false
@@ -698,10 +629,9 @@ class LabyrinthController(
                                 observedCurrentGuildId = value.guildId ?: top.guildId
                                 val guildId = observedCurrentGuildId ?: LabyrinthRerollOptions.DEFAULT_GUILD_ID
                                 // The resolver has already proved that the route matches the saved
-                                // route policy. Guild ownership belongs to the batch goal, so a
-                                // a one-time standalone-reroll guild must not make this route
-                                // unusable. Batch reuse compares this actual guild with its first
-                                // goal later, after the user has supplied the batch targets.
+                                // route policy. Guild ownership belongs to each batch goal, so the
+                                // one-time standalone-reroll guild must not affect this read-only
+                                // status result.
                                 val isTarget = value.difficulty == targetDifficulty
                                 val criteriaComparison =
                                     "当前难度 ${value.difficulty}；已保存目标难度 $targetDifficulty"
@@ -735,7 +665,7 @@ class LabyrinthController(
                                             LabyrinthRouteVerdict.NOT_TARGET
                                         },
                                         message = if (isTarget) {
-                                            "现有开局符合路线和难度；批量执行将按首个批量目标公会决定是否接续"
+                                            "现有开局符合已保存的路线和难度"
                                         } else {
                                             "现有开局难度与当前页面选项不一致：$criteriaComparison"
                                         },
@@ -749,7 +679,7 @@ class LabyrinthController(
                                     LabyrinthCurrentOpeningReadStatus.NOT_TARGET
                                 }
                                 openingReadMessage = if (isTarget) {
-                                    "读取完成：路线和难度符合要求；仅当实际公会与首个批量目标公会一致时才会直接接续。"
+                                    "读取完成：路线和难度符合要求。此结果只用于确认状态；批量执行仍会准备新开局。"
                                 } else {
                                     "读取完成：当前开局难度与刷开局设置不一致。"
                                 }
@@ -1038,7 +968,7 @@ class LabyrinthController(
         settingsStore.save(accountId, settings)
         applySettings(settings)
         // A prior TARGET verdict was evaluated against the old difficulty/route policy.
-        // Require an explicit fresh read before the batch may reuse the current opening.
+        // Require an explicit fresh read before presenting it as the current server state.
         chrome.update {
             it.copy(
                 routeVerdict = null,
@@ -1048,7 +978,7 @@ class LabyrinthController(
                 currentDifficulty = null,
                 routeBlockIds = emptyList(),
                 currentOpeningReadStatus = LabyrinthCurrentOpeningReadStatus.NOT_READ,
-                currentOpeningReadMessage = "设置已变化，请重新读取当前开局后再判断是否可接续",
+                currentOpeningReadMessage = "设置已变化，请重新读取当前开局以更新路线判定",
                 message = "刷开局设置已保存；请重新登录并读取当前开局",
             )
         }
@@ -1161,7 +1091,7 @@ class LabyrinthController(
                 currentOpeningReadMessage = if (preserveExplicitReadOutcome) {
                     current.currentOpeningReadMessage
                 } else {
-                    "尚未显式读取当前开局；保存的路线不会自动获得复用资格"
+                    "尚未显式读取当前开局；保存的路线记录不代表当前服务端状态"
                 },
             )
         }

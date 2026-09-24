@@ -377,20 +377,6 @@ private fun LabyrinthRoute(
                 }
             }
         },
-        onTakeOverCurrentRun = {
-            if (!LandosolAccessibilityService.isConnected()) {
-                labyrinthViewModel.reportMessage("无障碍服务未连接；请重新开启后再接管当前挑战")
-            } else {
-                onRequestCapture {
-                    scope.launch {
-                        application.labyrinthEntryRecognitionSession.startAutomation(
-                            accountId = state.selectedAccount?.id,
-                            takeoverCurrentRun = true,
-                        )
-                    }
-                }
-            }
-        },
         onStopEntryRecognition = {
             scope.launch { application.labyrinthEntryRecognitionSession.stop() }
         },

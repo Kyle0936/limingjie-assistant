@@ -17,7 +17,6 @@ class AnchorTriggerSessionExpiryTerminatorTest {
         triggerPoint: () -> ScreenPoint? = { adventureTab },
         popupVisible: () -> Boolean = { true },
         titleReached: () -> Boolean = { true },
-        synchronizedWithoutExpiry: () -> Boolean = { false },
         frameSize: () -> Pair<Int, Int> = { 1920 to 1080 },
         popupTimeoutMillis: Long = 300L,
         titleTimeoutMillis: Long = 50_000L,
@@ -28,7 +27,6 @@ class AnchorTriggerSessionExpiryTerminatorTest {
         returnTitlePoint = returnTitle,
         popupVisible = popupVisible,
         titleReached = titleReached,
-        synchronizedWithoutExpiry = synchronizedWithoutExpiry,
         frameSize = frameSize,
         popupTimeoutMillis = popupTimeoutMillis,
         popupAfterTapTimeoutMillis = popupTimeoutMillis / maxTriggerTaps,
@@ -147,41 +145,6 @@ class AnchorTriggerSessionExpiryTerminatorTest {
     fun `skips the trigger tap when the expiry popup is already showing`() = runTest {
         val taps = mutableListOf<ScreenPoint>()
         val terminator = terminator(taps = taps, popupVisible = { true }, titleReached = { true })
-
-        assertEquals(ClientTerminationResult.TERMINATED, terminator.terminate())
-        assertEquals(listOf(returnTitle), taps)
-    }
-
-    @Test
-    fun `accepts successful home navigation when the client was already synchronized`() = runTest {
-        val taps = mutableListOf<ScreenPoint>()
-        var synchronized = false
-        val terminator = terminator(
-            taps = taps,
-            popupVisible = { false },
-            synchronizedWithoutExpiry = { synchronized },
-            popupTimeoutMillis = 3_000L,
-        )
-
-        val job = launch { result = terminator.terminate() }
-        while (taps.isEmpty()) kotlinx.coroutines.delay(10)
-        synchronized = true
-        job.join()
-
-        assertEquals(ClientTerminationResult.ALREADY_GONE, result)
-        assertEquals(listOf(adventureTab), taps)
-        assertEquals("client-already-synchronized", terminator.lastStep)
-    }
-
-    @Test
-    fun `expiry popup wins if home chrome is also recognizable behind it`() = runTest {
-        val taps = mutableListOf<ScreenPoint>()
-        val terminator = terminator(
-            taps = taps,
-            popupVisible = { true },
-            synchronizedWithoutExpiry = { true },
-            titleReached = { true },
-        )
 
         assertEquals(ClientTerminationResult.TERMINATED, terminator.terminate())
         assertEquals(listOf(returnTitle), taps)

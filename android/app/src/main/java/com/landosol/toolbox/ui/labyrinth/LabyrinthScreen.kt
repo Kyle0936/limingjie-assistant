@@ -88,7 +88,6 @@ fun LabyrinthScreen(
     onDismissMessage: () -> Unit,
     onStartEntryRecognition: () -> Unit,
     onStartEntryAutomation: () -> Unit,
-    onTakeOverCurrentRun: () -> Unit,
     onStopEntryRecognition: () -> Unit,
     onStartAutoRun: (List<LabyrinthBatchGoal>) -> Unit,
     onStopAutoRun: () -> Unit,
@@ -202,7 +201,6 @@ fun LabyrinthScreen(
                 onStandaloneGuildSelected = { standaloneGuildId = it },
                 onStartReroll = requestStart,
                 onStopReroll = onStop,
-                onTakeOverCurrentRun = onTakeOverCurrentRun,
                 showAdvanced = showAdvancedTools,
                 onToggleAdvanced = { showAdvancedTools = !showAdvancedTools },
             )
@@ -260,7 +258,7 @@ private fun WorkflowHeader() {
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("自动执行", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(
-            "先登录并确认当前开局，再按目标连续执行。符合条件的现有开局会直接用于首轮。",
+            "先登录并确认当前开局，再按批量目标连续执行。自动执行仍会准备新的目标开局。",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -498,7 +496,7 @@ private fun CurrentOpeningStep(
         readStatus == LabyrinthCurrentOpeningReadStatus.READING -> "正在登录并读取当前开局"
         readStatus == LabyrinthCurrentOpeningReadStatus.LOGIN_VERIFICATION_REQUIRED -> "登录需要验证"
         readStatus == LabyrinthCurrentOpeningReadStatus.NO_ACTIVE_OPENING -> "读取完成：当前没有进行中的黎明界"
-        readStatus == LabyrinthCurrentOpeningReadStatus.TARGET -> "当前路线和难度符合要求；匹配首个批量目标公会时将直接接续"
+        readStatus == LabyrinthCurrentOpeningReadStatus.TARGET -> "当前路线和难度符合要求（仅用于状态确认）"
         readStatus == LabyrinthCurrentOpeningReadStatus.NOT_TARGET -> "当前开局不符合已保存的路线或难度条件"
         readStatus == LabyrinthCurrentOpeningReadStatus.PENDING_VERIFICATION -> "读取未完成，需要重新验证"
         readStatus == LabyrinthCurrentOpeningReadStatus.FAILED -> "读取失败"
@@ -587,7 +585,6 @@ private fun AuxiliaryToolsSection(
     onStandaloneGuildSelected: (Int) -> Unit,
     onStartReroll: () -> Unit,
     onStopReroll: () -> Unit,
-    onTakeOverCurrentRun: () -> Unit,
     showAdvanced: Boolean,
     onToggleAdvanced: () -> Unit,
 ) {
@@ -605,16 +602,10 @@ private fun AuxiliaryToolsSection(
         state.captcha == null &&
         !batchActive &&
         !entryRecognitionState.running
-    val takeoverEnabled = state.selectedAccount != null &&
-        state.settingsReady &&
-        !state.isWorking &&
-        state.captcha == null &&
-        !entryRecognitionState.running &&
-        !batchActive
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text("辅助工具", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
         Text(
-            "这些操作不属于日常两步流程，用于单独准备开局或从游戏中的进行状态接管。",
+            "这些操作不属于日常两步流程，用于单独准备开局或诊断识别。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -645,19 +636,6 @@ private fun AuxiliaryToolsSection(
         }
         if (standaloneWorking) {
             Text(labyrinthRerollStatusText(state, now), style = MaterialTheme.typography.bodySmall)
-        }
-        ResponsiveActionLine(
-            title = "中途继续",
-            description = "游戏已停在当前黎明界时接管保存路线，不启动游戏也不刷开局。",
-        ) {
-            TextButton(onClick = onTakeOverCurrentRun, enabled = takeoverEnabled) { Text("接管") }
-        }
-        if (!takeoverEnabled) {
-            Text(
-                "接管需要已选账号、设置就绪，且当前没有刷取、批量或识别任务。",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
         }
         TextButton(onClick = onToggleAdvanced) {
             Text(if (showAdvanced) "收起识别工具" else "展开识别工具")
@@ -766,7 +744,7 @@ private fun BatchRunCard(
         WorkflowStepHeader(
             number = "2",
             title = "自动执行",
-            summary = "设置目标后连续执行；首轮可接续步骤 1 已确认的目标开局。",
+            summary = "设置目标后连续执行；每轮均按批量目标准备新开局。",
         )
         Text(
             "难度 $selectedDifficulty · 后续轮次自动刷开局、重置客户端会话、执行并记录结果。",
@@ -774,7 +752,7 @@ private fun BatchRunCard(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Text(
-            "下方批量目标是批量运行的唯一公会来源；当前开局也只和首个批量目标公会比较，与单独刷开局的临时选择无关。",
+            "下方批量目标是批量运行的唯一公会来源，与单独刷开局的临时选择无关。",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.primary,
         )
@@ -885,22 +863,11 @@ private fun BatchRunCard(
                     )
                 }
             }
-            val firstGoal = goals.firstOrNull()
-            val reusesCurrentOpening = state.currentOpeningReadStatus == LabyrinthCurrentOpeningReadStatus.TARGET &&
-                state.routeVerdict == LabyrinthRouteVerdict.TARGET &&
-                state.checkpointEnterId != null &&
-                state.currentGuildId == firstGoal?.guildId &&
-                state.currentDifficulty == selectedDifficulty
             if (goals.isNotEmpty()) {
                 Text(
-                    if (reusesCurrentOpening) {
-                        "首轮将接续步骤 1 已确认的当前开局，不会再次刷开局。"
-                    } else {
-                        "首轮没有匹配的已确认开局，将按首个批量目标公会及已保存的难度、路线要求准备开局。"
-                    },
+                    "启动后将按首个批量目标公会及已保存的难度、路线要求准备新开局。读取当前开局不会跳过刷取。",
                     style = MaterialTheme.typography.bodySmall,
-                    color = if (reusesCurrentOpening) MaterialTheme.colorScheme.primary
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
             val total = goals.sumOf { it.targetCount }
@@ -911,7 +878,6 @@ private fun BatchRunCard(
                 Text(
                     when {
                         goals.isEmpty() -> "开始自动执行"
-                        reusesCurrentOpening -> "接续当前开局并自动执行"
                         else -> "开始自动执行（${goals.size} 个公会 · 共 $total 轮）"
                     },
                 )

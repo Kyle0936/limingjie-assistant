@@ -49,25 +49,6 @@ enum class LabyrinthBatchStage {
     FAILED,
 }
 
-/**
- * A server opening that was explicitly read and confirmed before starting a batch.
- *
- * The batch may reuse it for the first run only when its guild and difficulty match the first
- * active goal. Later runs always return to the normal reroll/invalidation cycle.
- */
-data class LabyrinthBatchReusableOpening(
-    val enterId: Long,
-    val guildId: Int,
-    val difficulty: Int,
-) {
-    init {
-        require(enterId > 0L) { "enterId must be positive" }
-    }
-
-    fun matches(goal: LabyrinthBatchGoal, selectedDifficulty: Int): Boolean =
-        guildId == goal.guildId && difficulty == selectedDifficulty
-}
-
 /** Terminal outcome of one run, as reported by the single-run FSM. */
 enum class LabyrinthRunOutcome {
     CLEARED,
@@ -122,7 +103,6 @@ data class LabyrinthBatchCheckpoint(
     val lastRecordedRunId: String? = null,
     val runsStarted: Int = 0,
     val abnormalRuns: Int = 0,
-    val reusedVerifiedOpeningForFirstRun: Boolean = false,
     val message: String? = null,
     val updatedAt: Long,
 ) {
