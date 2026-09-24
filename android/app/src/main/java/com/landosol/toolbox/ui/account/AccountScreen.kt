@@ -21,7 +21,6 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -30,6 +29,7 @@ import androidx.compose.ui.unit.dp
 import com.landosol.toolbox.account.AccountEditorState
 import com.landosol.toolbox.account.AccountListItem
 import com.landosol.toolbox.account.AccountUiState
+import com.landosol.toolbox.ui.CompactTopBar
 
 @Composable
 @OptIn(ExperimentalMaterial3Api::class)
@@ -49,12 +49,14 @@ fun AccountScreen(
 ) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text("账号库") },
-                navigationIcon = {
-                    onBack?.let { back -> TextButton(onClick = back) { Text("返回") } }
+            CompactTopBar(
+                title = "账号库",
+                onBack = onBack,
+                actions = {
+                    TextButton(onClick = onAdd, enabled = !state.isWorking) {
+                        Text("新增", style = MaterialTheme.typography.labelLarge)
+                    }
                 },
-                actions = { TextButton(onClick = onAdd, enabled = !state.isWorking) { Text("新增") } },
             )
         },
     ) { padding ->
