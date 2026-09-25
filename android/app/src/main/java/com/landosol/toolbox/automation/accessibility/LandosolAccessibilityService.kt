@@ -13,6 +13,7 @@ import com.landosol.toolbox.automation.AutomationAction
 import com.landosol.toolbox.automation.AutomationActionBackend
 import com.landosol.toolbox.automation.AutomationBackendResult
 import com.landosol.toolbox.automation.capture.CaptureStateRegistry
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -189,28 +190,41 @@ class LandosolAccessibilityService : AccessibilityService() {
                     builder.setDisplayId(displayId)
                 }
                 val gesture = builder.build()
+                // Android 9's AccessibilityService never removes a callback from its internal
+                // mGestureStatusCallbackInfos after reporting the result, so every callback lives
+                // as long as the service. Capturing the continuation directly pinned the caller's
+                // whole coroutine chain, and through it each run's LabyrinthNodeSession with its
+                // 25.6 MB NodeTemplateSet — 1136 callbacks and 7 template sets in the 2026-09-24
+                // heap dump, OOM at run 4. The callback holds this clearable slot instead.
+                val pending = AtomicReference(continuation)
+                continuation.invokeOnCancellation { pending.set(null) }
                 val accepted = dispatchGesture(
                     gesture,
                     object : GestureResultCallback() {
                         override fun onCompleted(gestureDescription: GestureDescription?) {
                             Log.i(GESTURE_LOG_TAG, "手势完成 display=$displayId duration=${durationMillis}ms")
-                            if (continuation.isActive) continuation.resume(AutomationBackendResult.Completed)
+                            pending.getAndSet(null)?.let {
+                                if (it.isActive) it.resume(AutomationBackendResult.Completed)
+                            }
                         }
 
                         override fun onCancelled(gestureDescription: GestureDescription?) {
                             Log.w(GESTURE_LOG_TAG, "手势取消 display=$displayId duration=${durationMillis}ms")
-                            if (continuation.isActive) {
-                                continuation.resume(
-                                    AutomationBackendResult.Rejected(
-                                        "显示器 $displayId 的无障碍手势被系统取消",
-                                    ),
-                                )
+                            pending.getAndSet(null)?.let {
+                                if (it.isActive) {
+                                    it.resume(
+                                        AutomationBackendResult.Rejected(
+                                            "显示器 $displayId 的无障碍手势被系统取消",
+                                        ),
+                                    )
+                                }
                             }
                         }
                     },
                     null,
                 )
                 if (!accepted && continuation.isActive) {
+                    pending.set(null)
                     Log.w(GESTURE_LOG_TAG, "系统拒绝手势 display=$displayId duration=${durationMillis}ms")
                     continuation.resume(
                         AutomationBackendResult.Rejected(
