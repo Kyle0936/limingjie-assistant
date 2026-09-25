@@ -1077,6 +1077,7 @@ batch=20260916-001 goal=gourmet run=008 stage=RETURNING_TO_TITLE
   - **灰按钮被读成蓝按钮**：启用/禁用两张模板共用同一 ROI、只差颜色，互相之间相关度都很高。该帧 `invite_enabled` 仍有 0.925，单阈值判定通过，于是反复点一个点不动的「去邀请」。改为 `labyrinthInviteButtonState()` 按两张模板的分差定胜负（0.925 对 0.987 → DISABLED），确认分支要求按钮不处于 DISABLED；
   - **看门狗被自己的重试喂活**：选人分支每次派发前都调用 `resetEventFreeRoleProgress()`，45 秒放弃计时器因此永远清零。现在只有「画面上选中人数真的变多」才重置计时；确认分支与「等待按钮就绪」分支也纳入同一计时，超时按既有策略停止本局，不再有无限等待。
   选人策略本身保持与商店一致：只排当前视口、按评分取最高，不翻页、不搜索队伍。
+- [x] **「返回标题」要求连续帧**（2026-09-23，雷电 9 小米客户端实测）。失效恢复原先用 `sessionBlockStableFrames` 计数，它把「按钮还没识别到、只在等待」的阻塞帧也算进去，门槛早被垫满，于是 `session.return.title` 单帧越过 0.45 就立即点击。实测黎明界商店页（白底面板、右下「关闭」）被判为失效阻塞，单帧打出 0.646 与 0.524。新增 `sessionReturnTitleStableFrames`，只累计**连续识别到按钮**的帧（`labyrinthSessionReturnTitleStreak()`），任一帧没识别到即清零；真正的失效弹窗按钮持续存在，恢复不受影响。
 - [x] **无障碍手势回调拖住整局对象导致跨局 OOM**（2026-09-24，雷电 9 / Android 9 实机堆转储）。连跑第 4 局开局 20 秒报 `Failed to allocate … max allowed footprint 402653184`，停机两分钟后 Java 堆仍有 248 MB。堆转储：1136 个 `GestureResultCallbackInfo` 留在 `AccessibilityService.mGestureStatusCallbackInfos` 里（约等于 4 局发出的全部手势，均已报告完成），回调捕获的 continuation 经协程链拖住 `LabyrinthNodeSession`，共 7 套 `NodeTemplateSet`（每套 25.6 MB）。Android 9 在回报手势结果后不移除回调。改为回调只持有一个 `AtomicReference`，完成、取消、被系统拒绝、协程取消（含 `withTimeoutOrNull` 超时）时清空。修复后连续 12 局以上，局末 Java 堆稳定在约 38 MB，单局最大增量 +0.3 MB。
 
 ---

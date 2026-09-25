@@ -64,14 +64,20 @@ class LandosolAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         if (shouldRefreshForegroundWindow(event.eventType)) {
             val eventPackageName = event.packageName?.toString()
+            val eventClassName = event.className?.toString()
             if (
                 shouldTrackForegroundWindow(
                     servicePackageName = packageName,
                     eventPackageName = eventPackageName,
-                    eventClassName = event.className?.toString(),
+                    eventClassName = eventClassName,
                 )
             ) {
                 foregroundPackageName = eventPackageName
+                // 只有窗口状态变化事件携带 Activity 类名；内容变化事件给的是 View 类名，
+                // 拿它覆盖会把 MainActivity 冲掉，导致启动闸门误判。
+                if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                    foregroundActivityName = eventClassName
+                }
             }
         }
     }
@@ -90,6 +96,7 @@ class LandosolAccessibilityService : AccessibilityService() {
         if (activeService === this) {
             activeService = null
             foregroundPackageName = null
+            foregroundActivityName = null
             AccessibilityConnectionRegistry.update(false)
         }
         return super.onUnbind(intent)
@@ -99,6 +106,7 @@ class LandosolAccessibilityService : AccessibilityService() {
         if (activeService === this) {
             activeService = null
             foregroundPackageName = null
+            foregroundActivityName = null
             AccessibilityConnectionRegistry.update(false)
         }
         super.onDestroy()
@@ -253,12 +261,19 @@ class LandosolAccessibilityService : AccessibilityService() {
         @Volatile
         private var foregroundPackageName: String? = null
 
+        /** 前台 Activity 类名，仅由 TYPE_WINDOW_STATE_CHANGED 更新。 */
+        @Volatile
+        private var foregroundActivityName: String? = null
+
         internal fun current(): LandosolAccessibilityService? = activeService
         fun isConnected(): Boolean = activeService != null && AccessibilityConnectionRegistry.isConnected()
         internal fun foregroundPackage(): String? {
             activeService?.refreshForegroundPackageFromRoot()
             return foregroundPackageName
         }
+
+        /** 前台 Activity 类名；未观察到窗口状态变化时为 null。 */
+        internal fun foregroundActivity(): String? = foregroundActivityName
 
         /** 通过无障碍全局动作派发（例如最近任务），返回是否被系统接受 */
         suspend fun dispatchGlobalAction(action: Int): Boolean = onMainThreadCompat {
@@ -289,14 +304,19 @@ class LandosolAccessibilityService : AccessibilityService() {
 }
 
 class AndroidAccessibilityActionBackend(
-    private val expectedPackageName: String? = GAME_PACKAGE_NAME,
+    /**
+     * 每次动作时取值：切换到另一渠道的账号后，校验目标随之改变。
+     * 不可为 null——前台包校验没有「关闭」这一档；解析不出目标时由调用方传永不匹配的占位包名。
+     */
+    private val expectedPackageName: () -> String,
 ) : AutomationActionBackend {
+
     override suspend fun execute(action: AutomationAction): AutomationBackendResult {
         if (!action.hasValidCoordinates()) return AutomationBackendResult.Rejected("动作坐标无效")
         val service = LandosolAccessibilityService.current()
             ?: return AutomationBackendResult.Rejected("无障碍服务未连接")
         val foregroundPackage = LandosolAccessibilityService.foregroundPackage()
-        if (expectedPackageName != null && foregroundPackage != expectedPackageName) {
+        if (foregroundPackage != expectedPackageName()) {
             return AutomationBackendResult.Rejected(GAME_NOT_FOREGROUND_REASON)
         }
         return service.perform(
@@ -309,9 +329,5 @@ class AndroidAccessibilityActionBackend(
         is AutomationAction.Tap -> point.x >= 0f && point.y >= 0f
         is AutomationAction.Swipe -> start.x >= 0f && start.y >= 0f && end.x >= 0f && end.y >= 0f
         AutomationAction.Back -> true
-    }
-
-    private companion object {
-        const val GAME_PACKAGE_NAME = "com.bilibili.priconne"
     }
 }

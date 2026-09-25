@@ -65,11 +65,11 @@ interface GameClientPresenceObserver {
 
 /** 由无障碍服务的前台包名观察实现的无 Root 在场检测 */
 class AccessibilityForegroundPresenceObserver(
-    private val gamePackageName: String,
+    private val gamePackageName: () -> String,
     private val foregroundPackage: () -> String?,
 ) : GameClientPresenceObserver {
     override suspend fun isGameForeground(): Boolean =
-        foregroundPackage() == gamePackageName
+        foregroundPackage() == gamePackageName()
 }
 
 /** 测试用在场观察者 */
