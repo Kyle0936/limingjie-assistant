@@ -23,7 +23,7 @@ class BilibiliLoginCoordinatorTest {
         )
         val sessions = InMemorySdkSessionStore()
         val coordinator = BilibiliLoginCoordinator(gateway, sessions, clock = { 99L })
-        val material = AccountLoginMaterial(7L, "credential-key", "login", "password")
+        val material = AccountLoginMaterial(7L, "credential-key", "login", "password", GameServer.CN_BILIBILI)
 
         val first = coordinator.start(material)
         assertTrue(first is AccountLoginResult.CaptchaRequired)
@@ -45,7 +45,7 @@ class BilibiliLoginCoordinatorTest {
             captchaResult = SdkCaptchaResult.Ready(CaptchaChallenge("gt", "challenge", "user", "1")),
         )
         val coordinator = BilibiliLoginCoordinator(gateway, InMemorySdkSessionStore())
-        coordinator.start(AccountLoginMaterial(1L, "key", "login", "password"))
+        coordinator.start(AccountLoginMaterial(1L, "key", "login", "password", GameServer.CN_BILIBILI))
 
         val result = coordinator.completeCaptcha(2L, CaptchaProof("validate"))
 
