@@ -13,6 +13,7 @@ import com.landosol.toolbox.automation.AutomationAction
 import com.landosol.toolbox.automation.AutomationActionBackend
 import com.landosol.toolbox.automation.AutomationBackendResult
 import com.landosol.toolbox.automation.capture.CaptureStateRegistry
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.coroutines.resume
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -63,14 +64,20 @@ class LandosolAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent) {
         if (shouldRefreshForegroundWindow(event.eventType)) {
             val eventPackageName = event.packageName?.toString()
+            val eventClassName = event.className?.toString()
             if (
                 shouldTrackForegroundWindow(
                     servicePackageName = packageName,
                     eventPackageName = eventPackageName,
-                    eventClassName = event.className?.toString(),
+                    eventClassName = eventClassName,
                 )
             ) {
                 foregroundPackageName = eventPackageName
+                // 只有窗口状态变化事件携带 Activity 类名；内容变化事件给的是 View 类名，
+                // 拿它覆盖会把 MainActivity 冲掉，导致启动闸门误判。
+                if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                    foregroundActivityName = eventClassName
+                }
             }
         }
     }
@@ -89,6 +96,7 @@ class LandosolAccessibilityService : AccessibilityService() {
         if (activeService === this) {
             activeService = null
             foregroundPackageName = null
+            foregroundActivityName = null
             AccessibilityConnectionRegistry.update(false)
         }
         return super.onUnbind(intent)
@@ -98,6 +106,7 @@ class LandosolAccessibilityService : AccessibilityService() {
         if (activeService === this) {
             activeService = null
             foregroundPackageName = null
+            foregroundActivityName = null
             AccessibilityConnectionRegistry.update(false)
         }
         super.onDestroy()
@@ -181,28 +190,41 @@ class LandosolAccessibilityService : AccessibilityService() {
                     builder.setDisplayId(displayId)
                 }
                 val gesture = builder.build()
+                // Android 9's AccessibilityService never removes a callback from its internal
+                // mGestureStatusCallbackInfos after reporting the result, so every callback lives
+                // as long as the service. Capturing the continuation directly pinned the caller's
+                // whole coroutine chain, and through it each run's LabyrinthNodeSession with its
+                // 25.6 MB NodeTemplateSet — 1136 callbacks and 7 template sets in the 2026-09-24
+                // heap dump, OOM at run 4. The callback holds this clearable slot instead.
+                val pending = AtomicReference(continuation)
+                continuation.invokeOnCancellation { pending.set(null) }
                 val accepted = dispatchGesture(
                     gesture,
                     object : GestureResultCallback() {
                         override fun onCompleted(gestureDescription: GestureDescription?) {
                             Log.i(GESTURE_LOG_TAG, "手势完成 display=$displayId duration=${durationMillis}ms")
-                            if (continuation.isActive) continuation.resume(AutomationBackendResult.Completed)
+                            pending.getAndSet(null)?.let {
+                                if (it.isActive) it.resume(AutomationBackendResult.Completed)
+                            }
                         }
 
                         override fun onCancelled(gestureDescription: GestureDescription?) {
                             Log.w(GESTURE_LOG_TAG, "手势取消 display=$displayId duration=${durationMillis}ms")
-                            if (continuation.isActive) {
-                                continuation.resume(
-                                    AutomationBackendResult.Rejected(
-                                        "显示器 $displayId 的无障碍手势被系统取消",
-                                    ),
-                                )
+                            pending.getAndSet(null)?.let {
+                                if (it.isActive) {
+                                    it.resume(
+                                        AutomationBackendResult.Rejected(
+                                            "显示器 $displayId 的无障碍手势被系统取消",
+                                        ),
+                                    )
+                                }
                             }
                         }
                     },
                     null,
                 )
                 if (!accepted && continuation.isActive) {
+                    pending.set(null)
                     Log.w(GESTURE_LOG_TAG, "系统拒绝手势 display=$displayId duration=${durationMillis}ms")
                     continuation.resume(
                         AutomationBackendResult.Rejected(
@@ -239,12 +261,19 @@ class LandosolAccessibilityService : AccessibilityService() {
         @Volatile
         private var foregroundPackageName: String? = null
 
+        /** 前台 Activity 类名，仅由 TYPE_WINDOW_STATE_CHANGED 更新。 */
+        @Volatile
+        private var foregroundActivityName: String? = null
+
         internal fun current(): LandosolAccessibilityService? = activeService
         fun isConnected(): Boolean = activeService != null && AccessibilityConnectionRegistry.isConnected()
         internal fun foregroundPackage(): String? {
             activeService?.refreshForegroundPackageFromRoot()
             return foregroundPackageName
         }
+
+        /** 前台 Activity 类名；未观察到窗口状态变化时为 null。 */
+        internal fun foregroundActivity(): String? = foregroundActivityName
 
         /** 通过无障碍全局动作派发（例如最近任务），返回是否被系统接受 */
         suspend fun dispatchGlobalAction(action: Int): Boolean = onMainThreadCompat {
@@ -275,14 +304,19 @@ class LandosolAccessibilityService : AccessibilityService() {
 }
 
 class AndroidAccessibilityActionBackend(
-    private val expectedPackageName: String? = GAME_PACKAGE_NAME,
+    /**
+     * 每次动作时取值：切换到另一渠道的账号后，校验目标随之改变。
+     * 不可为 null——前台包校验没有「关闭」这一档；解析不出目标时由调用方传永不匹配的占位包名。
+     */
+    private val expectedPackageName: () -> String,
 ) : AutomationActionBackend {
+
     override suspend fun execute(action: AutomationAction): AutomationBackendResult {
         if (!action.hasValidCoordinates()) return AutomationBackendResult.Rejected("动作坐标无效")
         val service = LandosolAccessibilityService.current()
             ?: return AutomationBackendResult.Rejected("无障碍服务未连接")
         val foregroundPackage = LandosolAccessibilityService.foregroundPackage()
-        if (expectedPackageName != null && foregroundPackage != expectedPackageName) {
+        if (foregroundPackage != expectedPackageName()) {
             return AutomationBackendResult.Rejected(GAME_NOT_FOREGROUND_REASON)
         }
         return service.perform(
@@ -295,9 +329,5 @@ class AndroidAccessibilityActionBackend(
         is AutomationAction.Tap -> point.x >= 0f && point.y >= 0f
         is AutomationAction.Swipe -> start.x >= 0f && start.y >= 0f && end.x >= 0f && end.y >= 0f
         AutomationAction.Back -> true
-    }
-
-    private companion object {
-        const val GAME_PACKAGE_NAME = "com.bilibili.priconne"
     }
 }

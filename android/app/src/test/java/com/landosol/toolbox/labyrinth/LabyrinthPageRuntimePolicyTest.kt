@@ -1006,6 +1006,30 @@ class LabyrinthPageRuntimePolicyTest {
         lastSeenAt = 1L,
     )
 
+    @Test
+    fun `waiting for the return-title button never counts as confirming it`() {
+        // The defect this pins: the session gated its tap on how long it had been blocked, and the
+        // 等待识别“返回标题”按钮 stretches count as blocked. 2026-09-23 live, the labyrinth 商店 page
+        // spiked session.return.title to 0.646 on single frames while already classified as blocked;
+        // with the old counter primed, one such frame would have tapped with zero confirmation.
+        var streak = 0
+        repeat(200) { streak = labyrinthSessionReturnTitleStreak(streak, returnTitleRectPresent = false) }
+        assertEquals(0, streak)
+
+        // One spiking frame is not enough on its own.
+        streak = labyrinthSessionReturnTitleStreak(streak, returnTitleRectPresent = true)
+        assertEquals(1, streak)
+        assertTrue("one frame must not be actionable", streak < 2)
+
+        // A genuine popup keeps the button on screen, so it confirms on the very next frame.
+        streak = labyrinthSessionReturnTitleStreak(streak, returnTitleRectPresent = true)
+        assertEquals(2, streak)
+
+        // And a single frame without the button drops the streak back to zero.
+        streak = labyrinthSessionReturnTitleStreak(streak, returnTitleRectPresent = false)
+        assertEquals(0, streak)
+    }
+
     private companion object {
         val RECT = EntryPixelRect(10, 10, 100, 100)
     }

@@ -570,6 +570,22 @@ internal fun labyrinthGenericConfirmDialogRect(
     return button.rect.takeIf { button.score >= minimumButtonScore }
 }
 
+/**
+ * Consecutive frames that actually resolved a 返回标题 rect.
+ *
+ * The session used to gate the tap on how long it had been blocked, which counts the stretches where
+ * no button is recognised at all and the run just reports 等待识别“返回标题”按钮. That primes the
+ * counter past the floor, so the first frame whose score happens to clear the trigger taps at once,
+ * unconfirmed. Measured 2026-09-23 on the labyrinth 商店 page: its white panel and bottom-right 关闭
+ * made session.return.title spike to 0.646 (and 0.524) on single frames, above the 0.45 trigger,
+ * while the page was already classified as an expiry block. A genuine expiry popup renders its
+ * button continuously, so demanding consecutive button-bearing frames delays real recovery by nothing.
+ */
+internal fun labyrinthSessionReturnTitleStreak(
+    previousStreak: Int,
+    returnTitleRectPresent: Boolean,
+): Int = if (returnTitleRectPresent) previousStreak + 1 else 0
+
 private val GENERIC_CONFIRM_DIALOG_PAGES = setOf(
     LabyrinthEntryPageState.UNKNOWN,
     LabyrinthEntryPageState.NODE_SELECTION,
